@@ -41,6 +41,7 @@ window.mountCatstellaStore = async (root, { maintenance, scrollHost } = {}) => {
       active:!!id && (activeId === id || desktopActive) || desktopOnly && !isPet && desktopActive,
       canUse:!desktopOnly || !isPet && state?.online === true,
       useLabel:desktopOnly ? (isPet ? '仅桌面端可用' : '同步使用桌面壁纸') : '',
+      revision:saved?.revision || '',
       preview:saved?.frames?.idle || saved?.dataUrl || (relative ? api.getURL(relative) : '')};
   }
   const hub = window.mountCatstellaHub(root,{
@@ -53,9 +54,10 @@ window.mountCatstellaStore = async (root, { maintenance, scrollHost } = {}) => {
       return custom?.dataUrl || (local && api.getURL(local.preview || local.src));
     },
     selection,
+    currentTheme: () => ({preset:stored.onlinePalette || 'violet',onlineThemeId:stored.onlineThemeId || ''}),
     call:async (action,value) => {
       const result = await call(action,value);
-      if (action === 'download' && result?.ok) stored = await api.storageGet(keys);
+      if ((action === 'download' || action === 'uninstall') && result?.ok) stored = await api.storageGet(keys);
       return result;
     },
     use:async item => {

@@ -26,7 +26,12 @@
     }
     return [...result.values()];
   }
-  window.mountCatstellaHub = (root, {call, selection, use, openSource, onCount, previewWallpaper, scrollHost}) => {
+  const builtinThemes = new Set(['violet-default','midnight-blue']);
+  const issueTemplate = ['### 想适配的素材','- 名称：','- 分类（桌宠 / 壁纸 / 主题配色）：','',
+    '### 希望如何使用','- 平台（桌面端 / Gemini 网页 / 两者）：','- 想保留的效果或需要调整的地方：','',
+    '### 授权情况','- 原创 / 已获授权 / 尚待确认：','- 许可链接或可公开的授权说明（如有）：','',
+    '### 参考资料（可选）','- 可公开分享的截图或示例链接：'].join('\n');
+  window.mountCatstellaHub = (root, {call, selection, use, openSource, onCount, previewWallpaper, scrollHost, currentTheme}) => {
     root.classList.add('catstella-hub');
     const search = el('input', 'hub-search');
     search.type = 'search'; search.placeholder = '搜索名称、作者或素材'; search.setAttribute('aria-label', '搜索内容');
@@ -37,21 +42,56 @@
     status.setAttribute('role','status');
     const notice = el('p','hub-status'); notice.setAttribute('role','status');
     const dialog = el('dialog','hub-dialog');
+    const issueDialog = el('dialog','hub-dialog hub-issue');
     const header = el('div','hub-tools');
-    header.append(el('div','hub-eyebrow','CATSTELLA HUB · 测试版'), button('刷新目录', () => void load(true)));
+    header.append(el('div','hub-eyebrow','CATSTELLA HUB · 测试版'), button('适配请求', () => {
+      issueDraft.href = issueUrl;
+      issueText.value = issueTemplate;
+      issueStatus.textContent = '';
+      issueDialog.showModal();
+    }), button('刷新目录', () => void load(true)));
     tools.append(views,search);
     notice.classList.add('hub-notice');
     const scroller = scrollHost || root.closest('#content-scroll') || document.scrollingElement;
     dialog.setAttribute('aria-labelledby','hub-detail-title');
-    root.replaceChildren(header,filters,hero,tools,status,grid,notice,dialog);
+    const issueUrl = new URL('https://github.com/lynnfei/Catstella/issues/new');
+    issueUrl.searchParams.set('title','[适配请求][分类] 素材名称');
+    issueUrl.searchParams.set('body',issueTemplate);
+    const issueDraft = button('在 GitHub 打开',() => { if (openSource) openSource(issueUrl.href); },'primary');
+    const issueText = el('textarea','hub-issue-text');
+    issueText.readOnly = true; issueText.rows = 12; issueText.setAttribute('aria-label','适配请求模板');
+    const issueStatus = el('span','hub-issue-status'); issueStatus.setAttribute('role','status');
+    const issueHead = el('div','hub-detail-head');
+    const issueHeading = el('h2','','适配请求指引'); issueHeading.id = 'hub-issue-title';
+    const issueClose = button('关闭',() => issueDialog.close(),'hub-close'); issueClose.autofocus = true;
+    issueHead.append(issueHeading,issueClose);
+    const issueBody = el('div','hub-issue-body');
+    const issueCopy = button('复制模板',async () => {
+      try { await navigator.clipboard.writeText(issueText.value); issueStatus.textContent = '已复制模板。'; }
+      catch { issueText.focus(); issueText.select(); issueStatus.textContent = '已选中模板，可按 Ctrl+C 复制。'; }
+    });
+    const issueActions = el('div','hub-issue-actions');
+    issueActions.append(issueDraft,issueCopy,issueStatus);
+    issueBody.append(el('p','','想让大家也能用上你喜欢的桌宠、壁纸或配色？按模板开一个 Issue，附上原作链接与授权情况，方便跟进适配。'),
+      issueText,issueActions);
+    issueDialog.setAttribute('aria-labelledby','hub-issue-title');
+    issueDialog.append(issueHead,issueBody);
+    issueDialog.addEventListener('close',() => { const target = cards.get(current?.id)?.open; target?.focus({preventScroll:true}); },{once:false});
+    root.replaceChildren(header,filters,hero,tools,status,grid,notice,dialog,issueDialog);
     let entries = [], view = 'all', kind = 'all', current, currentIndex = 0, busy = false, loaded = false, pending;
     let gridMotion, dialogMotion, closing = false, shownPicture, modal, featuredEntry, banner, catalogOnline = false, searchFrame;
+    let compareCurrent = false, removeArm = false;
     const cards = new Map(), palettePreviews = new Map(), assetStates = new Map();
     const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
     const motionAllowed = () => !motionPreference.matches;
     function assetState(item) {
       if (!assetStates.has(item.id)) assetStates.set(item.id,selection(item));
       return assetStates.get(item.id);
+    }
+    // 已安装的 revision 与目录不一致即视为有更新；旧版安装没有 revision，不误报。
+    function hasUpdate(item) {
+      const state = assetState(item);
+      return !!state.revision && !!item.sha256 && state.revision !== item.sha256;
     }
     function refreshAssets() {
       assetStates.clear();
@@ -144,20 +184,34 @@
         const known = {'midnight-blue':'ocean','violet-default':'violet'}[item.id];
         if (known) box.dataset.palette = known;
         if (large) {
-          const key = item.id + ':' + item.sha256;
-          if (!palettePreviews.has(key)) {
-            palettePreviews.set(key, Promise.resolve().then(() => call('preview-theme',item.id)).catch(() => null)
-              .then(result => {
-                if (!result?.ok) palettePreviews.delete(key);
-                return result;
-              }));
+          if (compareCurrent) {
+            // 搭配对比：用当前正在使用的配色渲染同一块示意场景。
+            const activeTheme = currentTheme?.();
+            hint.textContent = '当前搭配';
+            const key = 'current:' + (activeTheme?.onlineThemeId || activeTheme?.preset || 'violet');
+            if (!palettePreviews.has(key)) palettePreviews.set(key,
+              activeTheme?.onlineThemeId ? Promise.resolve().then(() => call('preview-theme',activeTheme.onlineThemeId)).catch(() => null)
+                : Promise.resolve({ok:true,palette:activeTheme?.preset === 'ocean' ? 'ocean' : 'violet'}));
+            void palettePreviews.get(key).then(result => {
+              if (!result?.ok) { hint.textContent = '暂无法读取当前搭配'; return; }
+              box.dataset.palette = result.palette;
+            });
+          } else {
+            const key = item.id + ':' + item.sha256;
+            if (!palettePreviews.has(key)) {
+              palettePreviews.set(key, Promise.resolve().then(() => call('preview-theme',item.id)).catch(() => null)
+                .then(result => {
+                  if (!result?.ok) palettePreviews.delete(key);
+                  return result;
+                }));
+            }
+            void palettePreviews.get(key).then(result => {
+              if (!result?.ok) { hint.textContent = known ? '配色示意' : '暂无法读取此主题的配色'; return; }
+              box.dataset.palette = result.palette;
+              theme.style.setProperty('--sample-opacity',String(result.opacity / 100));
+              hint.textContent = '壁纸不透明度 ' + result.opacity + '%';
+            });
           }
-          void palettePreviews.get(key).then(result => {
-            if (!result?.ok) { hint.textContent = known ? '配色示意' : '暂无法读取此主题的配色'; return; }
-            box.dataset.palette = result.palette;
-            theme.style.setProperty('--sample-opacity',String(result.opacity / 100));
-            hint.textContent = '壁纸不透明度 ' + result.opacity + '%';
-          });
         }
       } else box.append(el('span','hub-art-placeholder','安装后可预览'));
       return box;
@@ -219,23 +273,24 @@
         if (modal === operationModal) modal.feedback.textContent = message;
       };
       busy = true;
-      showProgress(action === 'apply' ? '正在应用…' : '正在准备安装…');
+      showProgress(action === 'apply' ? '正在应用…' : action === 'uninstall' ? '正在卸载…' : '正在准备安装…');
       detail();
       let completed = 0;
       try {
         for (const item of frames) {
-          const result = action === 'apply' ? await use(item) : await call('download',item.id);
+          const result = action === 'apply' ? await use(item) : action === 'uninstall' ? await call('uninstall',item.id) : await call('download',item.id);
           if (!result?.ok) throw Error(result?.reason === 'connection' ? '连不上 GitHub，请检查网络或代理。' : '素材操作失败，请重试。');
           completed++;
-          if (frames.length > 1) showProgress('已安装 ' + completed + ' / ' + frames.length);
+          if (frames.length > 1) showProgress((action === 'uninstall' ? '已卸载 ' : '已安装 ') + completed + ' / ' + frames.length);
         }
-        showProgress(action === 'apply' ? '已应用 ' + frames[0].name : '已安装 ' + completed + ' 项，可从本地图库切换。');
+        showProgress(action === 'apply' ? '已应用 ' + frames[0].name : action === 'uninstall' ? '已卸载，可随时重新安装。' : '已安装 ' + completed + ' 项，可从本地图库切换。');
       } catch (error) { showProgress((completed ? '已完成 ' + completed + ' 项。' : '') + error.message); }
       finally { busy = false; refreshAssets(); render(); if (dialog.open) detail(); }
     }
     function selectFrame(index, moveFocus = false, manual = true) {
       if (index < 0 || index >= current.frames.length || index === currentIndex) return;
       if (manual) modal.rotation?.pause();
+      removeArm = false;
       currentIndex = index;
       detail();
       const thumb = modal.strip.children[index];
@@ -276,6 +331,8 @@
       const secondary = el('div','hub-detail-secondary'), primary = el('div','hub-detail-primary');
       const useButton = button('', () => {
         const item = current.frames[currentIndex], state = assetState(item);
+        if (busy) return;
+        if (hasUpdate(item)) { void run('install',[item]); return; }
         if (!state.active && state.canUse !== false) void run(item.kind === 'theme' || state.installed ? 'apply' : 'install',[item]);
       },'primary');
       const packButton = button('',() => void run('install',entry.frames.filter(frame => !assetState(frame).installed)));
@@ -283,12 +340,17 @@
         const item = current.frames[currentIndex];
         if (assetState(item).desktopOnly) void run('install',[item]);
       });
+      const removeButton = button('卸载',() => {
+        if (busy || !removeArm) { removeArm = !removeArm; removeButton.textContent = removeArm ? '确认卸载？' : '卸载'; return; }
+        removeArm = false;
+        void run('uninstall',[current.frames[currentIndex]]);
+      });
       const favoriteButton = favorite(entry);
       if (player) {
         primary.addEventListener('focusin',() => player.pause());
         strip.addEventListener('focusin',() => player.pause());
       }
-      primary.append(useButton,packButton,copyButton);
+      primary.append(useButton,packButton,copyButton,removeButton);
       secondary.append(favoriteButton);
       if (entry.source && openSource) secondary.append(button('原作发布页',() => openSource(entry.source)));
       const feedback = el('p','hub-status hub-feedback'); feedback.setAttribute('role','status');
@@ -301,22 +363,30 @@
           setMode(mode);
         });
         setMode('welcome');
+        const setCompare = tabs([['asset','此素材'],['current','当前搭配']],themeTools,mode => {
+          const next = mode === 'current';
+          if (next !== compareCurrent) { compareCurrent = next; shownPicture = null; detail(); }
+        });
+        setCompare('asset');
       }
       themeTools.hidden = entry.kind !== 'theme';
       actions.append(secondary,primary,feedback);
       dialog.replaceChildren(top,stage,themeTools,browse,strip,info,actions);
-      modal = {stage,counter,previous,next,strip,title,description,credit,badge,useButton,packButton,copyButton,favorite:favoriteButton,feedback,rotation:player};
+      modal = {stage,counter,previous,next,strip,title,description,credit,badge,useButton,packButton,copyButton,removeButton,favorite:favoriteButton,feedback,rotation:player};
+      compareCurrent = false; removeArm = false;
       detail();
     }
     function detail() {
       if (!modal) return;
       const entry = current, item = entry.frames[currentIndex], state = assetState(item);
       const missing = entry.frames.filter(frame => !assetState(frame).installed);
-      const {stage,counter,previous,next,strip,title,description,credit,badge,useButton,packButton,copyButton} = modal;
-      paintState(badge,state.active ? 'active' : state.installed ? 'installed' : 'available',
-        state.active ? '正在使用' : state.desktopOnly ? '桌面端已安装' : state.installed ? '已安装' : item.kind === 'theme' ? '在线 · 可应用' : '在线 · 未安装');
-      useButton.textContent = state.active ? '正在使用' : state.useLabel || (item.kind === 'theme' ? '应用配色' : state.installed ? '使用这项素材' : '安装这项素材');
-      useButton.setAttribute('aria-disabled',String(busy || state.active || state.canUse === false));
+      const updating = hasUpdate(item);
+      const canRemove = state.installed && !state.desktopOnly && !builtinThemes.has(item.id);
+      const {stage,counter,previous,next,strip,title,description,credit,badge,useButton,packButton,copyButton,removeButton} = modal;
+      paintState(badge,updating ? 'update' : state.active ? 'active' : state.installed ? 'installed' : 'available',
+        updating ? '可更新' : state.active ? '正在使用' : state.desktopOnly ? '桌面端已安装' : state.installed ? '已安装' : item.kind === 'theme' ? '在线 · 可应用' : '在线 · 未安装');
+      useButton.textContent = updating ? '更新到最新版' : state.active ? '正在使用' : state.useLabel || (item.kind === 'theme' ? '应用配色' : state.installed ? '使用这项素材' : '安装这项素材');
+      useButton.setAttribute('aria-disabled',String(busy || !updating && (state.active || state.canUse === false)));
       if (!state.desktopOnly && document.activeElement === copyButton) useButton.focus({preventScroll:true});
       copyButton.hidden = !state.desktopOnly;
       copyButton.setAttribute('aria-disabled',String(busy));
@@ -325,6 +395,11 @@
       packButton.hidden = hidePack;
       packButton.setAttribute('aria-disabled',String(busy));
       packButton.textContent = '安装整套（' + missing.length + ' 张）';
+      removeButton.hidden = !canRemove;
+      removeButton.setAttribute('aria-disabled',String(busy));
+      const removeLabel = removeArm ? '确认卸载？' : '卸载';
+      if (removeButton.textContent !== removeLabel) removeButton.textContent = removeLabel;
+      if (removeButton.hidden && document.activeElement === removeButton) useButton.focus({preventScroll:true});
       if (shownPicture?.id !== item.id || shownPicture.preview !== state.preview) {
         const picture = art(item,true); picture.classList.add('hub-detail-art');
         stage.replaceChildren(picture);
@@ -418,10 +493,11 @@
         }
         const installed = entry.frames.filter(f => assetState(f).installed).length;
         const active = entry.frames.some(f => assetState(f).active);
+        const updated = entry.frames.some(f => hasUpdate(f));
         const desktopOnly = entry.frames.every(f => assetState(f).desktopOnly);
-        const label = active ? '正在使用' : desktopOnly ? '桌面端已安装' : installed === entry.frames.length ? '已安装' :
+        const label = updated ? '可更新' : active ? '正在使用' : desktopOnly ? '桌面端已安装' : installed === entry.frames.length ? '已安装' :
           installed ? '已安装 ' + installed + ' / ' + entry.frames.length : entry.kind === 'theme' ? '在线 · 可应用' : '在线 · 未安装';
-        paintState(record.badge,active ? 'active' : installed === entry.frames.length ? 'installed' : installed ? 'partial' : 'available',label);
+        paintState(record.badge,updated ? 'update' : active ? 'active' : installed === entry.frames.length ? 'installed' : installed ? 'partial' : 'available',label);
         const dateLabel = entry.date ? entry.date + ' 更新' : '目录未标注更新时间';
         record.date.hidden = view !== 'recent';
         if (record.date.textContent !== dateLabel) record.date.textContent = dateLabel;

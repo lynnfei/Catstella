@@ -112,7 +112,7 @@ async function installOnlineAsset(id, applyAfterwards) {
       if (!valid) throw new Error('invalid character frame dimensions');
     }
     const { onlineCharacterPacks } = await safeStorageGet(['onlineCharacterPacks']);
-    const packs = { ...onlineCharacterPacks, ['online-' + id]: { name: asset.item.name, description: asset.item.description, frames: asset.character } };
+    const packs = { ...onlineCharacterPacks, ['online-' + id]: { name: asset.item.name, description: asset.item.description, revision: asset.item.sha256, frames: asset.character } };
     return { ok: await safeStorageSet({ onlineCharacterPacks: packs }) };
   }
   const blob = new Blob([asset.bytes], { type: asset.item.mime });
@@ -136,7 +136,7 @@ async function installOnlineAsset(id, applyAfterwards) {
   const ok = await serializeAppearance(async () => {
     const { customWallpapers = [] } = await safeStorageGet(['customWallpapers']);
     const wallpapers = (Array.isArray(customWallpapers) ? customWallpapers : []).filter(w => w?.id !== wallpaperId);
-    wallpapers.push({ id: wallpaperId, title: asset.item.name, dataUrl, ...(asset.item.pack && {pack:asset.item.pack}) });
+    wallpapers.push({ id: wallpaperId, title: asset.item.name, revision: asset.item.sha256, dataUrl, ...(asset.item.pack && {pack:asset.item.pack}) });
     const selection = applyAfterwards ? { wallpaperId, webWallpaperCycle:null, ...appearanceIntent({ syncWallpaper: false }) } : {};
     return safeStorageSet({ customWallpapers: wallpapers, ...selection });
   });
@@ -165,6 +165,29 @@ async function onlineAction({ action, value }) {
       const task = installQueue.then(() => installOnlineAsset(value, action === 'install'));
       installQueue = task.catch(() => {});
       return await task;
+    }
+    if (action === 'uninstall' && typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,60}$/i.test(value)) {
+      // 主题：清回内置星轨紫；桌宠/壁纸：从本地库移除，正在使用的回退默认项。
+      const theme = await safeStorageGet(['onlineThemeId']);
+      if (theme.onlineThemeId === value) {
+        return { ok: await safeStorageSet({ onlineThemeId: null, onlinePalette: 'violet', wallpaperOpacity:.88 }) };
+      }
+      const { onlineCharacterPacks } = await safeStorageGet(['onlineCharacterPacks']);
+      if (onlineCharacterPacks && Object.prototype.hasOwnProperty.call(onlineCharacterPacks, 'online-' + value)) {
+        const packs = { ...onlineCharacterPacks };
+        delete packs['online-' + value];
+        const local = await safeStorageGet(['character']);
+        const reset = local.character === 'online-' + value ? { character: 'gemini-star-v1' } : {};
+        return { ok: await safeStorageSet({ onlineCharacterPacks: packs, ...reset }) };
+      }
+      const wallpaperId = 'custom:online-' + value;
+      const { customWallpapers = [], wallpaperId: activeId } = await safeStorageGet(['customWallpapers', 'wallpaperId']);
+      if (Array.isArray(customWallpapers) && customWallpapers.some(w => w?.id === wallpaperId)) {
+        const wallpapers = customWallpapers.filter(w => w?.id !== wallpaperId);
+        const selection = activeId === wallpaperId ? { wallpaperId: 'gemini-character-sheet-v1', webWallpaperCycle: null } : {};
+        return { ok: await safeStorageSet({ customWallpapers: wallpapers, ...selection }) };
+      }
+      return { ok: false, reason: 'not-installed' };
     }
     return { ok: false };
   } catch (error) {
