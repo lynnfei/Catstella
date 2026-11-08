@@ -402,12 +402,12 @@
     }
     if ($("dq-web-5h")) {
       $("dq-web-5h").textContent = wq
-        ? (typeof wq.fiveHourUsedPct === "number" ? `已用 ${wq.fiveHourUsedPct}% (余 ${Math.max(0, 100 - wq.fiveHourUsedPct)}%)` : `${wq.window5hTotal} 次`)
+        ? (typeof wq.fiveHourUsedPct === "number" ? `剩余 ${Math.max(0, 100 - wq.fiveHourUsedPct)}%` : `${wq.window5hTotal} 次`)
         : "—";
     }
     if ($("dq-web-daily")) {
       $("dq-web-daily").textContent = wq
-        ? (typeof wq.weeklyUsedPct === "number" ? `已用 ${wq.weeklyUsedPct}% (余 ${Math.max(0, 100 - wq.weeklyUsedPct)}%)` : (wq.dailyTotal ? `${wq.dailyTotal} / ${wq.dailyBudget || 150} 次` : "待同步"))
+        ? (typeof wq.weeklyUsedPct === "number" ? `剩余 ${Math.max(0, 100 - wq.weeklyUsedPct)}%` : (wq.dailyTotal ? `${wq.dailyTotal} / ${wq.dailyBudget || 150} 次` : "待同步"))
         : "—";
     }
     if ($("dq-web-split")) {

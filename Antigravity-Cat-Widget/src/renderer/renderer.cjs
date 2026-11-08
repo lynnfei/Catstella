@@ -152,7 +152,7 @@
     if(rEl)rEl.textContent=resetStr;
    }
    const wc=snapshot.webCompanion;
-   const webBrief=wc?.quota?(typeof wc.quota.fiveHourUsedPct==="number"?(" · Web 5h 已用 "+wc.quota.fiveHourUsedPct+"%"):(wc.quota.dailyTotal?(" · Web 今日 "+wc.quota.dailyTotal+" 次"):"")):"";
+   const webBrief=wc?.quota?(typeof wc.quota.fiveHourUsedPct==="number"?(" · Web 5h 剩余 "+Math.max(0,100-wc.quota.fiveHourUsedPct)+"%"):(wc.quota.dailyTotal?(" · Web 今日 "+wc.quota.dailyTotal+" 次"):"")):"";
    let extraHint="";if(isArgon&&typeof gData?.weekly==="number"){extraHint=" · 通用周额度余 "+Math.round(gData.weekly)+"%";}else if(!isArgon&&hasArgonQuota){extraHint=" · 🪐 Argon 余 "+Math.round(q.argon.weekly)+"%";}$("caption").textContent=(s.manualQuota?"手动记录":q?.stale?"上次读取 · 待更新":q?.cached?"上次读取":"")+extraHint+webBrief;
    $("meta").textContent="官方模型额度通道 · 点此刷新";
   }else if(selected==="webQuota"){
@@ -162,15 +162,15 @@
    $("web-status-text").textContent=wc.online?(wc.active?"🟢 网页活跃同步中":"🟢 浏览器已联动"):"⚪ 缓存快照（离线）";
    $("web-model-badge").textContent=wq.displaySource==="official"?"官方账本":(wq.lastModel||"Web");
    if(typeof wq.fiveHourUsedPct==="number"){
-    if($("web-5h-label"))$("web-5h-label").textContent="当前用量 (5h)";
-    $("web-5h-count").textContent="已用 "+wq.fiveHourUsedPct+"% (余 "+Math.max(0,100-wq.fiveHourUsedPct)+"%)";
+    if($("web-5h-label"))$("web-5h-label").textContent="剩余额度 (5h)";
+    $("web-5h-count").textContent="剩余 "+Math.max(0,100-wq.fiveHourUsedPct)+"%";
    }else{
     if($("web-5h-label"))$("web-5h-label").textContent="近 5h 调用";
     $("web-5h-count").textContent=(wq.window5hTotal??0)+" 次";
    }
    if(typeof wq.weeklyUsedPct==="number"){
-    if($("web-daily-label"))$("web-daily-label").textContent="每周限额 (1w)";
-    $("web-daily-count").textContent="已用 "+wq.weeklyUsedPct+"% (余 "+Math.max(0,100-wq.weeklyUsedPct)+"%)";
+    if($("web-daily-label"))$("web-daily-label").textContent="每周剩余 (1w)";
+    $("web-daily-count").textContent="剩余 "+Math.max(0,100-wq.weeklyUsedPct)+"%";
    }else if(wq.dailyTotal){
     if($("web-daily-label"))$("web-daily-label").textContent="今日累计对话";
     $("web-daily-count").textContent=(wq.dailyTotal??0)+" / "+(wq.dailyBudget||150)+" 次";
