@@ -1557,11 +1557,11 @@
       const groups = [{
         name: 'Gemini 网页',
         rows: [
-          { label: quota?.displaySource === 'estimate' ? '当前用量 · 会话估算' : '当前用量 (5h)',
-            remaining: usedToLeft(data?.fatiguePercent), display: 'used', unknownLabel: '待同步',
+          { label: quota?.displaySource === 'estimate' ? '剩余额度 · 会话估算' : '剩余额度 (5h)',
+            remaining: usedToLeft(data?.fatiguePercent), unknownLabel: '待同步',
             resetAt: quota?.fiveResetEpoch, resetLabel: quota?.currentResetTime ? '重置时间 ' + quota.currentResetTime : '',
             state: quota?.fivePending ? 'pending' : '' },
-          { label: '每周限额', remaining: usedToLeft(quota?.weeklyUsagePercent), display: 'used', unknownLabel: '待同步',
+          { label: '每周剩余', remaining: usedToLeft(quota?.weeklyUsagePercent), unknownLabel: '待同步',
             resetAt: quota?.weeklyResetEpoch, resetLabel: quota?.weeklyResetTime ? '重置时间 ' + quota.weeklyResetTime : '',
             state: quota?.weeklyPending ? 'pending' : '' }
         ]
@@ -2723,8 +2723,9 @@
           sourceTag.textContent = data.realQuota.fivePending || data.realQuota.displaySource === 'official' ? '官方限额' : '会话估算';
         }
 
-        curQuotaPct.textContent = data.realQuota.fivePending ? '等待更新' : `已使用 ${curPct}%`;
-        curQuotaBar.style.width = `${Math.min(100, curPct)}%`;
+        const curRemain = Math.max(0, Math.min(100, 100 - curPct));
+        curQuotaPct.textContent = data.realQuota.fivePending ? '等待更新' : `剩余 ${curRemain}%`;
+        curQuotaBar.style.width = `${curRemain}%`;
         curQuotaBar.style.background = getBarGradient(curPct);
         curQuotaReset.textContent = data.realQuota.fivePending ? '已到重置时间' : data.realQuota.currentResetTime
           ? `重置时间: ${data.realQuota.currentResetTime}`
@@ -2735,10 +2736,10 @@
           weekQuotaBar.style.width = '0%';
           weekQuotaReset.textContent = '已到重置时间';
         } else if (typeof data.realQuota.weeklyUsagePercent === 'number') {
-          const weekPct = data.realQuota.weeklyUsagePercent;
-          weekQuotaPct.textContent = `已使用 ${weekPct}%`;
-          weekQuotaBar.style.width = `${Math.min(100, weekPct)}%`;
-          weekQuotaBar.style.background = getBarGradient(weekPct);
+          const weekRemain = Math.max(0, Math.min(100, 100 - data.realQuota.weeklyUsagePercent));
+          weekQuotaPct.textContent = `剩余 ${weekRemain}%`;
+          weekQuotaBar.style.width = `${weekRemain}%`;
+          weekQuotaBar.style.background = getBarGradient(data.realQuota.weeklyUsagePercent);
           weekQuotaReset.textContent = data.realQuota.weeklyResetTime
             ? `重置时间: ${data.realQuota.weeklyResetTime}`
             : '每周限额';
