@@ -182,14 +182,19 @@ unsafe fn follow_tick() -> Option<(i32, i32)> {
     Some((dx, dy))
 }
 
-// z 序策略（对应 ForegroundHost 的 wantTop）：前台是宿主 → 桌宠不置顶且紧贴宿主上方；
-// 前台是其他窗口 → 桌宠置顶；前台是桌宠自身 → 不动。
+// z 序策略对齐 ForegroundHost 的 wantTop：宿主或桌宠在前台 → 桌宠置顶（浮在宿主上）；
+// 其他窗口在前台 → 桌宠退为普通层级并紧贴该窗口下方（被其遮挡）。
+// 空闲心跳绝不刷 SetWindowPos——生产注释明确这会引发 Win11 浮动任务栏 z 序重影；
+// 只有目标层级、置顶位或邻居关系漂移时才调用，调用次数由 Z_CALLS 计量。
+#[cfg(windows)]
+static Z_CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 #[cfg(windows)]
 unsafe fn manage_z() -> String {
     use windows_sys::Win32::Foundation::HWND;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_TOPMOST,
+        GetForegroundWindow, GetWindow, GetWindowLongPtrW, SetWindowPos, GW_HWNDNEXT, GWL_EXSTYLE,
+        HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_TOPMOST,
     };
     let host = FOLLOW_HOST.load(Ordering::Relaxed) as HWND;
     let pet = FOLLOW_PET.load(Ordering::Relaxed) as HWND;
@@ -201,17 +206,26 @@ unsafe fn manage_z() -> String {
         return "no-foreground".into();
     }
     let topmost = |window: HWND| (GetWindowLongPtrW(window, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
-    if foreground == host {
-        if topmost(pet) {
-            SetWindowPos(pet, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    let want_top = foreground == host || foreground == pet;
+    let pet_topmost = topmost(pet);
+    if want_top {
+        if pet_topmost {
+            return "kept-topmost".into();
         }
-        SetWindowPos(pet, host, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        "above-host".into()
-    } else if foreground != pet && !topmost(pet) {
+        Z_CALLS.fetch_add(1, Ordering::Relaxed);
         SetWindowPos(pet, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         "topmost".into()
     } else {
-        "kept".into()
+        if !pet_topmost && GetWindow(foreground, GW_HWNDNEXT) == pet {
+            return "kept-below-foreground".into();
+        }
+        if pet_topmost {
+            Z_CALLS.fetch_add(1, Ordering::Relaxed);
+            SetWindowPos(pet, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+        Z_CALLS.fetch_add(1, Ordering::Relaxed);
+        SetWindowPos(pet, foreground, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        "below-foreground".into()
     }
 }
 
@@ -538,6 +552,50 @@ mod probe {
         std::mem::size_of::<BITMAPFILEHEADER>() + std::mem::size_of::<BITMAPINFOHEADER>()
     }
 
+    unsafe fn ClientToScreenSpike(window: HWND, point: &mut POINT) -> i32 {
+        windows_sys::Win32::Graphics::Gdi::ClientToScreen(window, point)
+    }
+
+    unsafe fn GetClientRectSpike(window: HWND, rect: &mut RECT) -> i32 {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(window, rect)
+    }
+
+    // 前台锁允许真实输入路径：点击目标窗口来切换前台（SetForegroundWindow 会被间歇拒绝）。
+    unsafe fn activate_by_click(hwnd: HWND) -> bool {
+        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if GetWindowRect(hwnd, &mut rect) == 0 {
+            return false;
+        }
+        let cx = (rect.left + rect.right) / 2;
+        let cy = (rect.top + rect.bottom) / 2;
+        SetCursorPos(cx, cy);
+        thread::sleep(Duration::from_millis(120));
+        send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
+        thread::sleep(Duration::from_millis(60));
+        send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
+        thread::sleep(Duration::from_millis(300));
+        GetForegroundWindow() == hwnd
+    }
+
+    // 从辅助进程 JSON 行解析 "bounds":{"x":..,"y":..,"width":..,"height":..}。
+    fn parse_bounds(line: &str) -> Option<(i32, i32, i32, i32)> {
+        let start = line.find("\"bounds\":")? + "\"bounds\":".len();
+        let tail = &line[start..];
+        let end = tail.find('}')?;
+        let body = &tail[..end];
+        let mut fields = body.split(',');
+        let value_of = |piece: &str| -> Option<i32> {
+            let (_, raw) = piece.split_once(':')?;
+            raw.trim().trim_matches('"').parse::<i32>().ok()
+        };
+        Some((
+            value_of(fields.next()?)?,
+            value_of(fields.next()?)?,
+            value_of(fields.next()?)?,
+            value_of(fields.next()?)?,
+        ))
+    }
+
     pub fn run(pet: WebviewWindow, backdrop: WebviewWindow, host: WebviewWindow, out_dir: PathBuf, spike: Arc<Spike>) {
         thread::spawn(move || {
             let passed = probe_body(&pet, &backdrop, &host, &out_dir, &spike);
@@ -733,37 +791,278 @@ mod probe {
             report.kv("follow_pass", follow_ok);
             passed &= follow_ok;
 
-            // 前台是宿主 → 桌宠不置顶且紧贴宿主上方；前台切走 → 桌宠置顶。
-            SetForegroundWindow(host_hwnd);
-            thread::sleep(Duration::from_millis(400));
-            let fg_is_host = GetForegroundWindow() == host_hwnd;
-            let pet_topmost_when_host =
-                (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
-            let mut directly_above = false;
-            let mut walker = host_hwnd;
-            for _ in 0..4 {
-                walker = GetWindow(walker, GW_HWNDNEXT);
-                if walker.is_null() {
-                    break;
-                }
-                if walker == pet_hwnd {
-                    directly_above = true;
+            // z 序对齐生产 wantTop：宿主前台 → 桌宠置顶；其他窗口前台 → 桌宠退普通层级紧贴其下。
+            let activated_host = activate_by_click(host_hwnd);
+            let mut pet_topmost_when_host = false;
+            for _ in 0..12 {
+                thread::sleep(Duration::from_millis(100));
+                pet_topmost_when_host =
+                    (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
+                if pet_topmost_when_host {
                     break;
                 }
             }
+            let fg_is_host = GetForegroundWindow() == host_hwnd;
+            report.kv("activated_by_click", activated_host);
             report.kv("fg_is_host", fg_is_host);
             report.kv("pet_topmost_when_host_fg", pet_topmost_when_host);
-            report.kv("pet_directly_above_host", directly_above);
-            passed &= !pet_topmost_when_host && directly_above;
+            passed &= pet_topmost_when_host;
 
-            SetForegroundWindow(backdrop_hwnd);
-            thread::sleep(Duration::from_millis(400));
-            let pet_topmost_when_other =
-                (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
+            // 空闲防刷：宿主持续前台 2.5s，manage_z 不得重复调用 SetWindowPos（防浮动任务栏重影）。
+            let z_before = super::Z_CALLS.load(Ordering::Relaxed);
+            thread::sleep(Duration::from_millis(2500));
+            let z_after = super::Z_CALLS.load(Ordering::Relaxed);
+            report.kv("z_setwindowpos_calls_idle", z_after - z_before);
+            passed &= z_after == z_before;
+
+            let activated_backdrop = activate_by_click(backdrop_hwnd);
+            // z 序收敛允许钩子/兜底轮询最多 1.2s，而不是卡死某一拍。
+            let mut pet_topmost_when_other = true;
+            let mut below_foreground = false;
+            for _ in 0..12 {
+                thread::sleep(Duration::from_millis(100));
+                pet_topmost_when_other =
+                    (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
+                below_foreground = GetWindow(backdrop_hwnd, GW_HWNDNEXT) == pet_hwnd;
+                if !pet_topmost_when_other && below_foreground {
+                    break;
+                }
+            }
+            let fg_is_other = GetForegroundWindow() == backdrop_hwnd;
+            report.kv("activated_by_click_other", activated_backdrop);
+            report.kv("fg_is_other", fg_is_other);
             report.kv("pet_topmost_when_other_fg", pet_topmost_when_other);
-            passed &= pet_topmost_when_other;
+            report.kv("pet_directly_below_other_fg", below_foreground);
+            passed &= !pet_topmost_when_other && below_foreground;
+
+            // 负坐标平移：宿主移到屏幕外负坐标区，桌宠平移量须一致（单屏可测平移数学）。
+            let mut host_before_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(host_hwnd, &mut host_before_neg);
+            let mut pet_before_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(pet_hwnd, &mut pet_before_neg);
+            SetWindowPos(
+                host_hwnd,
+                std::ptr::null_mut(),
+                -220,
+                host_before_neg.top,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+            thread::sleep(Duration::from_millis(700));
+            let mut pet_after_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(pet_hwnd, &mut pet_after_neg);
+            let neg_delta = (pet_after_neg.left - pet_before_neg.left, pet_after_neg.top - pet_before_neg.top);
+            let host_delta = (-220 - host_before_neg.left, 0);
+            report.kv("negative_host_delta", format!("({},{})", host_delta.0, host_delta.1));
+            report.kv("negative_pet_delta", format!("({},{})", neg_delta.0, neg_delta.1));
+            let neg_ok = (neg_delta.0 - host_delta.0).abs() <= 2 && neg_delta.1.abs() <= 2;
+            report.kv("negative_translation_pass", neg_ok);
+            passed &= neg_ok;
+            // 宿主挪回可见区，避免后续截图在屏外。
+            SetWindowPos(
+                host_hwnd,
+                std::ptr::null_mut(),
+                host_before_neg.left,
+                host_before_neg.top,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+            thread::sleep(Duration::from_millis(500));
             spike.follow_stop.store(true, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(300));
+
+            // ---- 批次 F：真实 ForegroundHost 辅助进程（参数化副本）接管 Tauri 窗口 ----
+            report.section("F ForegroundHost 辅助进程绑定测试宿主");
+            let pet_class_name = window_class(pet_hwnd);
+            let host_class_name = window_class(host_hwnd);
+            report.kv("pet_top_level_class", &pet_class_name);
+            report.kv("host_top_level_class", &host_class_name);
+            let helper_path = std::env::current_exe().ok().and_then(|exe| {
+                let dir = exe.parent()?;
+                // 开发树里 exe 在 target/release/，仓库实验在 ../../host-check/；发布布局则同级。
+                let mut candidates = vec![dir.join("host-check")];
+                if let Some(release) = dir.parent() {
+                    if let Some(root) = release.parent() {
+                        candidates.push(root.join("host-check"));
+                    }
+                }
+                candidates.into_iter().map(|dir| dir.join("ForegroundHostSpike.exe")).find(|path| path.exists())
+            });
+            if let Some(helper_path) = helper_path.filter(|path| path.exists()) {
+                use std::io::BufRead;
+                use std::process::{Command, Stdio};
+                let spawn_result = Command::new(&helper_path)
+                    .arg(std::process::id().to_string())
+                    .arg((pet_hwnd as isize).to_string())
+                    .env("SPIKE_HOST_PROCESS", "catstella-window-spike")
+                    .env("SPIKE_HOST_CLASS", &host_class_name)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn();
+                match spawn_result {
+                    Ok(mut spawned) => {
+                        let mut reader = spawned.stdout.take().expect("helper stdout");
+                        let mut error_reader = spawned.stderr.take().expect("helper stderr");
+                        let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+                        let errors: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+                        let error_sink = errors.clone();
+                        let error_thread = std::thread::spawn(move || {
+                            let mut buffered = std::io::BufReader::new(error_reader);
+                            let mut line = String::new();
+                            while let Ok(n) = buffered.read_line(&mut line) {
+                                if n == 0 { break; }
+                                error_sink.lock().unwrap().push_str(&line);
+                                line.clear();
+                            }
+                        });
+                        let sink = lines.clone();
+                        let reader_thread = std::thread::spawn(move || {
+                            let mut buffered = std::io::BufReader::new(reader);
+                            let mut line = String::new();
+                            while let Ok(n) = buffered.read_line(&mut line) {
+                                if n == 0 { break; }
+                                let trimmed = line.trim().to_string();
+                                if !trimmed.is_empty() {
+                                    sink.lock().unwrap().push(trimmed);
+                                }
+                                line.clear();
+                            }
+                        });
+                        // 对照变体：widget=0 未绑定限时运行，区分"绑定模式无输出"与"任何模式都无输出"。
+                        let control = Command::new(&helper_path)
+                            .arg(std::process::id().to_string())
+                            .arg("0")
+                            .env("SPIKE_HOST_PROCESS", "catstella-window-spike")
+                            .env("SPIKE_HOST_CLASS", &host_class_name)
+                            .stdin(Stdio::null())
+                            .stdout(Stdio::piped())
+                            .stderr(Stdio::null())
+                            .spawn();
+                        let mut control_lines = 0usize;
+                        if let Ok(mut control) = control {
+                            let mut control_reader = std::io::BufReader::new(control.stdout.take().expect("control stdout"));
+                            let control_sink: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+                            let control_drain = control_sink.clone();
+                            std::thread::spawn(move || {
+                                let mut line = String::new();
+                                loop {
+                                    line.clear();
+                                    match control_reader.read_line(&mut line) {
+                                        Ok(0) | Err(_) => break,
+                                        Ok(_) => { control_drain.lock().unwrap().push(line.trim().to_string()); }
+                                    }
+                                }
+                            });
+                            for _ in 0..10 {
+                                thread::sleep(Duration::from_millis(120));
+                                if control.try_wait().ok().flatten().is_some() { break; }
+                            }
+                            control_lines = control_sink.lock().unwrap().len();
+                            let _ = control.kill();
+                            let _ = control.wait();
+                        }
+                        report.kv("helper_control_lines", control_lines);
+                        SetForegroundWindow(host_hwnd);
+                        // 辅助进程心跳 1s，等两拍保证至少输出两行。
+                        thread::sleep(Duration::from_millis(2500));
+                        let exited_early = spawned.try_wait().ok().flatten();
+                        report.kv(
+                            "helper_exit_early",
+                            exited_early.map(|s| s.to_string()).unwrap_or_else(|| "running".into()),
+                        );
+                        let snapshot = lines.lock().unwrap().clone();
+                        report.kv("helper_lines", snapshot.len());
+                        if snapshot.is_empty() {
+                            let stderr_text = errors.lock().unwrap().trim().to_string();
+                            if !stderr_text.is_empty() {
+                                report.kv("helper_stderr", stderr_text);
+                            }
+                        }
+                        let kind_marker = concat!("\"kind\":\"host\"");
+                        let attached_marker = concat!("\"attached\":true");
+                        let host_json = snapshot.iter().rev().find(|l| l.contains(kind_marker));
+                        match host_json {
+                            Some(line) => {
+                                report.kv("helper_kind", "host");
+                                let attached = line.contains(attached_marker);
+                                report.kv("helper_attached", attached);
+                                // bounds 是宿主客户区（原点 ClientToScreen + 客户区尺寸）。
+                                let mut client_origin = POINT { x: 0, y: 0 };
+                                ClientToScreenSpike(host_hwnd, &mut client_origin);
+                                let mut client_size = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                GetClientRectSpike(host_hwnd, &mut client_size);
+                                let expected = (
+                                    client_origin.x,
+                                    client_origin.y,
+                                    client_size.right - client_size.left,
+                                    client_size.bottom - client_size.top,
+                                );
+                                let reported = parse_bounds(line);
+                                report.kv("helper_bounds_expected", format!("{:?}", expected));
+                                report.kv("helper_bounds_reported", format!("{:?}", reported));
+                                let bounds_match = match reported {
+                                    Some(value) => {
+                                        value.0.abs_diff(expected.0) <= 3
+                                            && value.1.abs_diff(expected.1) <= 3
+                                            && value.2.abs_diff(expected.2) <= 3
+                                            && value.3.abs_diff(expected.3) <= 3
+                                    }
+                                    None => false,
+                                };
+                                report.kv("helper_bounds_match", bounds_match);
+                                let mut helper_pass = attached && bounds_match;
+                                // 宿主移动 → 辅助进程自带 followHost 应平移桌宠。
+                                let mut pet_before_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                GetWindowRect(pet_hwnd, &mut pet_before_helper);
+                                let mut host_before_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                GetWindowRect(host_hwnd, &mut host_before_helper);
+                                SetWindowPos(host_hwnd, std::ptr::null_mut(), -200, 120, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                                thread::sleep(Duration::from_millis(900));
+                                let mut pet_after_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                GetWindowRect(pet_hwnd, &mut pet_after_helper);
+                                let helper_delta = (
+                                    pet_after_helper.left - pet_before_helper.left,
+                                    pet_after_helper.top - pet_before_helper.top,
+                                );
+                                let host_moved = (-200 - host_before_helper.left, 120 - host_before_helper.top);
+                                report.kv("helper_host_moved", format!("({},{})", host_moved.0, host_moved.1));
+                                report.kv("helper_follow_delta", format!("({},{})", helper_delta.0, helper_delta.1));
+                                let helper_follow_ok = helper_delta.0.abs() >= 20 && helper_delta.1.abs() >= 10;
+                                report.kv("helper_follow_pass", helper_follow_ok);
+                                helper_pass &= helper_follow_ok;
+                                passed &= helper_pass;
+                                // 宿主挪回可见区；关闭 stdin 触发辅助进程优雅退出。
+                                SetWindowPos(host_hwnd, std::ptr::null_mut(), after_rect.right + 80, after_rect.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                                drop(spawned.stdin.take());
+                                let _ = spawned.wait();
+                                let _ = spawned.kill();
+                                let _ = reader_thread.join();
+                            }
+                            None => {
+                                report.kv("helper_kind", "not-found");
+                                if let Some(last) = snapshot.last() {
+                                    report.kv("sample_line", last.clone());
+                                }
+                                passed = false;
+                                drop(spawned.stdin.take());
+                                let _ = spawned.kill();
+                                let _ = reader_thread.join();
+                                let _ = error_thread.join();
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        report.kv("helper_spawn_error", error.to_string());
+                        passed = false;
+                    }
+                }
+            } else {
+                report.kv("helper_present", false);
+                passed = false;
+            }
 
             // ---- 批次 D：DPI 与截图 ----
             report.section("D DPI 与截图");

@@ -1,0 +1,2 @@
+{"foregroundKind":"other","restoreGeneration":0,"kind":"host","bounds":{"x":0,"y":0,"width":2560,"height":1440},"attached":false,"widgetVisible":false,"hostId":"21305182","nativeFollowing":false}
+{"foregroundKind":"other","restoreGeneration":0,"kind":"host","bounds":{"x":0,"y":0,"width":2560,"height":1440},"attached":false,"widgetVisible":false,"hostId":"21305182","nativeFollowing":false}
