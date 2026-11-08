@@ -136,6 +136,33 @@ Get-Content -LiteralPath (Join-Path $dir 'report.txt')
 
 透明、命中、宿主跟随是启动迁移的门槛。等它们通过后，再决定把本地 HTTP、日志解析和 CDP 客户端逐块移到 Rust 的顺序。Tauri 已提供托盘、快捷键、单实例和更新器相关能力，仍需对照 Catstella 的行为实测。 [Tauri 插件目录](https://v2.tauri.app/plugin/) · [Tauri 更新签名](https://v2.tauri.app/plugin/updater/#signing-updates)
 
+### widgetApi 面清单（绑定层替换施工图，2026-11-09）
+
+`src/main/preload.cjs` 暴露的 18 个方法逐条映射。结论：16 个是 command/event 的直接平移；`drag` 已在 spike 用原生 `start_dragging` 验证（比 Electron 三段式 `widget:drag` 更简单）；`hit`（渲染进程命中上报）被 spike 的 Rust 物理坐标分区轮询整体替代，前端不再需要上报。
+
+| widgetApi | Electron IPC | Tauri 等价物 | 授权窗口 |
+| --- | --- | --- | --- |
+| `get` | invoke `widget:get` | command `settings_get` | pet + settings |
+| `save` | invoke `widget:settings` | command `settings_save` | pet + settings |
+| `rememberBubble` | send `widget:bubble-preference` | command（fire-and-forget） | pet |
+| `ready` | send `widget:ready` | command `page_ready` | pet |
+| `byok` | invoke | 已封存；重启用时再映射 | — |
+| `online` | invoke `widget:online` | command `online_action`（catalog/download/uninstall/source/preview-theme） | pet + settings |
+| `releaseNotes` / `markReleaseNotesSeen` | invoke | 各自 command | pet |
+| `canChatter` | invoke | command | pet |
+| `command` | send `widget:command` | command（preview-reaction、打开设置等） | pet |
+| `pointer` | invoke `widget:pointer` | command | pet |
+| `drag` | send `widget:drag` | **原生 `start_dragging`**（spike 已验） | pet |
+| `hit` | send `widget:hit` | **删除**——Rust 分区轮询替代 | pet |
+| `audio` | invoke `widget:audio` | command + 资源解析 | pet |
+| `subscribe` | on `widget:snapshot` | event `widget://snapshot` | pet |
+| `onStep` | on `widget:step` | event | pet |
+| `onReaction` | on `widget:reaction` | event | pet |
+| `onNavigate` | on `widget:navigate` | event | pet |
+| `onRefresh` | on `cat:refresh` | event | settings |
+
+页面侧只需换绑定层实现（同名 `window.widgetApi` 由 Tauri 的 `invoke`/`listen` 组装），业务 JS/CSS 不动。
+
 ## 接续说明（2026-11-09 凌晨批次结束）
 
 本夜完成窗口门槛全部本机可测项与数据门槛（第一～五轮，连续全绿，证据在 `evidence/tauri-window-spike-2026-11-09/`）。下一批建议顺序：
