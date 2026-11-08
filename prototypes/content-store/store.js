@@ -9,7 +9,7 @@ const kinds = {
 };
 const petRoot = '../../Antigravity-Cat-Widget/assets/character-packs';
 const wallpaperRoot = '../../online-assets/wallpapers';
-const moriyamaRoot = '../../art_assets/wallpaper_pack_1';
+const moriyamaRoot = wallpaperRoot;
 
 const singleItems = [
   { id: 'gemini-star-v1', kind: 'character', name: '星语', alias: 'Stella', description: '紫色猫耳 · 星空魔女礼装', size: 912272, art: `${petRoot}/gemini-star-v1/frames/idle.png` },
