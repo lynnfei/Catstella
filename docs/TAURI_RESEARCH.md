@@ -163,13 +163,25 @@ Get-Content -LiteralPath (Join-Path $dir 'report.txt')
 
 页面侧只需换绑定层实现（同名 `window.widgetApi` 由 Tauri 的 `invoke`/`listen` 组装），业务 JS/CSS 不动。
 
+### 第七、八轮（同日晨）：自动重扫描与安全边界
+
+| 验收项 | 结果 | 说明 |
+| --- | --- | --- |
+| 宿主自动重扫描 | 通过 | 兜底轮询检测 `IsWindow(host)==0` → 按标题重找 → 自动重绑（对齐 ForegroundHost 每拍 `FindHost`）。探针杀宿主进程 → 重启 → 引擎 1.5s 内自动拾取新 HWND 并恢复精确平移跟随（delta (60,40)），全程无手动 stop/start |
+| 30 轮回归 | 30/30 | 全量探针在自动重扫描 + capabilities 变更后连跑全绿 |
+| IPC 按窗口拆权限 | 模式已立 | spike 加 `capabilities/pet-window.json`（windows:["pet"] + core:default），ACL 编译进 `gen/schemas/capabilities.json`；生产迁移照此为 settings/商店窗口单独发 capability |
+| Origin parity | 记录 | 本地回环页面按生产 `isAllowedOrigin` 语义放行——生产行为，非 spike 缺陷；外部 https → 403、扩展协议 → 放行+CORS 回显 |
+| 头校验边界 | parity | `X-Catstella-Client` 是协议标识不是鉴权令牌（可伪造，与生产一致）；真正防线=仅回环绑定+浏览器 Origin 白名单 |
+
+安全未覆盖项（迁移评审清单）：无共享密钥/令牌鉴权（生产同，迁移可加 nonce）；AGY CDP 通道不在 spike 范围；无速率限制（生产同）；`/companion/wallpaper-image` spike 按固定 id 白名单返回单文件（生产按 manifest 映射，迁移时保留路径校验）；Tauri ACL 目前仅示例 pet 窗口，settings 窗口接入时需单独 capability。
+
 ## 接续说明（2026-11-09 凌晨批次结束）
 
 本夜完成窗口门槛全部本机可测项与数据门槛（第一～五轮，连续全绿，证据在 `evidence/tauri-window-spike-2026-11-09/`）。下一批建议顺序：
 
 1. **联动协议门槛（迁移顺序第三步）**：Rust 侧 `/companion/*` 最小服务已验证（第六轮，备用端口 3922）。剩余：隔离浏览器加载真实扩展→发现 spike 服务→跑通握手/状态流（需浏览器自动化或用户在场）。
-2. **widgetApi 面清单**：把 `window.widgetApi` 现有方法逐条映射为 Tauri command 表（get/save/on/off/online/audio/command…），标注哪些需要窗口权限拆分，作为绑定层替换的施工图。
-3. **跟随引擎自动重扫描**：当前 spike 重绑是显式 stop/start；生产辅助进程每拍重找宿主。迁移时保留该行为（Rust 侧每拍 FindWindow 或辅助进程继续负责找窗）。
+2. ~~widgetApi 面清单~~ 已完成（见上表）。剩余：按清单落地 Tauri command/event 绑定层与各窗口 capability。
+3. ~~跟随引擎自动重扫描~~ 已完成（第七轮：兜底轮询自动重绑，免手动 stop/start）。
 4. **需要环境/用户的待测项**：混合 DPI 与负坐标屏（多屏）、锁屏恢复（不能在用户会话上做）、浮动任务栏实机重影（真实 Win11 任务栏场景）、100% 缩放复测（改系统 DPI）、真实 AGY 宿主跟随（用户在场时）。
 5. **安装门槛**：体积基线已测（压缩样本省约 52%）；跨版本安装/回滚与签名属发布动作，按约定不在实验批次内做。
 
