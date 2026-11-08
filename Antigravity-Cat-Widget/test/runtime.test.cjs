@@ -114,3 +114,4 @@ test("dual-end sync settings, display modes, webQuota page, and unknown extensio
  restored.update({petDisplayMode:"bogus-mode"});
  assert.equal(restored.get("petDisplayMode"),"both");
 });
+test("custom themes sanitize to preset palettes with dedup and bounds",()=>{const file=path.join(tmp(),"settings.json"),s=new SettingsManager(file);s.update({customThemes:[{id:"local-violet-1",name:"  轻透  ",palette:"ocean",opacity:120,updatedAt:"2026-11-09"},{id:"bad id!",name:"x",palette:"nope",opacity:50},{id:"local-violet-1",name:"dup",palette:"pink",opacity:30},"junk",{name:"no-id",palette:"violet",opacity:10}]});assert.deepEqual(new SettingsManager(file).get("customThemes"),[{id:"local-violet-1",name:"轻透",palette:"ocean",opacity:100,updatedAt:"2026-11-09"}]);});

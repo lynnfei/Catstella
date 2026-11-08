@@ -218,6 +218,28 @@
               </div>
               <p class="hint">点击即刻热切换反重力毛玻璃色系、边框流光与消息气泡配色，无需重启宿主。</p>
             </div>
+            <div class="card">
+              <h3>主题工坊 <span class="chip">本地创作</span></h3>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸不透明度</b><small>与配色组合保存为主题，可反复应用</small></span><output id="atelier-opacity-value">88%</output></div><input id="atelier-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="88"></div>
+              <div class="atelier-scene" id="atelier-preview" data-palette="violet" role="img" aria-label="主题预览示意">
+                <div class="atelier-base"><aside>✦</aside><div class="atelier-page"><span class="atelier-brand">Gemini</span><div class="atelier-welcome"><strong>今天想做些什么？</strong><div class="atelier-shortcuts"><span>探索灵感</span><span>整理思路</span><span>润色文字</span></div></div><div class="atelier-reading"><span class="atelier-prompt">帮我整理今天的计划</span><p>先挑一件最重要的事，把它拆成可以马上开始的小步骤。</p><b class="atelier-input">＋  问问 Gemini</b></div></div>
+                <span class="atelier-hint" id="atelier-hint">星轨紫 · 壁纸不透明度 88%</span>
+              </div>
+              <div class="row"><span class="row-text"><b>配色</b></span><div class="atelier-swatches" id="atelier-swatches">
+                <button type="button" class="atelier-swatch active" data-palette="violet" data-label="星轨紫" aria-label="星轨紫"><i style="background:linear-gradient(135deg,#8b68e0,#24193c)"></i></button>
+                <button type="button" class="atelier-swatch" data-palette="pink" data-label="梦幻粉" aria-label="梦幻粉"><i style="background:linear-gradient(135deg,#f59cc6,#3b1830)"></i></button>
+                <button type="button" class="atelier-swatch" data-palette="ocean" data-label="深海蓝" aria-label="深海蓝"><i style="background:linear-gradient(135deg,#5da9f6,#0f1d35)"></i></button>
+                <button type="button" class="atelier-swatch" data-palette="onyx" data-label="曜石黑" aria-label="曜石黑"><i style="background:linear-gradient(135deg,#666c82,#121318)"></i></button>
+              </div></div>
+              <label class="row"><span class="row-text"><b>主题名称</b></span><input id="atelier-name" type="text" maxlength="24" placeholder="例如：星轨紫 · 轻透"></label>
+              <div class="row atelier-buttons">
+                <button type="button" class="btn primary" id="atelier-save">保存为主题</button>
+                <button type="button" class="btn" id="atelier-export">复制目录 JSON</button>
+                <span class="hint" id="atelier-status" role="status"></span>
+              </div>
+              <div class="theme-grid" id="atelier-grid"></div>
+              <p class="hint">保存的主题会应用配色与不透明度；「复制目录 JSON」可把当前组合交给内容商店收录。</p>
+            </div>
           </section>
 
           <!-- 互动 -->

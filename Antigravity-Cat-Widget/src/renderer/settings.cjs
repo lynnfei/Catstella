@@ -1298,6 +1298,9 @@
       if ($("dream-transition") && document.activeElement !== $("dream-transition")) $("dream-transition").value = ds.transition === "none" ? "none" : "fade";
       const currentTheme = ds.themePreset || "violet";
       document.querySelectorAll(".theme-card[data-theme]").forEach(card => card.classList.toggle("active", card.dataset.theme === currentTheme));
+      if (document.activeElement !== $("atelier-opacity")) $("atelier-opacity").value = Math.round(ds.opacity ?? 88);
+      atelierPaint();
+      renderAtelier();
     }
 
     renderDualCompanionStatus();
@@ -1428,6 +1431,75 @@
       }
     };
   });
+
+  // 主题工坊：本地配色 + 不透明度组合，实时预览，保存后可反复应用或导出目录 JSON。
+  const atelierLabels = {violet:"星轨紫",pink:"梦幻粉",ocean:"深海蓝",onyx:"曜石黑"};
+  const atelierSwatchStyles = {violet:"linear-gradient(135deg,#8b68e0,#24193c)",pink:"linear-gradient(135deg,#f59cc6,#3b1830)",
+    ocean:"linear-gradient(135deg,#5da9f6,#0f1d35)",onyx:"linear-gradient(135deg,#666c82,#121318)"};
+  let atelierPalette = data.dreamSkin?.themePreset || "violet";
+  function atelierPaint() {
+    const atelierOpacity = $("atelier-opacity");
+    if (!atelierOpacity) return;
+    const value = Number(atelierOpacity.value);
+    $("atelier-opacity-value").textContent = value + "%";
+    const preview = $("atelier-preview");
+    preview.dataset.palette = atelierPalette;
+    preview.style.setProperty("--at-opacity", String(value / 100));
+    $("atelier-hint").textContent = (atelierLabels[atelierPalette] || atelierPalette) + " · 壁纸不透明度 " + value + "%";
+    document.querySelectorAll(".atelier-swatch").forEach(swatch => swatch.classList.toggle("active", swatch.dataset.palette === atelierPalette));
+  }
+  function renderAtelier() {
+    const grid = $("atelier-grid");
+    if (!grid) return;
+    const themes = Array.isArray(data.customThemes) ? data.customThemes : [];
+    grid.replaceChildren(...themes.map(theme => {
+      const card = document.createElement("button");
+      card.type = "button"; card.className = "theme-card";
+      const active = (data.dreamSkin?.themePreset || "violet") === theme.palette &&
+        Math.round(data.dreamSkin?.opacity ?? -1) === Math.round(theme.opacity);
+      if (active) card.classList.add("active");
+      const swatch = document.createElement("i");
+      swatch.style.background = atelierSwatchStyles[theme.palette] || "";
+      const name = document.createElement("b"); name.textContent = theme.name;
+      const meta = document.createElement("small");
+      meta.textContent = (atelierLabels[theme.palette] || theme.palette) + " · 不透明度 " + Math.round(theme.opacity) + "%" + (active ? " · 使用中" : "");
+      card.append(swatch,name,meta);
+      card.onclick = () => save({ dreamSkin: { themePreset: theme.palette, opacity: Math.round(theme.opacity) } },
+        "已应用主题「" + theme.name + "」");
+      const remove = document.createElement("button");
+      remove.type = "button"; remove.className = "atelier-remove"; remove.textContent = "×";
+      remove.setAttribute("aria-label","删除主题 " + theme.name);
+      remove.onclick = event => {
+        event.stopPropagation();
+        save({ customThemes: (data.customThemes || []).filter(t => t.id !== theme.id) }, "已删除主题「" + theme.name + "」");
+      };
+      card.append(remove);
+      return card;
+    }));
+  }
+  $("atelier-opacity").addEventListener("input", atelierPaint);
+  document.querySelectorAll(".atelier-swatch").forEach(swatch => {
+    swatch.onclick = () => { atelierPalette = swatch.dataset.palette; atelierPaint(); };
+  });
+  $("atelier-save").onclick = () => {
+    const value = Number($("atelier-opacity").value);
+    const name = ($("atelier-name").value || "").trim() || (atelierLabels[atelierPalette] || atelierPalette) + " · " + value + "%";
+    const themes = Array.isArray(data.customThemes) ? [...data.customThemes] : [];
+    themes.push({ id: "local-" + atelierPalette + "-" + Date.now().toString(36), name,
+      palette: atelierPalette, opacity: value, updatedAt: new Date().toISOString().slice(0,10) });
+    save({ customThemes: themes.slice(-24) }, "已保存主题「" + name + "」");
+    $("atelier-name").value = "";
+    $("atelier-status").textContent = "";
+  };
+  $("atelier-export").onclick = async () => {
+    const payload = JSON.stringify({ schema: 1, palette: atelierPalette, opacity: Number($("atelier-opacity").value) }, null, 2);
+    try {
+      await navigator.clipboard.writeText(payload);
+      $("atelier-status").textContent = "已复制目录 JSON，可提交到内容商店收录。";
+    } catch {
+      $("atelier-status").textContent = "复制失败，请手动复制：" + payload;
+    }
+  };
 
   $("undo").onclick = () => save(originalDreamSkin ? { ...original, dreamSkin: { ...originalDreamSkin } } : original, "已恢复到打开设置时");
   $("dock-left").onclick = () => api.command("dock-left");
