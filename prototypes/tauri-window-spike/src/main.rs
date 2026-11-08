@@ -4,7 +4,7 @@
 // 只使用独立应用标识与本地静态素材，不连接真实 Antigravity。
 // 底板与测试宿主由独立进程 spike-external.exe 提供，点击送达经日志验证。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicIsize, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -152,6 +152,101 @@ fn cfg_write(key: &str, value: serde_json::Value) -> Result<(), String> {
 
 fn cfg_read(key: &str) -> Option<serde_json::Value> {
     load_config().lock().unwrap().get(key).cloned()
+}
+
+// ---- 设置净化（迁移门槛：对照生产 shared/storage.cjs 语义的子集）----
+// bool：只接受真布尔，否则回退默认；finite：只接受有限数字，否则回退，数字则钳制。
+fn js_bool(value: Option<&serde_json::Value>, fallback: bool) -> bool {
+    value.and_then(|value| value.as_bool()).unwrap_or(fallback)
+}
+
+fn js_finite(value: Option<&serde_json::Value>, fallback: f64, min: f64, max: f64) -> f64 {
+    match value.and_then(|value| value.as_f64()) {
+        Some(number) if number.is_finite() => number.max(min).min(max),
+        _ => fallback,
+    }
+}
+
+fn js_enum_string(value: Option<&serde_json::Value>, allowed: &[&str], fallback: &str) -> String {
+    match value.and_then(|value| value.as_str()) {
+        Some(text) if allowed.contains(&text) => text.to_string(),
+        _ => fallback.to_string(),
+    }
+}
+
+fn sanitize_tier(raw: Option<&serde_json::Value>) -> serde_json::Value {
+    let empty = serde_json::Map::new();
+    let map = raw.and_then(|value| value.as_object()).unwrap_or(&empty);
+    let mut themes = Vec::new();
+    if let Some(list) = map.get("customThemes").and_then(|value| value.as_array()) {
+        let mut seen = std::collections::BTreeSet::new();
+        for item in list.iter().take(24) {
+            let Some(object) = item.as_object() else { continue };
+            let id = object.get("id").and_then(|value| value.as_str()).unwrap_or("");
+            let id_valid = {
+                let bytes = id.as_bytes();
+                !id.is_empty() && id.len() <= 40
+                    && bytes[0].is_ascii_alphanumeric()
+                    && bytes[1..].iter().all(|b| b.is_ascii_alphanumeric() || *b == b'-')
+            };
+            if !id_valid || !seen.insert(id.to_string()) {
+                continue;
+            }
+            let tint = object.get("bubbleTint").and_then(|value| value.as_str());
+            let opacity = object.get("bubbleOpacity").and_then(|value| value.as_f64());
+            themes.push(serde_json::json!({
+                "id": id,
+                "name": object.get("name").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()).map(|v| v.trim().chars().take(24).collect::<String>()).unwrap_or_else(|| "未命名主题".into()),
+                "palette": js_enum_string(object.get("palette"), &["violet", "pink", "ocean", "onyx"], "violet"),
+                "opacity": js_finite(object.get("opacity"), 88.0, 0.0, 100.0),
+                "bubbleTint": tint.filter(|t| t.len() == 7 && t.starts_with('#')).map(|t| t.to_ascii_lowercase()),
+                "bubbleOpacity": opacity.map(|v| js_finite(object.get("bubbleOpacity"), 98.0, 30.0, 100.0)),
+                "updatedAt": object.get("updatedAt").and_then(|v| v.as_str()).map(|v| v.chars().take(10).collect::<String>()).unwrap_or_default(),
+            }));
+        }
+    }
+    serde_json::Value::Array(themes)
+}
+
+// 顶层与 dreamSkin 的净化：默认值合并、类型收紧、未知字段原样保留。
+fn sanitize_settings(input: &serde_json::Value) -> serde_json::Value {
+    let empty = serde_json::Map::new();
+    let source = input.as_object().unwrap_or(&empty);
+    let mut out = source.clone();
+
+    // 未知字段天然保留（整表克隆），这里只收紧已知键。
+    for (key, fallback) in [
+        ("alwaysOnTop", true), ("reducedMotion", false), ("sound", false), ("bubbleOn", true),
+        ("turnCostOn", true), ("clickThrough", false), ("hostWindowOnly", false),
+        ("standaloneDesktopMode", true), ("easterEggs", true), ("ambientChatter", false),
+        ("autoUpdateCheck", true), ("syncCharacter", true), ("syncWallpaper", true), ("syncInteraction", true),
+    ] {
+        out.insert(key.into(), serde_json::json!(js_bool(source.get(key), fallback)));
+    }
+    out.insert("scale".into(), serde_json::json!(js_finite(source.get("scale"), 220.0, 140.0, 360.0)));
+    out.insert("volume".into(), serde_json::json!(js_finite(source.get("volume"), 0.35, 0.0, 1.0)));
+    out.insert("turnCostDurationMs".into(), serde_json::json!(js_finite(source.get("turnCostDurationMs"), 5000.0, 0.0, 60000.0)));
+    out.insert("bubbleOpacity".into(), serde_json::json!(js_finite(source.get("bubbleOpacity"), 98.0, 30.0, 100.0)));
+    out.insert("bubblePage".into(), serde_json::json!(js_enum_string(
+        source.get("bubblePage"), &["quota", "webQuota", "claudeGpt", "today", "latest", "talk"], "quota")));
+    out.insert("petDisplayMode".into(), serde_json::json!(js_enum_string(
+        source.get("petDisplayMode"), &["both", "prefer-desktop", "prefer-web"], "both")));
+    out.insert("userHonorificMode".into(), serde_json::json!(js_enum_string(
+        source.get("userHonorificMode"), &["none", "zayu", "custom"], "none")));
+    let tint = source.get("bubbleTint").and_then(|value| value.as_str()).unwrap_or("");
+    out.insert("bubbleTint".into(), serde_json::json!(if tint.len() == 7 && tint.starts_with('#') { tint.to_ascii_lowercase() } else { String::new() }));
+
+    // dreamSkin 子对象：同样合并 + 收紧 + 未知保留。
+    let dream_source = source.get("dreamSkin").and_then(|value| value.as_object()).cloned().unwrap_or_default();
+    let mut dream = dream_source.clone();
+    dream.insert("themePreset".into(), serde_json::json!(js_enum_string(
+        dream_source.get("themePreset"), &["violet", "pink", "ocean", "onyx"], "violet")));
+    dream.insert("opacity".into(), serde_json::json!(js_finite(dream_source.get("opacity"), 55.0, 0.0, 100.0)));
+    dream.insert("scrim".into(), serde_json::json!(js_finite(dream_source.get("scrim"), 12.0, 0.0, 60.0)));
+    dream.insert("enabled".into(), serde_json::json!(js_bool(dream_source.get("enabled"), false)));
+    out.insert("customThemes".into(), sanitize_tier(input.as_object().map(|_| input)));
+    out.insert("dreamSkin".into(), serde_json::Value::Object(dream));
+    serde_json::Value::Object(out)
 }
 
 // ---- 联动协议门槛：Rust 侧最小 /companion/* 服务 ----
@@ -1827,6 +1922,83 @@ fn main() {
     let probe_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-output=").map(PathBuf::from));
     let verify_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-verify-config=").map(PathBuf::from));
     let bridge_only = std::env::args().find_map(|arg| arg.strip_prefix("--bridge-only=").map(PathBuf::from));
+    let fixture_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-fixture=").map(PathBuf::from));
+    if let Some(fixture_path) = fixture_arg {
+        // 配置夹具验证：净化语义、未知字段保留、原子写失败不丢旧配置、旧版回读。
+        {
+            let out = fixture_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+            let mut report = String::new();
+            let mut pass = true;
+            macro_rules! check {
+                ($name:expr, $ok:expr) => {{
+                    let ok: bool = $ok;
+                    report.push_str(&format!("{}={}\n", $name, ok));
+                    if !ok {
+                        pass = false;
+                    }
+                }};
+            }
+            let raw = std::fs::read_to_string(&fixture_path).unwrap_or_default();
+            let fixture: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::json!({}));
+            let cleaned = sanitize_settings(&fixture);
+
+            // 未知字段保留
+            check!("unknown_field_kept", cleaned["futureField"] == fixture["futureField"]);
+            // 缺失键补默认
+            check!("missing_bubbleTint_default", cleaned["bubbleTint"] == serde_json::json!(""));
+            check!("missing_alwaysOnTop_default", cleaned["alwaysOnTop"] == serde_json::json!(true));
+            // 类型收紧：字符串布尔被拒绝并回退
+            check!("bool_string_rejected", cleaned["bubbleOn"] == serde_json::json!(true));
+            // 数值钳制
+            check!("scale_clamped", cleaned["scale"] == serde_json::json!(360.0));
+            check!("bubbleOpacity_clamped", cleaned["bubbleOpacity"] == serde_json::json!(30.0));
+            // 枚举白名单
+            check!("petDisplayMode_enum", cleaned["petDisplayMode"] == serde_json::json!("both"));
+            check!("dreamskin_themePreset_enum", cleaned["dreamSkin"]["themePreset"] == serde_json::json!("violet"));
+            // dreamSkin 未知字段保留
+            check!("dreamskin_unknown_kept", cleaned["dreamSkin"]["futureSkinField"] == fixture["dreamSkin"]["futureSkinField"]);
+            // customThemes：无效条目剔除、有效条目保留、bubbleOpacity 钳制
+            let themes = cleaned["customThemes"].as_array().cloned().unwrap_or_default();
+            check!("themes_count", themes.len() == 2);
+            report.push_str(&format!("themes_dump={}
+", serde_json::to_string(&themes).unwrap_or_default()));
+            check!("themes_bad_dropped", themes.iter().all(|theme| theme["id"] != serde_json::json!("bad id!")));
+            check!("themes_opacity_clamped", themes.iter().find(|t| t["id"] == "local-ocean-1").map(|t| t["opacity"] == serde_json::json!(100.0)).unwrap_or(false));
+            check!("themes_tint_kept", themes.iter().find(|t| t["id"] == "local-ocean-1").map(|t| t["bubbleTint"] == serde_json::json!("#ffd9ec")).unwrap_or(false));
+
+            // 原子写失败不丢旧配置：先写 v1，再让 .settings.tmp 变成目录使写入失败。
+            let dir = config_dir();
+            let _ = std::fs::remove_dir_all(&dir);
+            let write_ok_1 = cfg_write("stage", serde_json::json!("v1")).is_ok();
+            check!("write_v1", write_ok_1);
+            let _ = std::fs::remove_file(dir.join(".settings.tmp"));
+            let _ = std::fs::create_dir(dir.join(".settings.tmp"));
+            let write_failed = cfg_write("stage", serde_json::json!("v2")).is_err();
+            check!("write_v2_failed_as_expected", write_failed);
+            let after_fail = std::fs::read_to_string(config_file()).unwrap_or_default();
+            check!("old_config_preserved", after_fail.contains("\"v1\""));
+            let _ = std::fs::remove_dir(dir.join(".settings.tmp"));
+            let write_ok_2 = cfg_write("stage", serde_json::json!("v2")).is_ok();
+            check!("write_recovers", write_ok_2);
+
+            // 旧版本回读：夹具（无新字段）经 sanitize 后从磁盘读回一致。
+            let _ = std::fs::remove_dir_all(&dir);
+            let mut sanitized_file = fixture.clone();
+            sanitized_file = sanitize_settings(&sanitized_file);
+            let roundtrip = std::fs::create_dir_all(&dir).is_ok()
+                && std::fs::write(config_file(), serde_json::to_vec_pretty(&sanitized_file).unwrap_or_default()).is_ok();
+            let from_disk: Option<serde_json::Value> = std::fs::read(config_file())
+                .ok()
+                .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+            check!("old_version_readback", roundtrip && from_disk.and_then(|v| v.get("dreamSkin").cloned()).is_some());
+            let _ = std::fs::remove_dir_all(&dir);
+
+            report.push_str(&format!("fixture_pass={pass}\n"));
+            let _ = std::fs::write(out.join("fixture-report.txt"), report);
+            std::process::exit(if pass { 0 } else { 1 });
+        }
+        return;
+    }
     if let Some(log) = bridge_only {
         // 无窗口桥接模式：给浏览器对接实验用；stdin 关闭即优雅退出。
         let _ = BRIDGE_LOG.set(log);
