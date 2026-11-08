@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>Catstella 窗口实验</title>
+<link rel="stylesheet" href="style.css">
+<!-- 分区布局（逻辑 px，与 src/main.rs 的分区常量一致）：
+     气泡区 y 0-150 可交互 · 空隙 y 150-230 动态穿透 · 立绘区 y 230-420 可交互 -->
+<section class="bubble" id="bubble">
+  <header class="bubble-head">
+    <span class="bubble-title">星语 · 窗口实验</span>
+    <button type="button" class="bubble-close" id="exit" aria-label="退出实验">✕</button>
+  </header>
+  <p class="bubble-meta" id="status">气泡可点 · 空隙穿透 · 立绘可拖动</p>
+  <div class="bubble-nav">
+    <button type="button" id="ignore">穿透 3 秒</button>
+    <button type="button" id="open-host">打开测试宿主</button>
+    <button type="button" id="follow">跟随宿主</button>
+    <button type="button" id="unfollow">停止跟随</button>
+  </div>
+</section>
+<section class="art" id="art">
+  <img src="assets/idle.png" alt="星语立绘" draggable="false">
+</section>
+<script src="panel.js"></script>
+</html>

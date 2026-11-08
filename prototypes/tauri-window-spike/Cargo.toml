@@ -1,0 +1,18 @@
+[package]
+name = "catstella-window-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = "=2.7.4"
+
+[dependencies]
+tauri = "=2.12.5"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_Graphics_Gdi"] }
+
+[profile.release]
+strip = true
+lto = "thin"
