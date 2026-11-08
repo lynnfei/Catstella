@@ -90,6 +90,19 @@ cargo build --release --locked --offline
 - 测试宿主是独立 Win32 进程，未验证真实 Antigravity 进程；辅助进程路径已用参数化副本验证可行，剩余是给生产副本定参数注入方式（环境变量或命令行）。
 - 剩余门槛：混合 DPI / 锁屏恢复 / 浮动任务栏实机重影（需多屏、锁屏与真实任务栏场景，锁屏实验不能在用户会话上做）、100% 缩放复测（需改系统 DPI，未在本轮授权范围）、WebView2 缺失环境、跟随引擎对宿主**自动重扫描**（当前重绑是显式 stop/start；生产辅助进程每拍重找宿主，迁移时保留该行为）。
 
+### 第五轮（同日）：设置与本机数据门槛（迁移顺序第二步）
+
+验证「Rust 拥有 JSON 设置文件与隔离目录、页面经 IPC 读写」这一 `widgetApi` 替代模式：
+
+| 验收项 | 结果 | 说明 |
+| --- | --- | --- |
+| 真实 IPC 写入 | 通过 | 气泡内「存取配置」按钮 → `SendInput` 点击 → WebView2/JS → `cfg_experiment` 命令 → 原子写（临时文件 + rename） |
+| 隔离目录 | 通过 | 配置写入 `%TEMP%\catstella-window-spike-config\settings.json`，与真实配置 `~/.antigravity-cat-widget` 完全隔离 |
+| 内容往返 | 通过 | 磁盘文件直接解析：标量、字符串、嵌套对象/数组全部一致 |
+| 跨进程持久化 | 通过 | 第二阶段以 `--probe-verify-config` 启动全新进程，懒加载读回第一阶段全部值精确一致（`config_persistence_pass=true`） |
+
+该模式与生产 `SettingsManager`（读 JSON → sanitize → 写回）同构，迁移时把 sanitize 逻辑逐条翻成 Rust、保留 JSON 字段名即可；`widgetApi` 的 IPC 面先由 Tauri command 等价实现，页面代码仅换绑定层。
+
 自动实验会短暂移动真实光标（分区命中与拖动需要），结束后恢复原位；手动模式不移动鼠标。
 
 ```powershell

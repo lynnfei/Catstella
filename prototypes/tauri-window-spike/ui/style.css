@@ -27,3 +27,6 @@ body { margin: 0; width: 340px; height: 420px; background: transparent; overflow
 
 /* 计数按钮：固定绝对位置（逻辑 24,106 尺寸 96x28），探针按中心 (72,120) 点击验证真实送达。 */
 .ping-fixed { position: absolute; left: 24px; top: 106px; width: 96px; height: 28px; z-index: 2; }
+
+/* 配置按钮：固定绝对位置（逻辑 128,106 尺寸 96x28），探针按中心 (176,120) 点击。 */
+.cfg-fixed { position: absolute; left: 128px; top: 106px; width: 96px; height: 28px; z-index: 2; }

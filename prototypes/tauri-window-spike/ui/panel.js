@@ -21,6 +21,15 @@ document.querySelector('#ping').addEventListener('click', () => {
   status.textContent = '气泡按钮已收到点击。';
   void command('bubble_ping');
 });
+document.querySelector('#cfg').addEventListener('click', async () => {
+  status.textContent = '正在写入隔离配置……';
+  try {
+    const result = await invoke('cfg_experiment', { phase: 1 });
+    status.textContent = '配置已写入：' + JSON.stringify(result.readback);
+  } catch (error) {
+    status.textContent = String(error);
+  }
+});
 document.querySelector('#open-host').addEventListener('click', () => void command('open_host'));
 document.querySelector('#follow').addEventListener('click', () => {
   status.textContent = '跟随测试宿主：位置平移 + z 序管理。';

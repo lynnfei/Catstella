@@ -18,8 +18,9 @@ const BUBBLE_TOP: f64 = 0.0;
 const BUBBLE_BOTTOM: f64 = 150.0;
 const ART_TOP: f64 = 230.0;
 const ART_BOTTOM: f64 = 420.0;
-// 计数按钮中心（逻辑 px，对应 style.css 的 .ping-fixed）。
+// 计数/配置按钮中心（逻辑 px，对应 style.css 的固定定位）。
 const PING_CENTER: (f64, f64) = (72.0, 120.0);
+const CONFIG_CENTER: (f64, f64) = (176.0, 120.0);
 
 const EXTERNAL_CLASS: &str = "SpikeExternalWindow";
 const BACKDROP_TITLE: &str = "Catstella Spike · 底板";
@@ -111,6 +112,60 @@ fn bubble_ping() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+// ---- 隔离配置目录（迁移门槛：设置与本机数据）----
+// 模拟 widgetApi 的设置持久化模式：Rust 拥有 JSON 文件与隔离目录，页面经 IPC 读写。
+static CONFIG_STORE: OnceLock<Mutex<std::collections::BTreeMap<String, serde_json::Value>>> = OnceLock::new();
+
+fn config_dir() -> PathBuf {
+    // 临时隔离目录，绝不触碰真实配置 ~/.antigravity-cat-widget
+    std::env::temp_dir().join("catstella-window-spike-config")
+}
+
+fn config_file() -> PathBuf {
+    config_dir().join("settings.json")
+}
+
+fn load_config() -> &'static Mutex<std::collections::BTreeMap<String, serde_json::Value>> {
+    CONFIG_STORE.get_or_init(|| {
+        let map = std::fs::read(config_file())
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<std::collections::BTreeMap<String, serde_json::Value>>(&bytes).ok())
+            .unwrap_or_default();
+        Mutex::new(map)
+    })
+}
+
+fn cfg_write(key: &str, value: serde_json::Value) -> Result<(), String> {
+    let dir = config_dir();
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let store = load_config();
+    let mut map = store.lock().unwrap();
+    map.insert(key.to_string(), value);
+    // 原子写：临时文件 + rename（Windows 的 rename 带 MOVEFILE_REPLACE_EXISTING 语义）。
+    let temp = dir.join(".settings.tmp");
+    let bytes = serde_json::to_vec_pretty(&*map).map_err(|error| error.to_string())?;
+    std::fs::write(&temp, bytes).map_err(|error| error.to_string())?;
+    std::fs::rename(&temp, config_file()).map_err(|error| error.to_string())
+}
+
+fn cfg_read(key: &str) -> Option<serde_json::Value> {
+    load_config().lock().unwrap().get(key).cloned()
+}
+
+#[tauri::command]
+fn cfg_experiment(phase: u32) -> Result<serde_json::Value, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    cfg_write("spikePhase", serde_json::json!(phase))?;
+    cfg_write("bubbleTint", serde_json::json!("#aabbcc"))?;
+    cfg_write("nested", serde_json::json!({"opacity": 88, "tags": ["a", "b"]}))?;
+    cfg_write("writtenAt", serde_json::json!(stamp))?;
+    let readback = cfg_read("bubbleTint");
+    Ok(serde_json::json!({"phase": phase, "readback": readback}))
 }
 
 // ---- 独立进程外部窗口（底板/测试宿主）----
@@ -468,10 +523,10 @@ fn cursor_pos() -> Option<(i32, i32)> {
 
 #[cfg(windows)]
 mod probe {
-    use super::{Spike, ART_BOTTOM, ART_TOP, BUBBLE_BOTTOM, BUBBLE_TOP, PING_CENTER, WIN_W};
+    use super::{Spike, ART_BOTTOM, ART_TOP, BUBBLE_BOTTOM, BUBBLE_TOP, CONFIG_CENTER, PING_CENTER, WIN_W};
     use std::fmt::Write as _;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::{Duration, Instant};
@@ -494,7 +549,7 @@ mod probe {
     };
     use windows_sys::Win32::Graphics::Gdi::EnumDisplayMonitors;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        FindWindowW, GetAncestor, GetClassNameW, GetCursorPos, GetForegroundWindow,
+        FindWindowW, GetAncestor, GetClassNameW, GetForegroundWindow,
         GetClientRect, GetWindow, GetWindowLongPtrW, GetWindowRect, PostMessageW, SetCursorPos,
         SetWindowPos, WindowFromPoint, GA_ROOT, GW_HWNDNEXT, GWL_EXSTYLE, SWP_NOACTIVATE,
         SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOPMOST,
@@ -552,7 +607,7 @@ mod probe {
     }
 
     unsafe fn send_mouse(flags: u32, dx: i32, dy: i32) -> bool {
-        let mut input = INPUT {
+        let input = INPUT {
             r#type: INPUT_MOUSE,
             Anonymous: INPUT_0 {
                 mi: MOUSEINPUT { dx, dy, mouseData: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 },
@@ -892,6 +947,35 @@ mod probe {
             }
             report.kv("bubble_ping_delivered", ping_after > ping_before);
             passed &= ping_after > ping_before;
+            // 配置实验：真实点击 → IPC → Rust 写隔离配置目录；再直接读磁盘验证。
+            click_at(zone_point(&pet_rect0, CONFIG_CENTER));
+            let mut cfg_ok = false;
+            for _ in 0..10 {
+                thread::sleep(Duration::from_millis(100));
+                if super::config_file().exists() {
+                    if let Ok(bytes) = std::fs::read(super::config_file()) {
+                        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                            let phase_ok = value["spikePhase"] == serde_json::json!(1);
+                            let tint_ok = value["bubbleTint"] == serde_json::json!("#aabbcc");
+                            let nested_ok = value["nested"]["opacity"] == serde_json::json!(88)
+                                && value["nested"]["tags"][1] == serde_json::json!("b");
+                            if phase_ok && tint_ok && nested_ok {
+                                cfg_ok = true;
+                            }
+                        }
+                    }
+                    if cfg_ok {
+                        break;
+                    }
+                }
+            }
+            let cfg_dir_text = super::config_dir().display().to_string();
+            let isolated = cfg_dir_text.contains("catstella-window-spike-config")
+                && !cfg_dir_text.contains("antigravity-cat-widget");
+            report.kv("cfg_roundtrip_delivered", cfg_ok);
+            report.kv("cfg_dir_isolated", isolated);
+            report.kv("cfg_dir", cfg_dir_text);
+            passed &= cfg_ok && isolated;
             // 空隙真实点击 → 穿透送达独立进程底板（点击日志计数）。
             let backdrop_clicks_before = count_clicks(&backdrop_log);
             click_at(zone_point(&pet_rect0, blank_logical));
@@ -987,7 +1071,7 @@ mod probe {
                         .spawn();
                     match spawn_result {
                         Ok(mut spawned) => {
-                            let mut reader = spawned.stdout.take().expect("helper stdout");
+                            let reader = spawned.stdout.take().expect("helper stdout");
                             let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
                             let sink = lines.clone();
                             let reader_thread = std::thread::spawn(move || {
@@ -1403,6 +1487,7 @@ mod probe {
 #[cfg(windows)]
 fn main() {
     let probe_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-output=").map(PathBuf::from));
+    let verify_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-verify-config=").map(PathBuf::from));
     if let Some(out_dir) = &probe_arg {
         let _ = PING_LOG.set(out_dir.join("bubble-pings.log"));
     }
@@ -1412,6 +1497,7 @@ fn main() {
             ignore_temporarily,
             exit_spike,
             bubble_ping,
+            cfg_experiment,
             open_host,
             follow_host,
             stop_follow
@@ -1428,6 +1514,27 @@ fn main() {
             start_zone_poller(state.clone());
             if let Some(out_dir) = probe_arg {
                 probe::run(pet, out_dir, state);
+                return Ok(());
+            }
+            if let Some(out_dir) = verify_arg {
+                // 第二阶段：新进程启动后核对第一阶段写入的配置（跨进程持久化验证）。
+                let _ = pet;
+                std::thread::spawn(move || {
+                    let mut report = String::new();
+                    let phase = cfg_read("spikePhase");
+                    let tint = cfg_read("bubbleTint");
+                    let nested = cfg_read("nested");
+                    report.push_str(&format!("spikePhase={phase:?}\n"));
+                    report.push_str(&format!("bubbleTint={tint:?}\n"));
+                    report.push_str(&format!("nested={nested:?}\n"));
+                    let pass = phase == Some(serde_json::json!(1))
+                        && tint == Some(serde_json::json!("#aabbcc"))
+                        && nested == Some(serde_json::json!({"opacity": 88, "tags": ["a", "b"]}));
+                    report.push_str(&format!("config_persistence_pass={pass}\n"));
+                    let _ = std::fs::create_dir_all(&out_dir);
+                    let _ = std::fs::write(out_dir.join("config-verify.txt"), report);
+                    std::process::exit(if pass { 0 } else { 1 });
+                });
                 return Ok(());
             }
             pet.show()?;

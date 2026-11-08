@@ -271,6 +271,7 @@ dependencies = [
 name = "catstella-window-spike"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "tauri",
  "tauri-build",
  "windows-sys 0.61.2",
