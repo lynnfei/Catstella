@@ -307,7 +307,8 @@
       bottom: 102%;
       right: 0;
       width: min(296px, calc(100vw - 16px));
-      background: rgba(22, 16, 38, 0.94);
+      /* 颜色与透明度可调：底色走 --kg-bubble-tint，整体透明度走 --kg-bubble-alpha */
+      background: color-mix(in srgb, var(--kg-bubble-tint, #161026) 94%, transparent);
       backdrop-filter: blur(22px) saturate(140%);
       -webkit-backdrop-filter: blur(22px) saturate(140%);
       border: 1px solid rgba(190, 160, 245, 0.35);
@@ -315,6 +316,7 @@
       box-shadow: 0 14px 40px rgba(8, 5, 22, 0.65), inset 0 1px 0 rgba(240, 215, 255, 0.22);
       padding: 14px 16px;
       color: #f1edfa;
+      opacity: var(--kg-bubble-alpha, 1);
       animation: kimino-bubble-pop 0.28s cubic-bezier(0.18, 0.9, 0.32, 1.2);
       transform-origin: bottom right;
       z-index: 10;
@@ -330,10 +332,10 @@
       height: 0;
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
-      border-top: 8px solid rgba(22, 16, 38, 0.94);
+      border-top: 8px solid color-mix(in srgb, var(--kg-bubble-tint, #161026) 94%, transparent);
     }
     .kimino-bubble.below-pet::after {
-      top: -8px; bottom: auto; border-top: 0; border-bottom: 8px solid rgba(22, 16, 38, 0.94);
+      top: -8px; bottom: auto; border-top: 0; border-bottom: 8px solid color-mix(in srgb, var(--kg-bubble-tint, #161026) 94%, transparent);
     }
 
     .kimino-bubble-header {
@@ -826,6 +828,10 @@
       height: 5px;
       cursor: pointer;
     }
+    .kg-color-input {
+      width: 44px; height: 30px; padding: 2px; border: 1px solid rgba(190, 160, 245, 0.35);
+      border-radius: 8px; background: rgba(255, 255, 255, 0.06); cursor: pointer;
+    }
 
     /* Sync Banner inside Character / Wallpaper Tabs */
     .kg-mode-banner {
@@ -1174,7 +1180,7 @@
     try {
       const stored = await api.storageGet([
         'enabled', 'character', 'soundEnabled', 'widgetScale', 'widgetPos',
-        'bubbleVisible', 'onlineCharacterPacks', 'syncCharacter',
+        'bubbleVisible', 'bubbleTint', 'bubbleOpacity', 'onlineCharacterPacks', 'syncCharacter',
         'petDisplayMode', 'agyBridgeState', 'ambientChatter', 'syncAgyUsage', 'quotaView', 'showAgyQuotaInCompact',
         'syncInteraction', 'userHonorificMode', 'customHonorific'
       ]);
@@ -1395,6 +1401,17 @@
                 <label class="kg-switch"><input type="checkbox" class="kg-cfg" data-key="bubbleVisible"><span class="kg-switch-track"></span></label>
               </div>
               <div class="kg-row">
+                <label class="kg-row-label" for="kg-bubble-tint"><span>气泡颜色</span><small>改动即时生效，桌宠气泡就是预览</small></label>
+                <input type="color" class="kg-color-input" id="kg-bubble-tint" value="#161026" aria-label="气泡颜色">
+              </div>
+              <div class="kg-slider-block">
+                <div class="kg-slider-head">
+                  <span>气泡不透明度</span>
+                  <span class="kg-val kg-val-bubble">100%</span>
+                </div>
+                <input type="range" class="kg-range" id="kg-bubble-opacity" min="30" max="100" step="1" aria-label="气泡不透明度">
+              </div>
+              <div class="kg-row">
                 <label class="kg-row-label" for="kg-honorific-mode"><span>桌宠互动称呼</span><small>跟随桌面需要同步互动偏好</small></label>
                 <select class="kg-skin-style" id="kg-honorific-mode">
                   <option value="desktop">跟随桌面</option>
@@ -1514,6 +1531,16 @@
     const spriteImg = wrapper.querySelector('.kimino-sprite');
     const earGlow = wrapper.querySelector('.kimino-ear-glow');
     const bubble = wrapper.querySelector('.kimino-bubble');
+    // 气泡颜色与透明度：改动即时反映到桌宠气泡本身，设置面板不另做预览。
+    const DEFAULT_BUBBLE_TINT = '#161026';
+    const normalizeBubbleTint = value => /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_BUBBLE_TINT;
+    function applyBubbleStyle(tint, opacity) {
+      if (!bubble) return;
+      bubble.style.setProperty('--kg-bubble-tint', normalizeBubbleTint(tint));
+      const alpha = Number.isFinite(Number(opacity)) ? Math.min(100, Math.max(30, Number(opacity))) : 100;
+      bubble.style.setProperty('--kg-bubble-alpha', String(alpha / 100));
+    }
+    applyBubbleStyle(config.bubbleTint, config.bubbleOpacity);
     const dialogueEl = wrapper.querySelector('.kimino-dialogue');
     let currentLine = { template: getDialogue() };
     function paintDialogue(line = currentLine) {
@@ -2143,7 +2170,7 @@
       settingsFeedback.hidden = !message;
     };
     const settingsKeys = [
-      'enabled', 'skinStyle', 'skinEnabled', 'quotaView', 'syncAgyUsage', 'showAgyQuotaInCompact', 'bubbleVisible', 'ambientChatter', 'soundEnabled', 'widgetScale',
+      'enabled', 'skinStyle', 'skinEnabled', 'quotaView', 'syncAgyUsage', 'showAgyQuotaInCompact', 'bubbleVisible', 'bubbleTint', 'bubbleOpacity', 'ambientChatter', 'soundEnabled', 'widgetScale',
       'wallpaperOpacity', 'wallpaperBlur', 'character', 'wallpaperId', 'customWallpapers',
       'webWallpaperSlideshow','webWallpaperInterval','webWallpaperCycle','webWallpaperFit','webWallpaperTransition',
       'userHonorificMode', 'customHonorific',
@@ -2206,6 +2233,14 @@
         if (rScale) { rScale.value = scale; if (kgValScale) kgValScale.textContent = scale + 'px'; }
         if (shadow.activeElement !== opacitySlider) renderOpacity(st.wallpaperOpacity);
         if (shadow.activeElement !== blurSlider) renderBlur(st.wallpaperBlur);
+        applyBubbleStyle(st.bubbleTint, st.bubbleOpacity);
+        const bubbleTintInput = settingsPanel.querySelector('#kg-bubble-tint');
+        const rBubble = settingsPanel.querySelector('#kg-bubble-opacity');
+        if (bubbleTintInput && shadow.activeElement !== bubbleTintInput) bubbleTintInput.value = normalizeBubbleTint(st.bubbleTint);
+        if (rBubble) {
+          if (shadow.activeElement !== rBubble) rBubble.value = Number.isFinite(Number(st.bubbleOpacity)) ? Math.min(100, Math.max(30, Number(st.bubbleOpacity))) : 100;
+          settingsPanel.querySelector('.kg-val-bubble').textContent = rBubble.value + '%';
+        }
         settingsPanel.querySelector('.kg-wallpaper-style').hidden = curSyncWall;
         wallCycle.checked = st.webWallpaperSlideshow === true;
         wallMinutes.disabled = !wallCycle.checked;
@@ -2619,6 +2654,18 @@
       opacitySlider.addEventListener('input', () => {
         kgValOpacity.textContent = opacitySlider.value + '%';
         window.KiminoPreviewWallpaperOpacity?.(Number(opacitySlider.value) / 100);
+      });
+      // 气泡颜色与透明度：拖动即保存并直接反映在桌宠气泡上。
+      const bubbleTintInput = settingsPanel.querySelector('#kg-bubble-tint');
+      const bubbleOpacitySlider = settingsPanel.querySelector('#kg-bubble-opacity');
+      bubbleTintInput.addEventListener('input', () => {
+        applyBubbleStyle(bubbleTintInput.value, bubbleOpacitySlider.value);
+        void api.storageSet({ bubbleTint: bubbleTintInput.value });
+      });
+      bubbleOpacitySlider.addEventListener('input', () => {
+        settingsPanel.querySelector('.kg-val-bubble').textContent = bubbleOpacitySlider.value + '%';
+        applyBubbleStyle(bubbleTintInput.value, bubbleOpacitySlider.value);
+        void api.storageSet({ bubbleOpacity: Number(bubbleOpacitySlider.value) });
       });
       opacitySlider.addEventListener('change', async () => {
         const selected = opacitySlider.value;
