@@ -157,22 +157,58 @@ fn cfg_read(key: &str) -> Option<serde_json::Value> {
 // ---- 联动协议门槛：Rust 侧最小 /companion/* 服务 ----
 // 只绑备用端口 3922/3923（3921 归生产实例），schema 对照 shared/companion-bridge.cjs。
 static BRIDGE_PORT: AtomicU32 = AtomicU32::new(0);
+static BRIDGE_LOG: OnceLock<PathBuf> = OnceLock::new();
 
 fn bridge_port() -> u16 {
     BRIDGE_PORT.load(Ordering::Relaxed) as u16
 }
 
+fn bridge_log(line: &str) {
+    if let Some(path) = BRIDGE_LOG.get() {
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            use std::io::Write as _;
+            let _ = writeln!(file, "{line}");
+            let _ = file.flush();
+        }
+    }
+}
+
+fn spike_asset(name: &str) -> Option<PathBuf> {
+    // exe 在 target/release/，仓库布局下素材在 ../../ui/assets/；发布布局则在同级 ui/assets/。
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let mut candidates = vec![exe_dir.join("ui").join("assets")];
+    if let Some(release) = exe_dir.parent() {
+        if let Some(root) = release.parent() {
+            candidates.push(root.join("ui").join("assets"));
+        }
+    }
+    candidates.into_iter().map(|dir| dir.join(name)).find(|path| path.exists())
+}
+
 fn start_bridge() {
-    // 先于探针启动；生产实例占着 3921，本服务必须落到备用端口。
+    // 先于探针启动；生产实例占着 3921 的 127.0.0.1，本服务必须落到备用端口。
+    // 同时绑 127.0.0.2：浏览器实验用 --host-resolver-rules 把 127.0.0.1 改写到这里，
+    // 让 3921 对测试浏览器彻底不可达（零竞态、零生产接触），spike 仍在 127.0.0.2 可达。
     thread::spawn(|| {
         for port in [3922u16, 3923u16] {
             match std::net::TcpListener::bind(("127.0.0.1", port)) {
                 Ok(listener) => {
                     BRIDGE_PORT.store(port as u32, Ordering::Relaxed);
-                    for stream in listener.incoming() {
-                        if let Ok(stream) = stream {
-                            thread::spawn(move || unsafe { handle_bridge(stream) });
+                    thread::spawn(move || {
+                        for stream in listener.incoming() {
+                            if let Ok(stream) = stream {
+                                thread::spawn(move || unsafe { handle_bridge(stream) });
+                            }
                         }
+                    });
+                    if let Ok(alt) = std::net::TcpListener::bind(("127.0.0.2", port)) {
+                        thread::spawn(move || {
+                            for stream in alt.incoming() {
+                                if let Ok(stream) = stream {
+                                    thread::spawn(move || unsafe { handle_bridge(stream) });
+                                }
+                            }
+                        });
                     }
                     return;
                 }
@@ -274,11 +310,32 @@ unsafe fn handle_bridge(mut stream: std::net::TcpStream) {
         return;
     }
     if method == "GET" && path == "/companion/state" {
+        bridge_log(&format!("{} GET /companion/state", now_ms()));
         let body = format!(
-            "{{\"ok\":true,\"ts\":{},\"port\":{},\"pet\":{{\"kind\":\"tauri-spike\"}},\"web\":{{\"port\":{},\"online\":false,\"active\":false,\"visible\":false,\"lastSeen\":null,\"quota\":null,\"client\":\"\"}}}}",
+            "{{\"ok\":true,\"ts\":{},\"port\":{},\"pet\":{{\"kind\":\"tauri-spike\"}},\"desktop\":{{\"wallpaperId\":\"spike-gemini-star-v1\",\"wallpaperTitle\":\"星语 · 实验立绘\",\"wallpaperRev\":\"spike-1\",\"characterPack\":\"gemini-star-v1\"}},\"web\":{{\"port\":{},\"online\":false,\"active\":false,\"visible\":false,\"lastSeen\":null,\"quota\":null,\"client\":\"\"}}}}",
             now_ms(), bridge_port(), bridge_port()
         );
         http_respond(&mut stream, 200, "OK", origin_ref, &body);
+        return;
+    }
+    if method == "GET" && path == "/companion/wallpaper-image" {
+        let id = target.split("?id=").nth(1).unwrap_or("").to_string();
+        bridge_log(&format!("{} GET /companion/wallpaper-image id={}", now_ms(), id));
+        if id == "spike-gemini-star-v1" {
+            if let Some(asset) = spike_asset("idle.png") {
+                if let Ok(bytes) = std::fs::read(&asset) {
+                    use std::io::Write as _;
+                    let head = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nCache-Control: private, max-age=300\r\nConnection: close\r\n\r\n",
+                        bytes.len()
+                    );
+                    let _ = stream.write_all(head.as_bytes());
+                    let _ = stream.write_all(&bytes);
+                    return;
+                }
+            }
+        }
+        http_respond(&mut stream, 404, "Not Found", origin_ref, "{\"ok\":false,\"error\":\"wallpaper_not_found\"}");
         return;
     }
     if method == "GET" && path == "/companion/wallpapers" {
@@ -291,7 +348,8 @@ unsafe fn handle_bridge(mut stream: std::net::TcpStream) {
             http_respond(&mut stream, 403, "Forbidden", origin_ref, "{\"ok\":false,\"error\":\"missing_client_header\"}");
             return;
         }
-        http_respond(&mut stream, 200, "OK", origin_ref, "{\"ok\":true,\"accepted\":true}");
+        bridge_log(&format!("{} POST /companion/sync accepted client={client_header}", now_ms()));
+        http_respond(&mut stream, 200, "OK", origin_ref, "{\"ok\":true,\"accepted\":true,\"sync\":{},\"desktop\":{\"wallpaperId\":\"spike-gemini-star-v1\",\"wallpaperTitle\":\"星语 · 实验立绘\",\"wallpaperRev\":\"spike-1\"}}");
         return;
     }
     http_respond(&mut stream, 404, "Not Found", origin_ref, "{\"ok\":false,\"error\":\"not_found\"}");
@@ -1768,6 +1826,29 @@ mod probe {
 fn main() {
     let probe_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-output=").map(PathBuf::from));
     let verify_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-verify-config=").map(PathBuf::from));
+    let bridge_only = std::env::args().find_map(|arg| arg.strip_prefix("--bridge-only=").map(PathBuf::from));
+    if let Some(log) = bridge_only {
+        // 无窗口桥接模式：给浏览器对接实验用；stdin 关闭即优雅退出。
+        let _ = BRIDGE_LOG.set(log);
+        start_bridge();
+        bridge_log(&format!("{} bridge-only start port-wait", now_ms()));
+        thread::spawn(|| {
+            let mut line = String::new();
+            let _ = std::io::stdin().read_line(&mut line);
+            bridge_log(&format!("{} bridge-only stop", now_ms()));
+            std::process::exit(0);
+        });
+        loop {
+            thread::sleep(Duration::from_millis(500));
+            if bridge_port() != 0 {
+                break;
+            }
+        }
+        bridge_log(&format!("{} bridge-only listening port={}", now_ms(), bridge_port()));
+        loop {
+            thread::sleep(Duration::from_millis(500));
+        }
+    }
     if let Some(out_dir) = &probe_arg {
         let _ = PING_LOG.set(out_dir.join("bubble-pings.log"));
     }
