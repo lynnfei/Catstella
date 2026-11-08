@@ -330,7 +330,7 @@
     contentHub = window.mountCatstellaHub($("content-hub"), {
       call: async (action,value) => {
         const result = await api.online(action,value);
-        if (action === "download" && result?.ok) data = await api.get() || data;
+        if ((action === "download" || action === "uninstall") && result?.ok) data = await api.get() || data;
         return result;
       },
       selection: item => {
@@ -341,8 +341,10 @@
         }
         const asset = installedAsset(item);
         return {installed:!!asset,active:!!asset && (item.kind === "character" ? data.settings.characterPack === asset.id :
-          selectedWallpaper()?.id === asset.id),preview:(asset?.filePath ? ("file:///" + asset.filePath.replace(/\\/g, "/")) : asset?.frames?.idle || asset?.preview)};
+          selectedWallpaper()?.id === asset.id),revision:asset?.revision || "",
+          preview:(asset?.filePath ? ("file:///" + asset.filePath.replace(/\\/g, "/")) : asset?.frames?.idle || asset?.preview)};
       },
+      currentTheme: () => ({preset:data.dreamSkin.themePreset,onlineThemeId:data.dreamSkin.onlineThemeId || ""}),
       use: async item => {
         if (item.kind === "theme") {
           const result = await api.online("install",item.id);

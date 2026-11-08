@@ -106,7 +106,7 @@ else{
       const file=path.join(dir,"frames",frame+".png");
       return fs.existsSync(file)?[[frame,pathToFileURL(file).href]]:[];
      })):null;
-     packs.push({id:entry.name,name:manifest.name||entry.name,description:manifest.description||"",preview,frames});
+     packs.push({id:entry.name,name:manifest.name||entry.name,description:manifest.description||"",revision:typeof manifest.revision==="string"?manifest.revision:"",preview,frames});
     }catch{}
    }
   }
@@ -120,7 +120,7 @@ else{
     let preview="";
     try{preview=nativeImage.createFromPath(pack.file).resize({width:600}).toDataURL();}catch{}
     const fileName=path.basename(pack.file);
-    return{id:pack.id,fileName,filePath:pack.file,title:WALLPAPER_TITLES[fileName]||pack.name,preview,pack:pack.pack};
+    return{id:pack.id,fileName,filePath:pack.file,title:WALLPAPER_TITLES[fileName]||pack.name,revision:pack.revision||"",preview,pack:pack.pack};
    });
    lastWallScan=now;return cachedWallpapers;
   }catch{return cachedWallpapers=[];}

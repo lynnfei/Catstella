@@ -25,6 +25,7 @@
 .hub-state[data-state=partial] { color:#714500; background:#ffefd0 }
 .hub-state[data-state=installed] { color:#315f9d; background:#e0ecff }
 .hub-state[data-state=active] { color:#fff; background:#21674e }
+.hub-state[data-state=update] { color:#5b3d0f; background:#ffe1ad; border-color:#e8b45c; font-weight:600 }
 .hub-web .hub-state[data-state=partial] { color:#ffe2a5; background:#5a4020 }
 .hub-web .hub-state[data-state=installed] { color:#d0e6ff; background:#314b6b }
 .hub-web .hub-state[data-state=active] { color:#e5fff4; background:#23674f }
@@ -164,6 +165,12 @@
 .hub-feedback { flex-basis:100%; margin:0; font-weight:600 }
 .hub-card p.hub-date { font-size:11px; margin-top:0 }
 .hub-preview-nav .hub-rotation,.hub-theme-tools .hub-button { font-size:12px; padding:5px 8px }
+.hub-issue { width:min(460px,92vw) }
+.hub-issue-body { display:grid; gap:9px; padding:2px 0 6px }
+.hub-issue-body p { margin:0; color:var(--hub-muted); font-size:12.5px }
+.hub-issue-text { width:100%; resize:vertical; min-height:180px; font:12.5px/1.6 var(--hub-font,inherit); color:var(--hub-ink); background:var(--hub-soft); border:1px solid var(--hub-line); border-radius:8px; padding:8px }
+.hub-issue-actions { display:flex; flex-wrap:wrap; align-items:center; gap:7px }
+.hub-issue-status { color:var(--hub-muted); font-size:12px }
 .hub-web .catstella-hub {
   --hub-ink:#f2eaff; --hub-muted:#c8b9df; --hub-accent:#dfc5ff;
   --hub-line:#584571; --hub-paper:#2d233e; --hub-soft:#3a2b50; --hub-panel:#251b35;

@@ -36,7 +36,8 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
     fs.mkdirSync(characterDir, { recursive: true });
     const root = fs.realpathSync(characterDir);
     const dest = path.join(root, packId);
-    if (fs.existsSync(dest)) throw new Error('character pack already exists');
+    // 覆盖语义：同目录已存在说明是更新，先清掉旧版再落新文件。
+    if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
     const pending = fs.mkdtempSync(path.join(root, '.install-'));
     try {
       const frameDir = path.join(pending, 'frames');
@@ -76,10 +77,40 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
     } finally {
       fs.rmSync(temp, { force: true });
     }
-    writeJson(path.join(dir, 'manifest.json'), { id: packId, file: filename, name: asset.item.name, credit: asset.item.credit, pack: asset.item.pack });
+    writeJson(path.join(dir, 'manifest.json'), { id: packId, file: filename, name: asset.item.name, credit: asset.item.credit, revision: asset.item.sha256, pack: asset.item.pack });
     if (applyAfterwards) apply({ dreamSkin: { wallpaperId: packId, wallpaperFile: file } });
     onInstalled('wallpaper');
     return { ok: true, kind: 'wallpaper' };
+  }
+  // 卸载：按目录名精确移除在线素材，正在使用的角色/壁纸/主题一并回退到内置默认。
+  function uninstall(id) {
+    if (!/^[a-z0-9][a-z0-9-]{0,60}$/i.test(id)) return { ok: false, reason: 'invalid' };
+    const packId = 'online-' + id;
+    let kind = null;
+    const tryRemove = (baseDir, assign) => {
+      try {
+        const root = fs.realpathSync(baseDir);
+        const target = path.join(root, packId);
+        if (fs.existsSync(target) && fs.realpathSync(target) === target) {
+          fs.rmSync(target, { recursive: true, force: true });
+          assign();
+        }
+      } catch {}
+    };
+    tryRemove(characterDir, () => { kind = 'character'; });
+    tryRemove(wallpaperDir, () => { if (!kind) kind = 'wallpaper'; });
+    if (!kind) {
+      const dream = settings.get('dreamSkin') || {};
+      if (dream.onlineThemeId === id) kind = 'theme';
+    }
+    if (!kind) return { ok: false, reason: 'not-installed' };
+    const patch = {};
+    if (kind === 'character' && settings.get('characterPack') === packId) patch.characterPack = '';
+    if (kind === 'wallpaper' && (settings.get('dreamSkin') || {}).wallpaperId === packId) patch.dreamSkin = { wallpaperId: '', wallpaperFile: '' };
+    if (kind === 'theme' && (settings.get('dreamSkin') || {}).onlineThemeId === id) patch.dreamSkin = { themePreset: 'violet', onlineThemeId: '' };
+    if (Object.keys(patch).length) apply(patch);
+    onInstalled(kind);
+    return { ok: true, kind };
   }
   async function handle(action, value) {
     try {
@@ -89,7 +120,7 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
         await shell.openExternal(releaseUrl(result.url));
         return { ok: true };
       }
-      if (action === 'source' && typeof value === 'string' && /^https:\/\/www\.bilibili\.com\/video\/BV[a-zA-Z0-9]+\/?$/.test(value)) {
+      if (action === 'source' && typeof value === 'string' && (/^https:\/\/www\.bilibili\.com\/video\/BV[a-zA-Z0-9]+\/?$/.test(value) || /^https:\/\/github\.com\/lynnfei\/Catstella\/issues\/new\?/.test(value))) {
         await shell.openExternal(value);
         return { ok: true };
       }
@@ -107,6 +138,7 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
         if (!operations.has(value)) operations.set(value, install(value, action === 'install').finally(() => operations.delete(value)));
         return await operations.get(value);
       }
+      if (action === 'uninstall' && typeof value === 'string') return uninstall(value);
       return { ok: false };
     } catch (error) {
       return { ok: false, reason: failureReason(error) };

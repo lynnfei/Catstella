@@ -72,6 +72,7 @@ function readPack(wallpapersDir,name){
   mime:probe?.mime??"image/png",
   digest,
   background:typeof manifest?.background==="string"?manifest.background:null,
+  revision:typeof manifest?.revision==="string"?manifest.revision:null,
   defaultFit:["cover","contain","adaptive"].includes(manifest?.defaultFit)?manifest.defaultFit:"adaptive",
   previewUrl:file?path.relative(path.join(__dirname,"../renderer"),file).split(path.sep).join("/"):null,
   error
