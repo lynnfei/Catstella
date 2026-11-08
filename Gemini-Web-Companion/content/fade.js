@@ -33,6 +33,9 @@
 
     update(source, opacity, textarea) {
       if (!source?.isConnected || !textarea?.isConnected) { this.destroy(); return; }
+      // 主页 / 新会话没有任何消息可溶解：这层只会把暗色底板画在壁纸上，
+      // 形成主页对话框上方的黑雾（2026-11-09 用户实机反馈）。直接不建。
+      if (!document.querySelector('model-response, user-query')) { this.destroy(); return; }
       const pill = textarea.closest('input-area-v2') || textarea.closest('[data-kg="composer"]');
       // Mount outside the blurred pill: backdrop-filter changes fixed containing blocks.
       const host = textarea.closest('input-container') || pill?.parentElement;

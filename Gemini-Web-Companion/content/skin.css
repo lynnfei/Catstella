@@ -425,7 +425,9 @@ html.kimino-dream-active [data-kg-fade-host] {
   position: fixed !important;
   z-index: -1 !important;
   pointer-events: none !important;
-  background-color: var(--kg-palette-base, #211e2d) !important;
+  /* 透明底（2026-11-09 黑雾根治）：暗色实底会让渐变带比周围壁纸更暗形成黑雾。
+     层后面就是真壁纸（z -99999），镜像壁纸半透明处直接透出真壁纸，无缝。 */
+  background-color: transparent !important;
   border-radius: 22px !important;
   overflow: hidden !important;
 }
@@ -433,9 +435,12 @@ html.kimino-dream-active [data-kg-fade-host] {
   position: absolute !important;
   inset: 0 !important;
   pointer-events: none !important;
-  background-color: var(--kg-palette-base, #211e2d) !important;
+  background-color: transparent !important;
   background-size: var(--kg-wallpaper-fit, cover) !important;
   background-position: center center !important;
+  /* 视口锚定（2026-11-09 黑雾根治）：镜像壁纸按视口裁切，与真壁纸
+     （fixed 全视口 cover/contain）逐像素对齐，渐变带与周围壁纸完全无缝。 */
+  background-attachment: fixed !important;
   background-repeat: no-repeat !important;
   transition: opacity 0.6s ease !important;
 }

@@ -118,6 +118,44 @@
     }
   }, 500);
 
+  // ============ 4) 壁纸时间线（2026-11-09 壁纸同步风暴排查） ============
+  // data URL 动辄数 MB：不落原文，用长度+散布采样指纹区分不同壁纸。
+  const wpFingerprint = (s) => {
+    if (!s || s.length < 64) return String(s || '').slice(0, 30);
+    return 'len' + s.length + ':' + s.charCodeAt(64) + ',' + s.charCodeAt(Math.floor(s.length / 3)) + ',' + s.charCodeAt(Math.floor(s.length * 2 / 3)) + ',' + s.charCodeAt(s.length - 64);
+  };
+  let wpHooked = false;
+  const ensureWpHook = () => {
+    if (wpHooked) return;
+    const wp = document.getElementById('kimino-dream-wallpaper');
+    if (!wp) return;
+    wpHooked = true;
+    const rec = (ev, detail = {}) => push({ kind: 'wallpaper', ev, vis: document.visibilityState, path: location.pathname, ...detail });
+    rec('hook', { fp: wpFingerprint(wp.style.backgroundImage), stage: !!wp.__kgWallpaperStage });
+    new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.attributeName === 'style') {
+          const bi = wp.style.backgroundImage || '';
+          rec('commit', { fp: wpFingerprint(bi), hasStage: !!wp.__kgWallpaperStage });
+        }
+      }
+    }).observe(wp, { attributes: true, attributeFilter: ['style'] });
+    new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType === 1 && n.classList && n.classList.contains('kimino-wallpaper-incoming')) rec('xfade-start', { fp: wpFingerprint(n.style.backgroundImage || '') });
+        }
+        for (const n of m.removedNodes) {
+          if (n.nodeType === 1 && n.classList && n.classList.contains('kimino-wallpaper-incoming')) rec('xfade-end', {});
+        }
+      }
+    }).observe(wp, { childList: true });
+  };
+  setInterval(ensureWpHook, 700);
+  document.addEventListener('visibilitychange', () => push({ kind: 'wallpaper', ev: 'visibility', vis: document.visibilityState, t: Date.now() }), true);
+  window.addEventListener('focus', () => push({ kind: 'wallpaper', ev: 'focus', vis: document.visibilityState, t: Date.now() }), true);
+  window.addEventListener('blur', () => push({ kind: 'wallpaper', ev: 'blur', vis: document.visibilityState, t: Date.now() }), true);
+
   // ============ 回传（background SW 统一 fetch，规避 MV3 内容脚本跨域限制） ============
   const flush = () => {
     if (!buffer.length) return;

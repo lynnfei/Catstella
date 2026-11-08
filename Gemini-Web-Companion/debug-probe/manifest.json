@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "星语探针 · Catstella Debug Probe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "只读 DOM 采样探针：抓思维链药丸 / 上传预览 / 编辑态的最终计算样式并回传本机收集器（127.0.0.1）。不做任何页面交互与对话操作。",
   "permissions": [],
   "host_permissions": [
