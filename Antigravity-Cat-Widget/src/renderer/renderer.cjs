@@ -35,15 +35,19 @@
   talkLine=personality.say(talkState==="offline"?"idle":talkState);
   if(express)pet.show(personality.expressionFor(talkLine),"dialogue");
  }
+ const modelToolLabels={run_command:"终端命令",read_file:"读文件",write_file:"写文件",edit_file:"改文件",search_web:"联网搜索",schedule:"定时任务",manage_task:"后台任务",manage_subagents:"子代理",invoke_subagent:"子代理",ask_question:"向你提问",list_plugin_accounts:"插件账号",search_marketplace:"插件市场"};
+ const formatModelTools=tools=>{const labels=[...(Array.isArray(tools)?tools:[])].map(name=>modelToolLabels[name]||name).slice(0,3);return labels.join(" · ");};
  function modelTalk(){
-  const {kind,stepIndex,expiresAt}=snapshot?.modelActivity||{};
+  const activity=snapshot?.modelActivity||{};
+  const {stepIndex,expiresAt}=activity;
+  const kind=activity.waitingUser===true?"model-waiting":activity.kind;
   if(!Number.isSafeInteger(stepIndex)||expiresAt!==undefined&&expiresAt<=Date.now()||!snapshot.dialogue[kind]){
    modelTalkKey=null;
    return "";
   }
   const key=`${kind}:${stepIndex}:${expiresAt}`;
   if(key!==modelTalkKey){modelTalkKey=key;modelTalkTemplate=personality.say(kind);}
-  return formatTalk(modelTalkTemplate,{step:stepIndex});
+  return formatTalk(modelTalkTemplate,{step:stepIndex,tools:formatModelTools(activity.tools)||"任务"});
  }
  function scheduleModelTalk(){
   clearTimeout(modelTalkTimer);

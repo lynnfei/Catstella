@@ -2,7 +2,7 @@
  const formatLine=(line,{mode,name}={},values={})=>{
   const custom=mode==="custom"&&typeof name==="string"?name.trim().slice(0,16):"";
   const address=mode==="zayu"?"杂鱼君":custom;
-  return (line||"").replace(/\{user(?::([^{}]+))?\}|\{(count|today|step)\}/g,(token,fallback,key)=>
+  return (line||"").replace(/\{user(?::([^{}]+))?\}|\{(count|today|step|tools)\}/g,(token,fallback,key)=>
    key?(values[key]??token):(address||fallback||"人类"));
  };
  class Personality{

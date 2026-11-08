@@ -103,9 +103,9 @@ test('AGY activity keeps the current step through late and duplicate events',()=
  assert.equal(activity.begin('first',3),false);
  assert.equal(activity.begin('second',9),true);
  now=6000;
- assert.deepEqual(activity.snapshot(),{kind:'model-running',stepIndex:9});
+ assert.deepEqual(activity.snapshot(),{kind:'model-running',stepIndex:9,tools:[],waitingUser:false});
  activity.end('first',3,'model-done',true);
- assert.deepEqual(activity.snapshot(),{kind:'model-running',stepIndex:9});
+ assert.deepEqual(activity.snapshot(),{kind:'model-running',stepIndex:9,tools:[],waitingUser:false});
  assert.equal(activity.end('unknown',11,'model-done',true),false);
  assert.equal(activity.end('second',9,'model-error'),true);
  assert.equal(activity.end('second',9,'model-error'),false);

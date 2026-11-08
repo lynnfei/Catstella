@@ -639,10 +639,12 @@ else{
  adapter.on("turnDone",step=>{
   const recorded=ledger.recordStep(step);
   const activityChanged=!step.historical&&running.end(step.sessionId+":"+step.step_index,step.step_index,"model-done",!!recorded&&!recorded.updated);
-  if(!step.historical){sm.setPersistentState((running.size||byokBusy)?"thinking":"idle");syncQuotaState();}
+  if(!step.historical){running.observe(step.step_index,step.tools);sm.setPersistentState((running.size||byokBusy)?"thinking":"idle");syncQuotaState();}
   if(recorded){clearTimeout(saveTimer);saveTimer=setTimeout(()=>ledger.save(),1000);if(!step.historical&&!recorded.updated){sm.handleTurnSuccess();send("widget:step",recorded);}}
   if(activityChanged)publish();
  });
+ adapter.on("askUser",s=>{if(s.historical)return;running.setWaiting(s.stepIndex);publish();});
+ adapter.on("userInput",s=>{if(s.historical)return;if(running.clearWaiting())publish();});
  adapter.on("turnRunning",s=>{
   if(s.historical||!running.begin(s.sessionId+":"+s.stepIndex,s.stepIndex))return;
   sm.setPersistentState("thinking");publish();

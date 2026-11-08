@@ -1,0 +1,54 @@
+const{test}=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),os=require("node:os"),path=require("node:path");
+const{ModelActivity}=require("../src/domain/model-activity.cjs"),{TranscriptAdapter}=require("../src/adapters/transcript-adapter.cjs");
+const tmp=()=>fs.mkdtempSync(path.join(os.tmpdir(),"star-test-"));
+test("tool names ride on running snapshots and a newer step clears waiting",()=>{
+ const m=new ModelActivity();
+ m.begin("s:7",7);m.observe(7,["run_command","read_file","run_command"]);
+ assert.deepEqual(m.snapshot(),{kind:"model-running",stepIndex:7,tools:["run_command","read_file"],waitingUser:false});
+ m.setWaiting(7);
+ assert.equal(m.snapshot().waitingUser,true);
+ m.observe(8,[]);
+ assert.equal(m.snapshot().waitingUser,false);
+ m.clear();assert.deepEqual(m.snapshot(),null);
+});
+test("ask_question surfaces a persistent model-waiting snapshot until user input",()=>{
+ const m=new ModelActivity();
+ m.setWaiting(9);m.observe(9,["ask_question"]);
+ assert.deepEqual(m.snapshot(),{kind:"model-waiting",stepIndex:9,tools:["ask_question"],waitingUser:true});
+ assert.equal(m.clearWaiting(),true);
+ assert.equal(m.snapshot(),null);
+ assert.equal(m.clearWaiting(),false);
+ m.begin("s:2",2);m.setWaiting(1);
+ assert.equal(m.snapshot().kind,"model-running");
+});
+test("finished window still wins over nothing but not over waiting",()=>{
+ const m=new ModelActivity(()=>1000);
+ m.end("s:1",1,"model-done",true);
+ const snap=m.snapshot();
+ assert.equal(snap.kind,"model-done");
+ assert.ok(snap.expiresAt>1000);
+});
+test("transcript parser emits tool names, askUser and userInput events without historical replay",()=>{
+ const dir=tmp(),file=path.join(dir,"transcript_full.jsonl"),events={step:[],askUser:[],userInput:[]};
+ const planner={step_index:11,source:"MODEL",type:"PLANNER_RESPONSE",status:"RUNNING",created_at:new Date().toISOString()};
+ fs.writeFileSync(file,JSON.stringify(planner)+"\n");
+ const a=new TranscriptAdapter({filePath:file});
+ a.on("step",e=>events.step.push(e));a.on("askUser",e=>events.askUser.push(e));a.on("userInput",e=>events.userInput.push(e));
+ a.scan();
+ fs.appendFileSync(file,JSON.stringify({...planner,status:"DONE",tool_calls:[{name:"run_command"},{name:"ask_question",args:{questions:1}},{name:"run_command"}]})+"\n");
+ fs.appendFileSync(file,JSON.stringify({step_index:12,source:"USER_EXPLICIT",type:"USER_INPUT",status:"DONE",created_at:new Date().toISOString(),content:"继续"})+"\n");
+ a.scan();
+ const fresh=events.step.filter(e=>!e.historical);
+ assert.equal(fresh.length,1);
+ assert.deepEqual(fresh[0].tools,["run_command","ask_question"]);
+ assert.equal(fresh[0].content,undefined);
+ assert.equal(events.askUser.length,1);
+ assert.equal(events.userInput.length,1);
+ assert.equal(events.userInput[0].stepIndex,12);
+ a.scan();
+ assert.equal(fresh.length+events.userInput.length,2);
+ fs.writeFileSync(file,JSON.stringify({...planner,step_index:1,tool_calls:[{name:"edit_file"}]})+"\n");
+ a.scan();
+ assert.equal(fresh.length,1);
+ a.stop();
+});

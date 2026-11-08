@@ -41,7 +41,13 @@
     ],
     "model-running": [
       "{user}，AGY 正在处理模型步骤 #{step} 喵。",
-      "AGY 正在处理模型步骤 #{step}，本喵替 {user} 看着呢。"
+      "AGY 正在处理模型步骤 #{step}，本喵替 {user} 看着呢。",
+      "AGY 在步骤 #{step} 跑着 {tools}，进度本喵盯着呢。"
+    ],
+    "model-waiting": [
+      "{user}，AGY 在步骤 #{step} 有话要问你，快去确认喵！",
+      "AGY 在步骤 #{step} 等你确认，本喵先替你盯着。",
+      "AGY 步骤 #{step} 停下来等 {user} 拿主意了，去看看嘛～"
     ],
     "model-done": [
       "{user}，AGY 的模型步骤 #{step} 完成了喵～",
