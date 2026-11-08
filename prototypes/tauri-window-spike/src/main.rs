@@ -154,6 +154,156 @@ fn cfg_read(key: &str) -> Option<serde_json::Value> {
     load_config().lock().unwrap().get(key).cloned()
 }
 
+// ---- 联动协议门槛：Rust 侧最小 /companion/* 服务 ----
+// 只绑备用端口 3922/3923（3921 归生产实例），schema 对照 shared/companion-bridge.cjs。
+static BRIDGE_PORT: AtomicU32 = AtomicU32::new(0);
+
+fn bridge_port() -> u16 {
+    BRIDGE_PORT.load(Ordering::Relaxed) as u16
+}
+
+fn start_bridge() {
+    // 先于探针启动；生产实例占着 3921，本服务必须落到备用端口。
+    thread::spawn(|| {
+        for port in [3922u16, 3923u16] {
+            match std::net::TcpListener::bind(("127.0.0.1", port)) {
+                Ok(listener) => {
+                    BRIDGE_PORT.store(port as u32, Ordering::Relaxed);
+                    for stream in listener.incoming() {
+                        if let Ok(stream) = stream {
+                            thread::spawn(move || unsafe { handle_bridge(stream) });
+                        }
+                    }
+                    return;
+                }
+                Err(_) => continue,
+            }
+        }
+    });
+}
+
+fn origin_allowed(origin: Option<&str>) -> bool {
+    // 镜像 shared/companion-bridge.cjs 的 isAllowedOrigin：扩展协议与回环 http(s) 放行。
+    let Some(origin) = origin else { return true };
+    if origin == "null" {
+        return false;
+    }
+    let Some((protocol, rest)) = origin.split_once(':') else { return false };
+    match protocol {
+        "chrome-extension" | "moz-extension" | "safari-web-extension" | "vscode-webview" | "vscode-file" | "app" => true,
+        "http" | "https" => {
+            let host = rest.trim_start_matches("//");
+            let host = host.split('/').next().unwrap_or("");
+            let host = host.split(':').next().unwrap_or("");
+            matches!(host.to_ascii_lowercase().as_str(), "127.0.0.1" | "localhost" | "::1")
+        }
+        _ => false,
+    }
+}
+
+fn cors_headers(origin: Option<&str>) -> String {
+    let allow = match origin {
+        Some(value) if origin_allowed(Some(value)) => format!("Access-Control-Allow-Origin: {value}\r\nVary: Origin\r\n"),
+        Some(_) => String::new(),
+        None => "Access-Control-Allow-Origin: *\r\n".into(),
+    };
+    format!(
+        "{allow}Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-Catstella-Client\r\n"
+    )
+}
+
+fn http_respond(stream: &mut std::net::TcpStream, status: u16, reason: &str, origin: Option<&str>, body: &str) {
+    use std::io::Write as _;
+    let head = format!(
+        "HTTP/1.1 {status} {reason}\r\n{}Content-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        cors_headers(origin),
+        body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body.as_bytes());
+}
+
+unsafe fn handle_bridge(mut stream: std::net::TcpStream) {
+    use std::io::{Read as _, Write as _};
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+    let mut raw = Vec::new();
+    let mut chunk = [0u8; 2048];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                raw.extend_from_slice(&chunk[..n]);
+                if raw.windows(4).any(|window| window == b"\r\n\r\n") || raw.len() > 64 * 1024 {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    let text = String::from_utf8_lossy(&raw);
+    let mut lines = text.split("\r\n");
+    let request_line = lines.next().unwrap_or("");
+    let mut parts = request_line.split(' ');
+    let method = parts.next().unwrap_or("");
+    let target = parts.next().unwrap_or("");
+    let path = target.split('?').next().unwrap_or(target);
+    let mut origin: Option<String> = None;
+    let mut client_header = String::new();
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else { continue };
+        let name = name.trim().to_ascii_lowercase();
+        let value = value.trim().to_string();
+        if name == "origin" {
+            origin = Some(value);
+        } else if name == "x-catstella-client" {
+            client_header = value;
+        }
+    }
+    let origin_ref = origin.as_deref();
+    if !origin_allowed(origin_ref) {
+        let head = format!(
+            "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 16\r\nConnection: close\r\n\r\n"
+        );
+        let _ = stream.write_all(head.as_bytes());
+        let _ = stream.write_all(b"Forbidden origin");
+        return;
+    }
+    if method == "OPTIONS" {
+        let head = format!("HTTP/1.1 204 No Content\r\n{}Content-Length: 0\r\nConnection: close\r\n\r\n", cors_headers(origin_ref));
+        let _ = stream.write_all(head.as_bytes());
+        return;
+    }
+    if method == "GET" && path == "/companion/state" {
+        let body = format!(
+            "{{\"ok\":true,\"ts\":{},\"port\":{},\"pet\":{{\"kind\":\"tauri-spike\"}},\"web\":{{\"port\":{},\"online\":false,\"active\":false,\"visible\":false,\"lastSeen\":null,\"quota\":null,\"client\":\"\"}}}}",
+            now_ms(), bridge_port(), bridge_port()
+        );
+        http_respond(&mut stream, 200, "OK", origin_ref, &body);
+        return;
+    }
+    if method == "GET" && path == "/companion/wallpapers" {
+        let body = "{\"ok\":true,\"wallpapers\":[{\"id\":\"spike-gemini-star-v1\",\"title\":\"星语 · 实验立绘\",\"fileName\":\"idle.png\",\"preview\":\"\",\"revision\":\"spike\"}]}";
+        http_respond(&mut stream, 200, "OK", origin_ref, body);
+        return;
+    }
+    if method == "POST" && path == "/companion/sync" {
+        if client_header != "gemini-web-companion" {
+            http_respond(&mut stream, 403, "Forbidden", origin_ref, "{\"ok\":false,\"error\":\"missing_client_header\"}");
+            return;
+        }
+        http_respond(&mut stream, 200, "OK", origin_ref, "{\"ok\":true,\"accepted\":true}");
+        return;
+    }
+    http_respond(&mut stream, 404, "Not Found", origin_ref, "{\"ok\":false,\"error\":\"not_found\"}");
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 #[tauri::command]
 fn cfg_experiment(phase: u32) -> Result<serde_json::Value, String> {
     let stamp = std::time::SystemTime::now()
@@ -815,6 +965,48 @@ mod probe {
         Some(delta as f64 / wall as f64 * 100.0)
     }
 
+    // 桥接协议自请求：返回 (状态码, 响应头, 响应体)。
+    fn bridge_request(port: u16, request: &str) -> Option<(u16, String, String)> {
+        use std::io::{Read as _, Write as _};
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).ok()?;
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(3)));
+        let _ = stream.write_all(request.as_bytes());
+        let mut raw = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    raw.extend_from_slice(&chunk[..n]);
+                    if raw.windows(4).any(|window| window == b"\r\n\r\n") {
+                        let head_end = raw.windows(4).position(|window| window == b"\r\n\r\n")? + 4;
+                        let head = String::from_utf8_lossy(&raw[..head_end]).to_string();
+                        let length: Option<usize> = head.lines().find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse().ok())?
+                        });
+                        if let Some(length) = length {
+                            if raw.len() >= head_end + length {
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let split = raw.windows(4).position(|window| window == b"\r\n\r\n")?;
+        let head = String::from_utf8_lossy(&raw[..split]).to_string();
+        let body = String::from_utf8_lossy(&raw[split + 4..]).to_string();
+        let status: u16 = head
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|code| code.parse().ok())
+            .unwrap_or(0);
+        Some((status, head, body))
+    }
+
     fn count_clicks(path: &PathBuf) -> usize {
         std::fs::read_to_string(path)
             .map(|content| content.lines().filter(|line| line.starts_with("click ")).count())
@@ -976,6 +1168,94 @@ mod probe {
             report.kv("cfg_dir_isolated", isolated);
             report.kv("cfg_dir", cfg_dir_text);
             passed &= cfg_ok && isolated;
+
+            // ---- 批次 I：联动协议门槛（Rust 侧 /companion/* 最小服务，备用端口）----
+            report.section("I 联动协议（Rust 侧 /companion/*）");
+            let port = super::bridge_port();
+            report.kv("bridge_port", port);
+            // 生产实例占 3921，spike 服务必须落在备用端口。
+            report.kv("bridge_port_is_backup", port == 3922 || port == 3923);
+            passed &= port == 3922 || port == 3923;
+            let mut bridge_ok = true;
+            // GET state
+            let request = format!("GET /companion/state HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+            if let Some((status, head, body)) = bridge_request(port, &request) {
+                let ok = status == 200
+                    && body.contains("\"ok\":true")
+                    && body.contains(&format!("\"port\":{port}"))
+                    && body.contains("\"kind\":\"tauri-spike\"")
+                    && head.to_ascii_lowercase().contains("access-control-allow-origin: *");
+                let detail = format!("fail status={status} body={body}");
+                report.kv("state_endpoint", if ok { "pass".to_string() } else { detail });
+                bridge_ok &= ok;
+            } else {
+                report.kv("state_endpoint", "no-response");
+                bridge_ok = false;
+            }
+            // GET wallpapers
+            let request = format!("GET /companion/wallpapers HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+            if let Some((status, _, body)) = bridge_request(port, &request) {
+                let ok = status == 200 && body.contains("spike-gemini-star-v1") && body.contains("\"revision\":\"spike\"");
+                let detail = format!("fail status={status} body={body}");
+                report.kv("wallpapers_endpoint", if ok { "pass".to_string() } else { detail });
+                bridge_ok &= ok;
+            } else {
+                report.kv("wallpapers_endpoint", "no-response");
+                bridge_ok = false;
+            }
+            // POST sync：缺客户端头 → 403
+            let request = format!("POST /companion/sync HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
+            if let Some((status, _, body)) = bridge_request(port, &request) {
+                let ok = status == 403 && body.contains("missing_client_header");
+                let detail = format!("fail status={status} body={body}");
+                report.kv("sync_without_header", if ok { "pass(403)".to_string() } else { detail });
+                bridge_ok &= ok;
+            } else {
+                report.kv("sync_without_header", "no-response");
+                bridge_ok = false;
+            }
+            // POST sync：带客户端头 → 200
+            let request = format!(
+                "POST /companion/sync HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-Catstella-Client: gemini-web-companion\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+            );
+            if let Some((status, _, body)) = bridge_request(port, &request) {
+                let ok = status == 200 && body.contains("\"accepted\":true");
+                let detail = format!("fail status={status} body={body}");
+                report.kv("sync_with_header", if ok { "pass".to_string() } else { detail });
+                bridge_ok &= ok;
+            } else {
+                report.kv("sync_with_header", "no-response");
+                bridge_ok = false;
+            }
+            // Origin 校验：外部站点拒绝
+            let request = format!(
+                "GET /companion/state HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: https://evil.example\r\nConnection: close\r\n\r\n"
+            );
+            if let Some((status, _, body)) = bridge_request(port, &request) {
+                let ok = status == 403 && body.contains("Forbidden origin");
+                let detail = format!("fail status={status} body={body}");
+                report.kv("origin_rejected", if ok { "pass(403)".to_string() } else { detail });
+                bridge_ok &= ok;
+            } else {
+                report.kv("origin_rejected", "no-response");
+                bridge_ok = false;
+            }
+            // Origin 校验：扩展协议放行 + CORS 回显
+            let request = format!(
+                "GET /companion/state HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: chrome-extension://abcdef\r\nConnection: close\r\n\r\n"
+            );
+            if let Some((status, head, _)) = bridge_request(port, &request) {
+                let ok = status == 200
+                    && head.to_ascii_lowercase().contains("access-control-allow-origin: chrome-extension://abcdef");
+                let detail = format!("fail status={status}");
+                report.kv("origin_extension_allowed", if ok { "pass".to_string() } else { detail });
+                bridge_ok &= ok;
+            } else {
+                report.kv("origin_extension_allowed", "no-response");
+                bridge_ok = false;
+            }
+            report.kv("bridge_protocol_pass", bridge_ok);
+            passed &= bridge_ok;
             // 空隙真实点击 → 穿透送达独立进程底板（点击日志计数）。
             let backdrop_clicks_before = count_clicks(&backdrop_log);
             click_at(zone_point(&pet_rect0, blank_logical));
@@ -1512,6 +1792,7 @@ fn main() {
             });
             let _ = SPIKE.set(state.clone());
             start_zone_poller(state.clone());
+            start_bridge();
             if let Some(out_dir) = probe_arg {
                 probe::run(pet, out_dir, state);
                 return Ok(());

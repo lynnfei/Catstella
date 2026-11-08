@@ -103,6 +103,20 @@ cargo build --release --locked --offline
 
 该模式与生产 `SettingsManager`（读 JSON → sanitize → 写回）同构，迁移时把 sanitize 逻辑逐条翻成 Rust、保留 JSON 字段名即可；`widgetApi` 的 IPC 面先由 Tauri command 等价实现，页面代码仅换绑定层。
 
+### 第六轮（同日）：联动协议门槛（Rust 侧 /companion/*）
+
+生产实例占 3921 的约定不变，spike 内用纯 `std::TcpListener` 实现最小 `/companion/*` 服务并绑定**备用端口 3922**（扩展的 `BRIDGE_PORTS=[3921,3922,3923]` 依次探测，无需改动扩展即可被发现）：
+
+| 验收项 | 结果 | 说明 |
+| --- | --- | --- |
+| 端口策略 | 通过 | 3921 归生产、spike 落 3922，与扩展的备用端口扫描一致 |
+| GET /companion/state | 通过 | 200，`ok/ts/port` 与 `web` 快照结构对齐生产 `buildPayload`，CORS `*` |
+| GET /companion/wallpapers | 通过 | 200，`id/title/fileName/preview/revision` 条目结构一致 |
+| POST /companion/sync 头校验 | 通过 | 缺 `X-Catstella-Client: gemini-web-companion` → 403 `missing_client_header`；带头 → 200 |
+| Origin 校验 | 通过 | 外部 `https://evil.example` → 403 `Forbidden origin`；`chrome-extension://` → 放行且 CORS 回显该 origin |
+
+扩展真机对接（隔离浏览器加载扩展→发现 3922 服务→跑通握手/状态流）需要浏览器自动化会话，留待下一批；Rust 侧协议实现与 schema 一致性本轮已证。端口在探针退出后随进程释放（netstat 确认无监听残留）。
+
 自动实验会短暂移动真实光标（分区命中与拖动需要），结束后恢复原位；手动模式不移动鼠标。
 
 ```powershell
@@ -117,7 +131,7 @@ Get-Content -LiteralPath (Join-Path $dir 'report.txt')
 | --- | --- | --- |
 | 桌宠窗口 | 先替换窗口层。保留前端和宿主跟随辅助进程并把进程名/类名参数化（Tauri 顶层类名是 `Tauri Window`），通过 HWND 接到原型；分区穿透按第二轮的物理坐标轮询方案移植 | 已验：150% 下分区命中、拖动捕获、独立宿主跟随、z 序对齐与空闲防刷、负坐标平移、参数化辅助进程绑定。待验：100% 复测、混合 DPI、锁屏恢复、浮动任务栏实机 |
 | 设置与本机数据 | 保留 `widgetApi` 和已有 JSON 格式。Rust 命令按窗口拆权限，首轮使用隔离配置目录 | 已验（第五轮）：隔离目录 + 原子写 + IPC 往返 + 跨进程持久化。待验：真实配置副本的全字段迁移（壁纸/角色/位置/计数/联动选择）与旧版本回读 |
-| AGY 与扩展联动 | 先保持 `/companion/*`、本机端口、来源与客户端校验。AGY 皮肤和额度经 AGY 的 CDP 连接，和 Catstella 自己用哪个 WebView 分开迁移 | 现有扩展无需更新就能联动。覆盖 AGY 重启、壁纸切换、额度更新和断线重连 |
+| AGY 与扩展联动 | 先保持 `/companion/*`、本机端口、来源与客户端校验。AGY 皮肤和额度经 AGY 的 CDP 连接，和 Catstella 自己用哪个 WebView 分开迁移 | 已验（第六轮）：Rust 侧最小服务在备用端口跑通 schema/头校验/Origin 规则。待验：隔离浏览器 + 真实扩展对接、AGY CDP 通道、断线重连 |
 | 安装与更新 | 先用同一批素材测安装体积、冷启动和常驻资源，再验证跨版本安装与回滚。Tauri 更新器需要独立签名 | 保留单实例和退出旧进程的逻辑。确认有无 WebView2、联网与断网安装。签名和发行渠道单独验证 |
 
 透明、命中、宿主跟随是启动迁移的门槛。等它们通过后，再决定把本地 HTTP、日志解析和 CDP 客户端逐块移到 Rust 的顺序。Tauri 已提供托盘、快捷键、单实例和更新器相关能力，仍需对照 Catstella 的行为实测。 [Tauri 插件目录](https://v2.tauri.app/plugin/) · [Tauri 更新签名](https://v2.tauri.app/plugin/updater/#signing-updates)
@@ -126,7 +140,7 @@ Get-Content -LiteralPath (Join-Path $dir 'report.txt')
 
 本夜完成窗口门槛全部本机可测项与数据门槛（第一～五轮，连续全绿，证据在 `evidence/tauri-window-spike-2026-11-09/`）。下一批建议顺序：
 
-1. **联动协议门槛（迁移顺序第三步）**：在 spike 内用 Rust 起一个隔离端口的本地 HTTP 服务，实现 `/companion/*` 的最小握手与状态回报，再让浏览器扩展（隔离 Edge 配置）指向它跑通握手/状态流——全程不连真实 AGY。
+1. **联动协议门槛（迁移顺序第三步）**：Rust 侧 `/companion/*` 最小服务已验证（第六轮，备用端口 3922）。剩余：隔离浏览器加载真实扩展→发现 spike 服务→跑通握手/状态流（需浏览器自动化或用户在场）。
 2. **widgetApi 面清单**：把 `window.widgetApi` 现有方法逐条映射为 Tauri command 表（get/save/on/off/online/audio/command…），标注哪些需要窗口权限拆分，作为绑定层替换的施工图。
 3. **跟随引擎自动重扫描**：当前 spike 重绑是显式 stop/start；生产辅助进程每拍重找宿主。迁移时保留该行为（Rust 侧每拍 FindWindow 或辅助进程继续负责找窗）。
 4. **需要环境/用户的待测项**：混合 DPI 与负坐标屏（多屏）、锁屏恢复（不能在用户会话上做）、浮动任务栏实机重影（真实 Win11 任务栏场景）、100% 缩放复测（改系统 DPI）、真实 AGY 宿主跟随（用户在场时）。
