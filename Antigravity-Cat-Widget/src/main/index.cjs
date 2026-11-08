@@ -379,7 +379,7 @@ else{
   win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
  }
  function apply(partial){
-  const allowed=["characterPack","scale","alwaysOnTop","reducedMotion","sound","volume","soundSet","bubbleOn","turnCostOn","turnCostDurationMs","clickThrough","bubblePage","manualQuota","manualPercent","manualWeeklyPercent","hostWindowOnly","standaloneDesktopMode","clickCatAction","easterEggs","ambientChatter","autoUpdateCheck","syncCharacter","syncWallpaper","syncInteraction","petDisplayMode","userHonorificMode","customHonorific","customThemes"];
+  const allowed=["characterPack","scale","alwaysOnTop","reducedMotion","sound","volume","soundSet","bubbleOn","turnCostOn","turnCostDurationMs","clickThrough","bubblePage","manualQuota","manualPercent","manualWeeklyPercent","hostWindowOnly","standaloneDesktopMode","clickCatAction","easterEggs","ambientChatter","autoUpdateCheck","syncCharacter","syncWallpaper","syncInteraction","petDisplayMode","userHonorificMode","customHonorific","customThemes","bubbleTint","bubbleOpacity"];
   if(partial?.characterPack!==undefined&&!getCharacterPacks().some(pack=>pack.id===partial.characterPack)){
    partial={...partial};delete partial.characterPack;
   }

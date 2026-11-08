@@ -1299,6 +1299,11 @@
       const currentTheme = ds.themePreset || "violet";
       document.querySelectorAll(".theme-card[data-theme]").forEach(card => card.classList.toggle("active", card.dataset.theme === currentTheme));
       if (document.activeElement !== $("atelier-opacity")) $("atelier-opacity").value = Math.round(ds.opacity ?? 88);
+      if (document.activeElement !== $("atelier-bubble-tint")) {
+        atelierBubbleTint = /^#[0-9a-f]{6}$/i.test(data.settings?.bubbleTint || "") ? data.settings.bubbleTint : "#eee6ff";
+        $("atelier-bubble-tint").value = atelierBubbleTint;
+      }
+      if (document.activeElement !== $("atelier-bubble-opacity")) $("atelier-bubble-opacity").value = Math.round(typeof data.settings?.bubbleOpacity === "number" ? data.settings.bubbleOpacity : 98);
       atelierPaint();
       renderAtelier();
     }
@@ -1437,6 +1442,7 @@
   const atelierSwatchStyles = {violet:"linear-gradient(135deg,#8b68e0,#24193c)",pink:"linear-gradient(135deg,#f59cc6,#3b1830)",
     ocean:"linear-gradient(135deg,#5da9f6,#0f1d35)",onyx:"linear-gradient(135deg,#666c82,#121318)"};
   let atelierPalette = data.dreamSkin?.themePreset || "violet";
+  let atelierBubbleTint = /^#[0-9a-f]{6}$/i.test(data.settings?.bubbleTint || "") ? data.settings.bubbleTint : "#eee6ff";
   function atelierPaint() {
     const atelierOpacity = $("atelier-opacity");
     if (!atelierOpacity) return;
@@ -1447,6 +1453,11 @@
     preview.style.setProperty("--at-opacity", String(value / 100));
     $("atelier-hint").textContent = (atelierLabels[atelierPalette] || atelierPalette) + " · 壁纸不透明度 " + value + "%";
     document.querySelectorAll(".atelier-swatch").forEach(swatch => swatch.classList.toggle("active", swatch.dataset.palette === atelierPalette));
+    // 气泡预览与真实挂件走同一组 CSS 变量。
+    const bubbleAlpha = Number($("atelier-bubble-opacity").value);
+    preview.style.setProperty("--bubble-tint", atelierBubbleTint);
+    preview.style.setProperty("--bubble-alpha", String(bubbleAlpha / 100));
+    $("atelier-bubble-opacity-value").textContent = bubbleAlpha + "%";
   }
   function renderAtelier() {
     const grid = $("atelier-grid");
@@ -1464,8 +1475,15 @@
       const meta = document.createElement("small");
       meta.textContent = (atelierLabels[theme.palette] || theme.palette) + " · 不透明度 " + Math.round(theme.opacity) + "%" + (active ? " · 使用中" : "");
       card.append(swatch,name,meta);
-      card.onclick = () => save({ dreamSkin: { themePreset: theme.palette, opacity: Math.round(theme.opacity) } },
-        "已应用主题「" + theme.name + "」");
+      card.onclick = () => {
+        const patch = { dreamSkin: { themePreset: theme.palette, opacity: Math.round(theme.opacity) } };
+        // 旧主题没有气泡参数时不覆盖当前气泡外观。
+        if (typeof theme.bubbleOpacity === "number") {
+          patch.bubbleTint = theme.bubbleTint || "";
+          patch.bubbleOpacity = Math.round(theme.bubbleOpacity);
+        }
+        save(patch, "已应用主题「" + theme.name + "」");
+      };
       const remove = document.createElement("button");
       remove.type = "button"; remove.className = "atelier-remove"; remove.textContent = "×";
       remove.setAttribute("aria-label","删除主题 " + theme.name);
@@ -1481,12 +1499,24 @@
   document.querySelectorAll(".atelier-swatch").forEach(swatch => {
     swatch.onclick = () => { atelierPalette = swatch.dataset.palette; atelierPaint(); };
   });
+  // 气泡颜色与透明度：即时预览 + 立即保存，真实挂件气泡经快照同步更新。
+  $("atelier-bubble-tint").value = atelierBubbleTint;
+  $("atelier-bubble-tint").addEventListener("input", () => {
+    atelierBubbleTint = $("atelier-bubble-tint").value;
+    atelierPaint();
+    save({ bubbleTint: atelierBubbleTint }, "气泡颜色已更新");
+  });
+  $("atelier-bubble-opacity").addEventListener("input", () => {
+    atelierPaint();
+    save({ bubbleOpacity: Number($("atelier-bubble-opacity").value) }, "气泡透明度已更新");
+  });
   $("atelier-save").onclick = () => {
     const value = Number($("atelier-opacity").value);
     const name = ($("atelier-name").value || "").trim() || (atelierLabels[atelierPalette] || atelierPalette) + " · " + value + "%";
     const themes = Array.isArray(data.customThemes) ? [...data.customThemes] : [];
     themes.push({ id: "local-" + atelierPalette + "-" + Date.now().toString(36), name,
-      palette: atelierPalette, opacity: value, updatedAt: new Date().toISOString().slice(0,10) });
+      palette: atelierPalette, opacity: value, bubbleTint: atelierBubbleTint,
+      bubbleOpacity: Number($("atelier-bubble-opacity").value), updatedAt: new Date().toISOString().slice(0,10) });
     save({ customThemes: themes.slice(-24) }, "已保存主题「" + name + "」");
     $("atelier-name").value = "";
     $("atelier-status").textContent = "";

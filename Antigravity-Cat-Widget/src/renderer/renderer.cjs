@@ -119,6 +119,7 @@
   const artKey=pack+":"+(snapshot.artVersion||"0");
   void paintArtwork(pack,frames,artKey);
   mascot.style.setProperty("--agy-width",(snapshot.displayScale||s.scale)+"px");mascot.style.setProperty("--agy-shift",(snapshot.artShift||0)+"px");mascot.dataset.state=snapshot.state;mascot.dataset.dock=snapshot.dockSide||"";mascot.dataset.facing=snapshot.facing||"left";mascot.dataset.reducedMotion=String(s.reducedMotion);
+  mascot.style.setProperty("--bubble-tint",/^#[0-9a-f]{6}$/i.test(s.bubbleTint||"")?s.bubbleTint:"#eee6ff");mascot.style.setProperty("--bubble-alpha",String(Math.min(100,Math.max(30,typeof s.bubbleOpacity==="number"?s.bubbleOpacity:98))/100));
   bubbleVisibility(!closed&&s.bubbleOn);for(const id of ["quota","web-quota-panel","byok-panel","value","detail"])if($(id))$(id).hidden=true;$("page").textContent=(pages.indexOf(selected)+1)+" / "+pages.length;
   if(temporary){$("title").textContent=temporary.title;$("value").hidden=false;$("value").textContent=temporary===ambientMessage?formatTalk(temporary.body):temporary.body;$("detail").hidden=!temporary.detail;$("detail").textContent=temporary.detail||"";$("meta").textContent=temporary.meta||"";return;}
   if(selected==="quota"){
