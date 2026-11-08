@@ -1,1 +1,1 @@
-{}
+{"pet-window":{"identifier":"pet-window","description":"桌宠窗口的 IPC 权限：只有 pet 标签的窗口可以调用命令与事件（按窗口拆权限的迁移模式示例）。","local":true,"windows":["pet"],"permissions":["core:default"]}}

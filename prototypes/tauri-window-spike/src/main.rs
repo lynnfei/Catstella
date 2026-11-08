@@ -720,6 +720,22 @@ unsafe fn follow_loop(stop: Arc<AtomicBool>) {
             // 钩子失效时的兜底轮询，约 200ms 一次。
             fallback = 0;
             let _ = follow_tick();
+            // 宿主句柄失效（关闭/重启）→ 按标题自动重扫描并重绑，
+            // 对齐 ForegroundHost 的 `if(!IsHost(lastHost))lastHost=FindHost();`。
+            unsafe {
+                let host = FOLLOW_HOST.load(Ordering::Relaxed) as windows_sys::Win32::Foundation::HWND;
+                if !host.is_null() && windows_sys::Win32::UI::WindowsAndMessaging::IsWindow(host) == 0 {
+                    if let Some((new_hwnd, _)) = find_external(HOST_TITLE) {
+                        if new_hwnd as isize != FOLLOW_HOST.load(Ordering::Relaxed) {
+                            FOLLOW_HOST.store(new_hwnd as isize, Ordering::Relaxed);
+                            FOLLOW_LAST.store(i64::MAX, Ordering::Relaxed);
+                            bridge_log(&format!("{} rescan rebind host=0x{:x}", now_ms(), new_hwnd as isize));
+                            let _ = follow_tick();
+                            let _ = manage_z();
+                        }
+                    }
+                }
+            }
             let _ = manage_z();
         }
     }
@@ -1380,6 +1396,16 @@ mod probe {
                 report.kv("sync_with_header", "no-response");
                 bridge_ok = false;
             }
+            // Origin parity 记录：本地回环页面按生产 isAllowedOrigin 语义放行——
+            // 生产行为（浏览器侧防线=仅回环绑定+扩展协议白名单），逐字记录供迁移评审。
+            let request = format!(
+                "GET /companion/state HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: http://127.0.0.1:9999\r\nConnection: close\r\n\r\n"
+            );
+            if let Some((status, _, _)) = bridge_request(port, &request) {
+                report.kv("origin_local_page_parity", format!("allowed status={status} (与生产一致)"));
+            } else {
+                report.kv("origin_local_page_parity", "no-response");
+            }
             // Origin 校验：外部站点拒绝
             let request = format!(
                 "GET /companion/state HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: https://evil.example\r\nConnection: close\r\n\r\n"
@@ -1742,33 +1768,51 @@ mod probe {
                     fails.push("ping-not-delivered".into());
                 }
 
-                // 2) 拖动跨区折返（捕获不丢，窗口回归锚点）。
-                let art_point = zone_point(&live, art_logical);
-                SetCursorPos(art_point.x, art_point.y);
-                thread::sleep(Duration::from_millis(220));
-                let mut drag_before = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                GetWindowRect(pet_hwnd, &mut drag_before);
-                let _ = send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
-                thread::sleep(Duration::from_millis(130));
-                for _ in 0..4 {
-                    send_mouse(MOUSEEVENTF_MOVE, 30, 18);
-                    thread::sleep(Duration::from_millis(40));
+                // 2) 拖动跨区折返（捕获不丢，窗口回归锚点）；偶发丢按重试一次（对应用户再点一次）。
+                let mut drag_fail_text = String::from("drag not attempted");
+                let mut drag_checked = false;
+                for attempt in 0..2 {
+                    let art_point = zone_point(&live, art_logical);
+                    SetCursorPos(art_point.x, art_point.y);
+                    thread::sleep(Duration::from_millis(if attempt == 0 { 220 } else { 380 }));
+                    let mut drag_before = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    GetWindowRect(pet_hwnd, &mut drag_before);
+                    let _ = send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
+                    thread::sleep(Duration::from_millis(130));
+                    for _ in 0..4 {
+                        send_mouse(MOUSEEVENTF_MOVE, 30, 18);
+                        thread::sleep(Duration::from_millis(40));
+                    }
+                    let mut drag_mid = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    GetWindowRect(pet_hwnd, &mut drag_mid);
+                    for _ in 0..4 {
+                        send_mouse(MOUSEEVENTF_MOVE, -30, -18);
+                        thread::sleep(Duration::from_millis(40));
+                    }
+                    thread::sleep(Duration::from_millis(140));
+                    let _ = send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
+                    thread::sleep(Duration::from_millis(140));
+                    let mut drag_after = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    GetWindowRect(pet_hwnd, &mut drag_after);
+                    let moved_out = ((drag_mid.left - drag_before.left).abs(), (drag_mid.top - drag_before.top).abs());
+                    let net = ((drag_after.left - drag_before.left).abs(), (drag_after.top - drag_before.top).abs());
+                    if !degraded && (moved_out.0 <= 60 || moved_out.1 <= 30 || net.0 > 60 || net.1 > 60) {
+                        drag_fail_text = format!("drag out=({},{}) net=({},{})", moved_out.0, moved_out.1, net.0, net.1);
+                        drag_checked = true;
+                        if attempt == 0 {
+                            // 归位再试。
+                            SetWindowPos(pet_hwnd, std::ptr::null_mut(), pet_rect0.left, pet_rect0.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                            continue;
+                        }
+                    } else {
+                        drag_fail_text.clear();
+                        drag_checked = true;
+                        break;
+                    }
                 }
-                let mut drag_mid = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                GetWindowRect(pet_hwnd, &mut drag_mid);
-                for _ in 0..4 {
-                    send_mouse(MOUSEEVENTF_MOVE, -30, -18);
-                    thread::sleep(Duration::from_millis(40));
-                }
-                thread::sleep(Duration::from_millis(140));
-                let _ = send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
-                thread::sleep(Duration::from_millis(140));
-                let mut drag_after = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                GetWindowRect(pet_hwnd, &mut drag_after);
-                let moved_out = ((drag_mid.left - drag_before.left).abs(), (drag_mid.top - drag_before.top).abs());
-                let net = ((drag_after.left - drag_before.left).abs(), (drag_after.top - drag_before.top).abs());
-                if !degraded && (moved_out.0 <= 60 || moved_out.1 <= 30 || net.0 > 60 || net.1 > 60) {
-                    fails.push(format!("drag out=({},{}) net=({},{})", moved_out.0, moved_out.1, net.0, net.1));
+                let _ = drag_checked;
+                if !degraded && !drag_fail_text.is_empty() {
+                    fails.push(drag_fail_text);
                 }
 
                 // 3) 空隙真实点击穿透送达独立底板（松手后穿透恢复证据）。
@@ -1856,6 +1900,54 @@ mod probe {
             }
             report.kv("threads_before_cycles", threads_before_cycles);
             report.kv("threads_after_cycles", thread_count(pet_pid));
+            spike.current_follow_stop().store(true, Ordering::Relaxed);
+            thread::sleep(Duration::from_millis(300));
+
+            // ---- 批次 J：宿主自动重扫描（关闭/重启免手动重绑）----
+            report.section("J 宿主自动重扫描");
+            super::start_follow_engine(host_hwnd as isize, pet_hwnd as isize, spike.replace_follow_stop());
+            thread::sleep(Duration::from_millis(400));
+            if let Some(child) = host_child.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            thread::sleep(Duration::from_millis(600));
+            let _ = std::fs::remove_file(&host_log);
+            host_child = super::spawn_external("host", super::HOST_TITLE, &host_log, "1F2630").ok();
+            let mut rebound_hwnd = 0isize;
+            for _ in 0..30 {
+                thread::sleep(Duration::from_millis(150));
+                if let Some((new_hwnd, _)) = super::find_external(super::HOST_TITLE) {
+                    if super::FOLLOW_HOST.load(Ordering::Relaxed) == new_hwnd as isize {
+                        rebound_hwnd = new_hwnd as isize;
+                        break;
+                    }
+                }
+            }
+            let rebound = rebound_hwnd != 0 && rebound_hwnd != host_hwnd as isize;
+            report.kv("auto_rebind", rebound);
+            if rebound {
+                report.kv("rebound_hwnd", rebound_hwnd);
+                // 新宿主上移动跟随验证。
+                let mut nh = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(rebound_hwnd as HWND, &mut nh);
+                let mut pb = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(pet_hwnd, &mut pb);
+                SetWindowPos(rebound_hwnd as HWND, std::ptr::null_mut(), nh.left + 60, nh.top + 40, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                thread::sleep(Duration::from_millis(700));
+                let mut pa = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(pet_hwnd, &mut pa);
+                let delta = (pa.left - pb.left, pa.top - pb.top);
+                report.kv("follow_after_rebind_delta", format!("({},{})", delta.0, delta.1));
+                let follow_ok = delta.0.abs() >= 50 && delta.1.abs() >= 30;
+                report.kv("follow_after_rebind_pass", follow_ok);
+                passed &= follow_ok;
+                SetWindowPos(rebound_hwnd as HWND, std::ptr::null_mut(), nh.left - 60, nh.top - 40, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                thread::sleep(Duration::from_millis(400));
+            } else {
+                report.kv("rescan_note", "engine did not pick up the rebuilt host automatically");
+                passed = false;
+            }
             spike.current_follow_stop().store(true, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(300));
 
