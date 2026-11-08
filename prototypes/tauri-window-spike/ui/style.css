@@ -24,3 +24,6 @@ body { margin: 0; width: 340px; height: 420px; background: transparent; overflow
 .art img { height: 190px; max-width: 96%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
 
 .backdrop { inset: 0; border-radius: 0; background: #28445a; }
+
+/* 计数按钮：固定绝对位置（逻辑 24,106 尺寸 96x28），探针按中心 (72,120) 点击验证真实送达。 */
+.ping-fixed { position: absolute; left: 24px; top: 106px; width: 96px; height: 28px; z-index: 2; }

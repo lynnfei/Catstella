@@ -3,37 +3,35 @@
   "productName": "Catstella Window Spike",
   "version": "0.1.0",
   "identifier": "com.catstella.research.window",
-  "build": { "frontendDist": "ui" },
+  "build": {
+    "frontendDist": "ui"
+  },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{
-      "label": "pet",
-      "title": "Catstella · Tauri 窗口实验",
-      "width": 340,
-      "height": 420,
-      "center": true,
-      "visible": false,
-      "transparent": true,
-      "decorations": false,
-      "shadow": false,
-      "resizable": false,
-      "skipTaskbar": true,
-      "alwaysOnTop": true
-    }, {
-      "label": "testhost",
-      "title": "测试宿主 · 模拟工作区",
-      "url": "host.html",
-      "width": 820,
-      "height": 520,
-      "visible": false,
-      "decorations": true,
-      "resizable": true,
-      "skipTaskbar": false
-    }],
-    "security": { "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost" }
+    "windows": [
+      {
+        "label": "pet",
+        "title": "Catstella · Tauri 窗口实验",
+        "width": 340,
+        "height": 420,
+        "center": true,
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
   },
   "bundle": {
     "active": false,
-    "icon": ["../../Antigravity-Cat-Widget/assets/app-icon.ico"]
+    "icon": [
+      "../../Antigravity-Cat-Widget/assets/app-icon.ico"
+    ]
   }
 }

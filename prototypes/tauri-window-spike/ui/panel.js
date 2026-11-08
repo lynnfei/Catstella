@@ -17,6 +17,10 @@ document.querySelector('#ignore').addEventListener('click', () => {
   status.textContent = '整窗穿透三秒，随后自动恢复。';
   void command('ignore_temporarily');
 });
+document.querySelector('#ping').addEventListener('click', () => {
+  status.textContent = '气泡按钮已收到点击。';
+  void command('bubble_ping');
+});
 document.querySelector('#open-host').addEventListener('click', () => void command('open_host'));
 document.querySelector('#follow').addEventListener('click', () => {
   status.textContent = '跟随测试宿主：位置平移 + z 序管理。';

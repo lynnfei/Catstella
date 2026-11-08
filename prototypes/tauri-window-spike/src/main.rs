@@ -1,11 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// Catstella Tauri 迁移门槛实验：分区命中 / 拖动捕获 / 独立测试宿主跟随。
+// Catstella Tauri 迁移门槛实验：分区命中 / 拖动捕获 / 独立进程宿主跟随。
 // 只使用独立应用标识与本地静态素材，不连接真实 Antigravity。
+// 底板与测试宿主由独立进程 spike-external.exe 提供，点击送达经日志验证。
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicIsize, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicIsize, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tauri::{Manager, WebviewWindow};
@@ -17,6 +18,12 @@ const BUBBLE_TOP: f64 = 0.0;
 const BUBBLE_BOTTOM: f64 = 150.0;
 const ART_TOP: f64 = 230.0;
 const ART_BOTTOM: f64 = 420.0;
+// 计数按钮中心（逻辑 px，对应 style.css 的 .ping-fixed）。
+const PING_CENTER: (f64, f64) = (72.0, 120.0);
+
+const EXTERNAL_CLASS: &str = "SpikeExternalWindow";
+const BACKDROP_TITLE: &str = "Catstella Spike · 底板";
+const HOST_TITLE: &str = "Catstella Spike · 测试宿主";
 
 fn zone_at(x: f64, y: f64) -> &'static str {
     let _ = x;
@@ -31,13 +38,15 @@ fn zone_at(x: f64, y: f64) -> &'static str {
 
 struct Spike {
     pet: WebviewWindow,
-    host: OnceLock<WebviewWindow>,
     dragging: AtomicBool,
-    follow_stop: Arc<AtomicBool>,
+    // 可替换的停止标志：重新绑定跟随引擎时换新标志，避免旧线程复活。
+    follow_stop: Mutex<Arc<AtomicBool>>,
     passthrough: AtomicBool,
 }
 
 static SPIKE: OnceLock<Arc<Spike>> = OnceLock::new();
+static PING_COUNT: AtomicU32 = AtomicU32::new(0);
+static PING_LOG: OnceLock<PathBuf> = OnceLock::new();
 
 fn spike() -> Arc<Spike> {
     SPIKE.get().expect("spike state").clone()
@@ -92,35 +101,90 @@ fn exit_spike(window: WebviewWindow) {
     window.app_handle().exit(0);
 }
 
-// ---- 独立测试宿主 ----
+#[tauri::command]
+fn bubble_ping() -> Result<(), String> {
+    PING_COUNT.fetch_add(1, Ordering::Relaxed);
+    if let Some(path) = PING_LOG.get() {
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            use std::io::Write as _;
+            let _ = writeln!(file, "ping tick={}", PING_COUNT.load(Ordering::Relaxed));
+        }
+    }
+    Ok(())
+}
+
+// ---- 独立进程外部窗口（底板/测试宿主）----
+
+fn external_exe() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(|dir| dir.join("spike-external.exe"))
+        .filter(|path| path.exists())
+}
+
+#[cfg(windows)]
+fn spawn_external(role: &str, title: &str, log: &PathBuf, color: &str) -> Result<std::process::Child, String> {
+    std::process::Command::new(external_exe().ok_or_else(|| "spike-external.exe missing".to_string())?)
+        .arg(format!("--role={role}"))
+        .arg(format!("--title={title}"))
+        .arg(format!("--log={}", log.display()))
+        .arg(format!("--color={color}"))
+        .spawn()
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(windows))]
+fn spawn_external(_role: &str, _title: &str, _log: &PathBuf, _color: &str) -> Result<std::process::Child, String> {
+    Err("windows only".into())
+}
+
+#[cfg(windows)]
+fn find_external(title: &str) -> Option<(windows_sys::Win32::Foundation::HWND, u32)> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowThreadProcessId};
+    let class_wide: Vec<u16> = EXTERNAL_CLASS.encode_utf16().chain(std::iter::once(0)).collect();
+    let title_wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    for _ in 0..30 {
+        let hwnd = unsafe { FindWindowW(class_wide.as_ptr(), title_wide.as_ptr()) };
+        if !hwnd.is_null() {
+            let mut pid = 0u32;
+            unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+            return Some((hwnd, pid));
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    None
+}
+#[cfg(not(windows))]
+fn find_external(_title: &str) -> Option<(*mut std::ffi::c_void, u32)> {
+    None
+}
 
 #[tauri::command]
 fn open_host() -> Result<(), String> {
-    let state = spike();
-    let host = state
-        .host
-        .get()
-        .ok_or_else(|| "test host window missing".to_string())?;
-    host.show().map_err(|error| error.to_string())
+    let log = std::env::temp_dir().join("catstella-window-spike-host-clicks.log");
+    let _ = std::fs::remove_file(&log);
+    spawn_external("host", HOST_TITLE, &log, "1F2630")?;
+    if find_external(HOST_TITLE).is_none() {
+        return Err("external host window not found".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
 fn follow_host() -> Result<(), String> {
     let spike = spike();
-    let host = spike
-        .host
-        .get()
-        .ok_or_else(|| "test host window missing".to_string())?;
+    let (host_hwnd, _) = find_external(HOST_TITLE).ok_or_else(|| "external host window not found".to_string())?;
     stop_follow()?;
-    let host_hwnd = host.hwnd().map_err(|e| e.to_string())?.0 as isize;
     let pet_hwnd = spike.pet.hwnd().map_err(|e| e.to_string())?.0 as isize;
-    start_follow_engine(host_hwnd, pet_hwnd, spike.follow_stop.clone());
+    start_follow_engine(host_hwnd as isize, pet_hwnd, spike.replace_follow_stop());
     Ok(())
 }
 
 #[tauri::command]
 fn stop_follow() -> Result<(), String> {
-    spike().follow_stop.store(true, Ordering::Relaxed);
+    let stop = spike().current_follow_stop();
+    stop.store(true, Ordering::Relaxed);
     Ok(())
 }
 
@@ -128,6 +192,17 @@ static FOLLOW_HOST: AtomicIsize = AtomicIsize::new(0);
 static FOLLOW_PET: AtomicIsize = AtomicIsize::new(0);
 static FOLLOW_LAST: AtomicI64 = AtomicI64::new(i64::MAX);
 static FOLLOW_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+impl Spike {
+    fn current_follow_stop(&self) -> Arc<AtomicBool> {
+        self.follow_stop.lock().unwrap().clone()
+    }
+    fn replace_follow_stop(&self) -> Arc<AtomicBool> {
+        let fresh = Arc::new(AtomicBool::new(false));
+        *self.follow_stop.lock().unwrap() = fresh.clone();
+        fresh
+    }
+}
 
 #[cfg(windows)]
 fn start_follow_engine(host_hwnd: isize, pet_hwnd: isize, stop: Arc<AtomicBool>) {
@@ -146,7 +221,9 @@ fn start_follow_engine(_host: isize, _pet: isize, _stop: Arc<AtomicBool>) {}
 unsafe fn follow_tick() -> Option<(i32, i32)> {
     use windows_sys::Win32::Foundation::{POINT, RECT};
     use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
     let host = FOLLOW_HOST.load(Ordering::Relaxed) as windows_sys::Win32::Foundation::HWND;
     let pet = FOLLOW_PET.load(Ordering::Relaxed) as windows_sys::Win32::Foundation::HWND;
     if host.is_null() || pet.is_null() {
@@ -187,7 +264,7 @@ unsafe fn follow_tick() -> Option<(i32, i32)> {
 // 空闲心跳绝不刷 SetWindowPos——生产注释明确这会引发 Win11 浮动任务栏 z 序重影；
 // 只有目标层级、置顶位或邻居关系漂移时才调用，调用次数由 Z_CALLS 计量。
 #[cfg(windows)]
-static Z_CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static Z_CALLS: AtomicU32 = AtomicU32::new(0);
 
 #[cfg(windows)]
 unsafe fn manage_z() -> String {
@@ -206,6 +283,20 @@ unsafe fn manage_z() -> String {
         return "no-foreground".into();
     }
     let topmost = |window: HWND| (GetWindowLongPtrW(window, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
+    // 「在 fg 之下」= 沿 z 链向下数步内可见（IME 等系统窗口可能插在中间，不必紧贴）。
+    let below = |fg: HWND| -> bool {
+        let mut walker = fg;
+        for _ in 0..8 {
+            walker = GetWindow(walker, GW_HWNDNEXT);
+            if walker.is_null() {
+                return false;
+            }
+            if walker == pet {
+                return true;
+            }
+        }
+        false
+    };
     let want_top = foreground == host || foreground == pet;
     let pet_topmost = topmost(pet);
     if want_top {
@@ -216,7 +307,7 @@ unsafe fn manage_z() -> String {
         SetWindowPos(pet, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         "topmost".into()
     } else {
-        if !pet_topmost && GetWindow(foreground, GW_HWNDNEXT) == pet {
+        if !pet_topmost && below(foreground) {
             return "kept-below-foreground".into();
         }
         if pet_topmost {
@@ -377,20 +468,25 @@ fn cursor_pos() -> Option<(i32, i32)> {
 
 #[cfg(windows)]
 mod probe {
-    use super::{zone_at, Spike, ART_BOTTOM, ART_TOP, BUBBLE_BOTTOM, BUBBLE_TOP, WIN_W};
-    use tauri::{Manager, WebviewWindow};
+    use super::{Spike, ART_BOTTOM, ART_TOP, BUBBLE_BOTTOM, BUBBLE_TOP, PING_CENTER, WIN_W};
     use std::fmt::Write as _;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+    use tauri::{Manager, WebviewWindow};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
         ReleaseDC, SelectObject, BITMAPFILEHEADER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT,
         DIB_RGB_COLORS, SRCCOPY,
     };
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
+    use windows_sys::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX};
+    use windows_sys::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
     use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
@@ -398,10 +494,10 @@ mod probe {
     };
     use windows_sys::Win32::Graphics::Gdi::EnumDisplayMonitors;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetAncestor, GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindow,
-        GetWindowLongPtrW, GetWindowRect, SetCursorPos, SetForegroundWindow, SetWindowPos, WindowFromPoint,
-        GA_ROOT, GW_HWNDNEXT, GWL_EXSTYLE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
-        WS_EX_TOPMOST,
+        FindWindowW, GetAncestor, GetClassNameW, GetCursorPos, GetForegroundWindow,
+        GetClientRect, GetWindow, GetWindowLongPtrW, GetWindowRect, PostMessageW, SetCursorPos,
+        SetWindowPos, WindowFromPoint, GA_ROOT, GW_HWNDNEXT, GWL_EXSTYLE, SWP_NOACTIVATE,
+        SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOPMOST,
     };
 
     static SAMPLER_PET: AtomicIsize = AtomicIsize::new(0);
@@ -456,13 +552,33 @@ mod probe {
     }
 
     unsafe fn send_mouse(flags: u32, dx: i32, dy: i32) -> bool {
-        let input = INPUT {
+        let mut input = INPUT {
             r#type: INPUT_MOUSE,
             Anonymous: INPUT_0 {
                 mi: MOUSEINPUT { dx, dy, mouseData: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 },
             },
         };
         SendInput(1, [input].as_ptr(), std::mem::size_of::<INPUT>() as i32) == 1
+    }
+
+    unsafe fn click_at(point: POINT) {
+        SetCursorPos(point.x, point.y);
+        thread::sleep(Duration::from_millis(140));
+        send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
+        thread::sleep(Duration::from_millis(60));
+        send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
+        thread::sleep(Duration::from_millis(220));
+    }
+
+    // 真实点击激活窗口：SetForegroundWindow 会被前台锁间歇拒绝。
+    unsafe fn activate_by_click(hwnd: HWND) -> bool {
+        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if GetWindowRect(hwnd, &mut rect) == 0 {
+            return false;
+        }
+        let point = POINT { x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 };
+        click_at(point);
+        GetForegroundWindow() == hwnd
     }
 
     unsafe fn monitor_count() -> u32 {
@@ -485,7 +601,10 @@ mod probe {
         let width = rect.right - rect.left;
         let height = rect.bottom - rect.top;
         if width <= 0 || height <= 0 {
-            return Err(format!("invalid capture rect l={} t={} r={} b={}", rect.left, rect.top, rect.right, rect.bottom));
+            return Err(format!(
+                "invalid capture rect l={} t={} r={} b={}",
+                rect.left, rect.top, rect.right, rect.bottom
+            ));
         }
         let screen = GetDC(std::ptr::null_mut());
         if screen.is_null() {
@@ -525,17 +644,18 @@ mod probe {
         if blit == 0 || copied == 0 {
             return Err("BitBlt/GetDIBits failed".into());
         }
-        let row = (width * 4) as u32;
         let file_header = BITMAPFILEHEADER {
             bfType: 0x4d42,
             bfSize: std::mem::size_of::<BITMAPFILEHEADER>() as u32
                 + std::mem::size_of::<BITMAPINFOHEADER>() as u32
-                + row * height as u32,
+                + (width * 4) as u32 * height as u32,
             bfReserved1: 0,
             bfReserved2: 0,
             bfOffBits: std::mem::size_of::<BITMAPFILEHEADER>() as u32 + std::mem::size_of::<BITMAPINFOHEADER>() as u32,
         };
-        let mut bytes = Vec::with_capacity(bytes_header_len() + pixels.len());
+        let mut bytes = Vec::with_capacity(
+            std::mem::size_of::<BITMAPFILEHEADER>() + std::mem::size_of::<BITMAPINFOHEADER>() + pixels.len(),
+        );
         bytes.extend_from_slice(std::slice::from_raw_parts(
             &file_header as *const _ as *const u8,
             std::mem::size_of::<BITMAPFILEHEADER>(),
@@ -548,33 +668,8 @@ mod probe {
         std::fs::write(path, bytes).map_err(|error| error.to_string())
     }
 
-    fn bytes_header_len() -> usize {
-        std::mem::size_of::<BITMAPFILEHEADER>() + std::mem::size_of::<BITMAPINFOHEADER>()
-    }
-
     unsafe fn ClientToScreenSpike(window: HWND, point: &mut POINT) -> i32 {
         windows_sys::Win32::Graphics::Gdi::ClientToScreen(window, point)
-    }
-
-    unsafe fn GetClientRectSpike(window: HWND, rect: &mut RECT) -> i32 {
-        windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(window, rect)
-    }
-
-    // 前台锁允许真实输入路径：点击目标窗口来切换前台（SetForegroundWindow 会被间歇拒绝）。
-    unsafe fn activate_by_click(hwnd: HWND) -> bool {
-        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-        if GetWindowRect(hwnd, &mut rect) == 0 {
-            return false;
-        }
-        let cx = (rect.left + rect.right) / 2;
-        let cy = (rect.top + rect.bottom) / 2;
-        SetCursorPos(cx, cy);
-        thread::sleep(Duration::from_millis(120));
-        send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
-        thread::sleep(Duration::from_millis(60));
-        send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
-        thread::sleep(Duration::from_millis(300));
-        GetForegroundWindow() == hwnd
     }
 
     // 从辅助进程 JSON 行解析 "bounds":{"x":..,"y":..,"width":..,"height":..}。
@@ -596,23 +691,98 @@ mod probe {
         ))
     }
 
-    pub fn run(pet: WebviewWindow, backdrop: WebviewWindow, host: WebviewWindow, out_dir: PathBuf, spike: Arc<Spike>) {
+    // ---- 资源基线 ----
+
+    unsafe fn memory_kb(pid: u32) -> Option<(u64, u64)> {
+        let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let mut counters: PROCESS_MEMORY_COUNTERS_EX = std::mem::zeroed();
+        counters.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+        let ok = GetProcessMemoryInfo(handle, &mut counters as *mut _ as *mut _, counters.cb) != 0;
+        let result = (ok).then(|| ((counters.WorkingSetSize / 1024) as u64, (counters.PrivateUsage / 1024) as u64));
+        windows_sys::Win32::Foundation::CloseHandle(handle);
+        result
+    }
+
+    unsafe fn thread_count(pid: u32) -> u32 {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if snapshot == -1isize as HWND || snapshot.is_null() {
+            return 0;
+        }
+        let mut entry: THREADENTRY32 = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+        let mut count = 0u32;
+        if Thread32First(snapshot, &mut entry) != 0 {
+            loop {
+                if entry.th32OwnerProcessID == pid {
+                    count += 1;
+                }
+                if Thread32Next(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        windows_sys::Win32::Foundation::CloseHandle(snapshot);
+        count
+    }
+
+    unsafe fn cpu_percent(pid: u32, sample: Duration) -> Option<f64> {
+        let handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let times = |handle: HWND| -> Option<(u64, u64)> {
+            let mut creation = 0u64; let mut exit = 0u64; let mut kernel = 0u64; let mut user = 0u64;
+            if GetProcessTimes(
+                handle,
+                &mut creation as *mut u64 as *mut _,
+                &mut exit as *mut u64 as *mut _,
+                &mut kernel as *mut u64 as *mut _,
+                &mut user as *mut u64 as *mut _,
+            ) == 0
+            {
+                return None;
+            }
+            Some((kernel, user))
+        };
+        let first = times(handle)?;
+        let started = Instant::now();
+        thread::sleep(sample);
+        let second = times(handle)?;
+        let wall = started.elapsed().as_nanos() as u64;
+        let delta = (second.0.wrapping_sub(first.0)) + second.1.wrapping_sub(first.1);
+        windows_sys::Win32::Foundation::CloseHandle(handle);
+        if wall == 0 {
+            return None;
+        }
+        Some(delta as f64 / wall as f64 * 100.0)
+    }
+
+    fn count_clicks(path: &PathBuf) -> usize {
+        std::fs::read_to_string(path)
+            .map(|content| content.lines().filter(|line| line.starts_with("click ")).count())
+            .unwrap_or(0)
+    }
+
+    pub fn run(pet: WebviewWindow, out_dir: PathBuf, spike: Arc<Spike>) {
         thread::spawn(move || {
-            let passed = probe_body(&pet, &backdrop, &host, &out_dir, &spike);
+            let passed = probe_body(&pet, &out_dir, &spike);
             pet.app_handle().exit(if passed { 0 } else { 1 });
         });
     }
 
-    fn probe_body(
-        pet: &WebviewWindow,
-        backdrop: &WebviewWindow,
-        host: &WebviewWindow,
-        out_dir: &PathBuf,
-        spike: &Arc<Spike>,
-    ) -> bool {
+    fn probe_body(pet: &WebviewWindow, out_dir: &PathBuf, spike: &Arc<Spike>) -> bool {
         let _ = std::fs::create_dir_all(out_dir);
         let mut report = Reporter::new();
         let mut passed = true;
+        let backdrop_log = out_dir.join("backdrop-clicks.log");
+        let host_log = out_dir.join("host-clicks.log");
+        let _ = std::fs::remove_file(&backdrop_log);
+        let _ = std::fs::remove_file(&host_log);
+        let mut backdrop_child: Option<std::process::Child> = None;
+        let mut host_child: Option<std::process::Child> = None;
         unsafe {
             let pet_hwnd = match pet.hwnd() {
                 Ok(handle) => handle.0,
@@ -622,44 +792,76 @@ mod probe {
                     return false;
                 }
             };
-            let backdrop_hwnd = backdrop.hwnd().map(|h| h.0).unwrap_or(std::ptr::null_mut());
-            let host_hwnd = host.hwnd().map(|h| h.0).unwrap_or(std::ptr::null_mut());
             let scale = GetDpiForWindow(pet_hwnd) as f64 / 96.0;
+            let pet_pid = std::process::id();
 
-            report.section("环境");
+            // ---- 环境与独立进程摆位 ----
+            report.section("环境与独立进程");
             report.kv("scale", scale);
             report.kv("monitors", monitor_count());
             report.kv("mixed_dpi", "deferred(单屏，混合 DPI 留待多屏环境)");
-
-            // 摆位：底板垫在桌宠后面，测试宿主放右侧不重叠。
+            report.kv("pet_hwnd", pet_hwnd as isize);
+            report.kv("pet_pid", pet_pid);
+            backdrop_child = super::spawn_external("backdrop", super::BACKDROP_TITLE, &backdrop_log, "28445A").ok();
+            host_child = super::spawn_external("host", super::HOST_TITLE, &host_log, "1F2630").ok();
+            if backdrop_child.is_none() || host_child.is_none() {
+                report.kv("external_spawn", false);
+                let _ = std::fs::write(out_dir.join("report.txt"), report.finish());
+                return false;
+            }
+            let Some((backdrop_hwnd, backdrop_pid)) = super::find_external(super::BACKDROP_TITLE) else {
+                report.kv("external_backdrop_found", false);
+                let _ = std::fs::write(out_dir.join("report.txt"), report.finish());
+                return false;
+            };
+            let Some((mut host_hwnd, mut host_pid)) = super::find_external(super::HOST_TITLE) else {
+                report.kv("external_host_found", false);
+                let _ = std::fs::write(out_dir.join("report.txt"), report.finish());
+                return false;
+            };
+            thread::sleep(Duration::from_millis(400));
             let mut pet_rect0 = RECT { left: 0, top: 0, right: 0, bottom: 0 };
             GetWindowRect(pet_hwnd, &mut pet_rect0);
-            let _ = backdrop.set_position(tauri::PhysicalPosition::new(pet_rect0.left - 15, pet_rect0.top - 15));
-            let _ = backdrop.show();
+            // 底板垫在桌宠后面，宿主放右侧；都是独立进程窗口。
+            SetWindowPos(backdrop_hwnd, std::ptr::null_mut(), pet_rect0.left - 15, pet_rect0.top - 15, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            SetWindowPos(host_hwnd, std::ptr::null_mut(), pet_rect0.right + 80, pet_rect0.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             let _ = pet.show();
             let _ = pet.set_always_on_top(false);
             let _ = pet.set_always_on_top(true);
-            thread::sleep(Duration::from_millis(900));
+            thread::sleep(Duration::from_millis(700));
+            report.kv("backdrop_hwnd", backdrop_hwnd as isize);
+            report.kv("backdrop_pid", backdrop_pid);
+            report.kv("host_hwnd", host_hwnd as isize);
+            report.kv("host_pid", host_pid);
+            let cross_pid = backdrop_pid != pet_pid && host_pid != pet_pid && backdrop_pid != host_pid;
+            report.kv("cross_process_windows", cross_pid);
+            passed &= cross_pid;
 
-            let original_cursor = {
-                let mut point = POINT { x: 0, y: 0 };
-                GetCursorPos(&mut point);
-                (point.x, point.y)
-            };
             let zone_point = |base: &RECT, logical: (f64, f64)| POINT {
                 x: base.left + (logical.0 * scale).round() as i32,
                 y: base.top + (logical.1 * scale).round() as i32,
             };
+            let blank_logical = (WIN_W / 2.0, (BUBBLE_BOTTOM + ART_TOP) / 2.0);
+            let art_logical = (WIN_W / 2.0, (ART_TOP + ART_BOTTOM) / 2.0);
 
-            // ---- 批次 A：分区命中（分区动态穿透轮询驱动，真实移动光标）----
+            // ---- 资源基线（静置：跟随引擎未开）----
+            report.section("资源基线 · 静置");
+            let mem_idle = memory_kb(pet_pid);
+            report.kv("mem_idle_ws_kb", mem_idle.map(|m| m.0).unwrap_or(0));
+            report.kv("mem_idle_private_kb", mem_idle.map(|m| m.1).unwrap_or(0));
+            report.kv("threads_idle", thread_count(pet_pid));
+            let cpu_idle = cpu_percent(pet_pid, Duration::from_millis(1500));
+            report.kv("cpu_idle_percent", cpu_idle.map(|v| format!("{v:.1}")).unwrap_or_default());
+
+            // ---- 批次 A：分区命中（轮询驱动动态穿透，真实移动光标）----
             report.section("A 分区命中（轮询驱动动态穿透）");
             let mut blank_pass = false;
             let mut bubble_pass = false;
             let mut art_pass = false;
             for (name, logical) in [
                 ("bubble", (WIN_W / 2.0, (BUBBLE_TOP + BUBBLE_BOTTOM) / 2.0)),
-                ("blank", (WIN_W / 2.0, (BUBBLE_BOTTOM + ART_TOP) / 2.0)),
-                ("art", (WIN_W / 2.0, (ART_TOP + ART_BOTTOM) / 2.0)),
+                ("blank", blank_logical),
+                ("art", art_logical),
             ] {
                 let point = zone_point(&pet_rect0, logical);
                 SetCursorPos(point.x, point.y);
@@ -675,9 +877,36 @@ mod probe {
             report.kv("zoned_hit_pass", blank_pass && bubble_pass && art_pass);
             passed &= blank_pass && bubble_pass && art_pass;
 
-            // ---- 批次 B：拖动跨出命中区仍保持捕获，松手恢复穿透 ----
-            report.section("B 拖动捕获");
-            let art_point = zone_point(&pet_rect0, (WIN_W / 2.0, (ART_TOP + ART_BOTTOM) / 2.0));
+            // ---- 批次 B：拖动捕获 + 真实点击送达 ----
+            report.section("B 拖动捕获与点击送达");
+            // 气泡按钮：计数按钮真实点击 → JS → Rust 命令递增计数。
+            let ping_before = super::PING_COUNT.load(Ordering::Relaxed);
+            click_at(zone_point(&pet_rect0, PING_CENTER));
+            let mut ping_after = ping_before;
+            for _ in 0..10 {
+                thread::sleep(Duration::from_millis(100));
+                ping_after = super::PING_COUNT.load(Ordering::Relaxed);
+                if ping_after > ping_before {
+                    break;
+                }
+            }
+            report.kv("bubble_ping_delivered", ping_after > ping_before);
+            passed &= ping_after > ping_before;
+            // 空隙真实点击 → 穿透送达独立进程底板（点击日志计数）。
+            let backdrop_clicks_before = count_clicks(&backdrop_log);
+            click_at(zone_point(&pet_rect0, blank_logical));
+            let mut blank_delivered = false;
+            for _ in 0..8 {
+                thread::sleep(Duration::from_millis(120));
+                if count_clicks(&backdrop_log) > backdrop_clicks_before {
+                    blank_delivered = true;
+                    break;
+                }
+            }
+            report.kv("blank_click_delivered_to_backdrop", blank_delivered);
+            passed &= blank_delivered;
+            // 拖动捕获：立绘按下 → 原生拖动 → 跨出窗口后折返。
+            let art_point = zone_point(&pet_rect0, art_logical);
             SetCursorPos(art_point.x, art_point.y);
             thread::sleep(Duration::from_millis(250));
             let mut before = RECT { left: 0, top: 0, right: 0, bottom: 0 };
@@ -696,10 +925,16 @@ mod probe {
                     break;
                 }
             });
-            let click_ok = send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
+            let _ = send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
             thread::sleep(Duration::from_millis(150));
-            for _ in 0..8 {
+            for _ in 0..4 {
                 send_mouse(MOUSEEVENTF_MOVE, 30, 18);
+                thread::sleep(Duration::from_millis(45));
+            }
+            let mut mid = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(pet_hwnd, &mut mid);
+            for _ in 0..4 {
+                send_mouse(MOUSEEVENTF_MOVE, -30, -18);
                 thread::sleep(Duration::from_millis(45));
             }
             thread::sleep(Duration::from_millis(150));
@@ -707,181 +942,28 @@ mod probe {
             thread::sleep(Duration::from_millis(120));
             SAMPLER_DONE.store(true, Ordering::Relaxed);
             let _ = sampler.join();
-            report.kv("click_sent", click_ok);
+            let mut after = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(pet_hwnd, &mut after);
             let track = samples.lock().unwrap().clone();
-            let drag_ok = if track.len() > 4 {
-                let first = track[0];
-                let last = *track.last().unwrap();
-                let moved = (last.0 - first.0, last.1 - first.1);
-                let distinct = track.iter().collect::<std::collections::BTreeSet<_>>().len();
-                report.kv("drag_delta", format!("({},{})", moved.0, moved.1));
-                // SendInput 相对位移受系统指针速度倍率影响，记录实际倍率而不是硬性期望值。
-                let ratio_x = moved.0 as f64 / 240.0;
-                let ratio_y = moved.1 as f64 / 144.0;
-                report.kv("pointer_speed_ratio", format!("x={ratio_x:.2} y={ratio_y:.2}"));
-                report.kv("capture_distinct_positions", distinct);
-                let consistent = ratio_x > 0.5 && ratio_x < 8.0 && (ratio_x - ratio_y).abs() / ratio_x.max(0.001) < 0.3;
-                let ok = moved.0.abs() > 60 && moved.1.abs() > 30 && distinct > 3 && consistent;
-                report.kv("capture_kept", ok);
-                ok
-            } else {
-                report.kv("capture_kept", false);
-                false
-            };
+            let moved_out = ((mid.left - before.left).abs(), (mid.top - before.top).abs());
+            let net = ((after.left - before.left).abs(), (after.top - before.top).abs());
+            let distinct = track.iter().collect::<std::collections::BTreeSet<_>>().len();
+            let drag_ok = moved_out.0 > 60 && moved_out.1 > 30 && distinct > 3 && net.0 <= 60 && net.1 <= 60;
+            report.kv("drag_moved_out", format!("({},{})", moved_out.0, moved_out.1));
+            report.kv("drag_net_return", format!("({},{})", net.0, net.1));
+            report.kv("capture_distinct_positions", distinct);
+            report.kv("capture_kept", drag_ok);
             passed &= drag_ok;
-            thread::sleep(Duration::from_millis(400));
-
-            // 松手后重新摆底板再测恢复。
-            let mut after_rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(pet_hwnd, &mut after_rect);
-            let _ = backdrop.set_position(tauri::PhysicalPosition::new(after_rect.left - 15, after_rect.top - 15));
-            thread::sleep(Duration::from_millis(250));
-            report.section("B2 松手恢复");
-            for (name, logical) in [
-                ("blank", (WIN_W / 2.0, (BUBBLE_BOTTOM + ART_TOP) / 2.0)),
-                ("art", (WIN_W / 2.0, (ART_TOP + ART_BOTTOM) / 2.0)),
-            ] {
-                let point = zone_point(&after_rect, logical);
-                SetCursorPos(point.x, point.y);
-                thread::sleep(Duration::from_millis(200));
-                let (kind, _) = classify(point, pet_hwnd, backdrop_hwnd);
-                let ok = kind == if name == "blank" { "backdrop" } else { "pet" };
-                report.kv(&format!("restore_{name}"), kind);
-                passed &= ok;
-            }
-
-            // ---- 批次 C：独立测试宿主跟随 ----
-            report.section("C 独立测试宿主跟随");
-            let _ = host.set_position(tauri::PhysicalPosition::new(after_rect.right + 80, after_rect.top));
-            let _ = host.show();
-            thread::sleep(Duration::from_millis(350));
-            super::FOLLOW_HOST.store(host_hwnd as isize, Ordering::Relaxed);
-            super::FOLLOW_PET.store(pet_hwnd as isize, Ordering::Relaxed);
-            super::start_follow_engine(
-                host_hwnd as isize,
-                pet_hwnd as isize,
-                spike.follow_stop.clone(),
-            );
-            thread::sleep(Duration::from_millis(500));
-            let mut host_rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(host_hwnd, &mut host_rect);
-            let mut pet_before = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(pet_hwnd, &mut pet_before);
-            report.kv("host_left_top", format!("({},{})", host_rect.left, host_rect.top));
-            report.kv("pet_left_top", format!("({},{})", pet_before.left, pet_before.top));
-            SetWindowPos(
-                host_hwnd,
-                std::ptr::null_mut(),
-                host_rect.left + 120,
-                host_rect.top + 80,
-                0,
-                0,
-                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-            thread::sleep(Duration::from_millis(700));
-            let mut pet_after_follow = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(pet_hwnd, &mut pet_after_follow);
-            let followed = (
-                pet_after_follow.left - pet_before.left,
-                pet_after_follow.top - pet_before.top,
-            );
-            report.kv("pet_followed_delta", format!("({},{})", followed.0, followed.1));
-            report.kv("host_moved_by", "(120,80)");
-            let follow_ok = followed.0.abs() >= 110 && followed.1.abs() >= 70;
-            report.kv("follow_pass", follow_ok);
-            passed &= follow_ok;
-
-            // z 序对齐生产 wantTop：宿主前台 → 桌宠置顶；其他窗口前台 → 桌宠退普通层级紧贴其下。
-            let activated_host = activate_by_click(host_hwnd);
-            let mut pet_topmost_when_host = false;
-            for _ in 0..12 {
-                thread::sleep(Duration::from_millis(100));
-                pet_topmost_when_host =
-                    (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
-                if pet_topmost_when_host {
-                    break;
-                }
-            }
-            let fg_is_host = GetForegroundWindow() == host_hwnd;
-            report.kv("activated_by_click", activated_host);
-            report.kv("fg_is_host", fg_is_host);
-            report.kv("pet_topmost_when_host_fg", pet_topmost_when_host);
-            passed &= pet_topmost_when_host;
-
-            // 空闲防刷：宿主持续前台 2.5s，manage_z 不得重复调用 SetWindowPos（防浮动任务栏重影）。
-            let z_before = super::Z_CALLS.load(Ordering::Relaxed);
-            thread::sleep(Duration::from_millis(2500));
-            let z_after = super::Z_CALLS.load(Ordering::Relaxed);
-            report.kv("z_setwindowpos_calls_idle", z_after - z_before);
-            passed &= z_after == z_before;
-
-            let activated_backdrop = activate_by_click(backdrop_hwnd);
-            // z 序收敛允许钩子/兜底轮询最多 1.2s，而不是卡死某一拍。
-            let mut pet_topmost_when_other = true;
-            let mut below_foreground = false;
-            for _ in 0..12 {
-                thread::sleep(Duration::from_millis(100));
-                pet_topmost_when_other =
-                    (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
-                below_foreground = GetWindow(backdrop_hwnd, GW_HWNDNEXT) == pet_hwnd;
-                if !pet_topmost_when_other && below_foreground {
-                    break;
-                }
-            }
-            let fg_is_other = GetForegroundWindow() == backdrop_hwnd;
-            report.kv("activated_by_click_other", activated_backdrop);
-            report.kv("fg_is_other", fg_is_other);
-            report.kv("pet_topmost_when_other_fg", pet_topmost_when_other);
-            report.kv("pet_directly_below_other_fg", below_foreground);
-            passed &= !pet_topmost_when_other && below_foreground;
-
-            // 负坐标平移：宿主移到屏幕外负坐标区，桌宠平移量须一致（单屏可测平移数学）。
-            let mut host_before_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(host_hwnd, &mut host_before_neg);
-            let mut pet_before_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(pet_hwnd, &mut pet_before_neg);
-            SetWindowPos(
-                host_hwnd,
-                std::ptr::null_mut(),
-                -220,
-                host_before_neg.top,
-                0,
-                0,
-                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-            thread::sleep(Duration::from_millis(700));
-            let mut pet_after_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-            GetWindowRect(pet_hwnd, &mut pet_after_neg);
-            let neg_delta = (pet_after_neg.left - pet_before_neg.left, pet_after_neg.top - pet_before_neg.top);
-            let host_delta = (-220 - host_before_neg.left, 0);
-            report.kv("negative_host_delta", format!("({},{})", host_delta.0, host_delta.1));
-            report.kv("negative_pet_delta", format!("({},{})", neg_delta.0, neg_delta.1));
-            let neg_ok = (neg_delta.0 - host_delta.0).abs() <= 2 && neg_delta.1.abs() <= 2;
-            report.kv("negative_translation_pass", neg_ok);
-            passed &= neg_ok;
-            // 宿主挪回可见区，避免后续截图在屏外。
-            SetWindowPos(
-                host_hwnd,
-                std::ptr::null_mut(),
-                host_before_neg.left,
-                host_before_neg.top,
-                0,
-                0,
-                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-            thread::sleep(Duration::from_millis(500));
-            spike.follow_stop.store(true, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(300));
 
-            // ---- 批次 F：真实 ForegroundHost 辅助进程（参数化副本）接管 Tauri 窗口 ----
-            report.section("F ForegroundHost 辅助进程绑定测试宿主");
+            // ---- 批次 F：真实 ForegroundHost 辅助进程（参数化副本）----
+            report.section("F ForegroundHost 辅助进程绑定独立宿主");
             let pet_class_name = window_class(pet_hwnd);
             let host_class_name = window_class(host_hwnd);
             report.kv("pet_top_level_class", &pet_class_name);
             report.kv("host_top_level_class", &host_class_name);
             let helper_path = std::env::current_exe().ok().and_then(|exe| {
                 let dir = exe.parent()?;
-                // 开发树里 exe 在 target/release/，仓库实验在 ../../host-check/；发布布局则同级。
                 let mut candidates = vec![dir.join("host-check")];
                 if let Some(release) = dir.parent() {
                     if let Some(root) = release.parent() {
@@ -890,183 +972,378 @@ mod probe {
                 }
                 candidates.into_iter().map(|dir| dir.join("ForegroundHostSpike.exe")).find(|path| path.exists())
             });
-            if let Some(helper_path) = helper_path.filter(|path| path.exists()) {
-                use std::io::BufRead;
-                use std::process::{Command, Stdio};
-                let spawn_result = Command::new(&helper_path)
-                    .arg(std::process::id().to_string())
-                    .arg((pet_hwnd as isize).to_string())
-                    .env("SPIKE_HOST_PROCESS", "catstella-window-spike")
-                    .env("SPIKE_HOST_CLASS", &host_class_name)
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn();
-                match spawn_result {
-                    Ok(mut spawned) => {
-                        let mut reader = spawned.stdout.take().expect("helper stdout");
-                        let mut error_reader = spawned.stderr.take().expect("helper stderr");
-                        let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-                        let errors: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-                        let error_sink = errors.clone();
-                        let error_thread = std::thread::spawn(move || {
-                            let mut buffered = std::io::BufReader::new(error_reader);
-                            let mut line = String::new();
-                            while let Ok(n) = buffered.read_line(&mut line) {
-                                if n == 0 { break; }
-                                error_sink.lock().unwrap().push_str(&line);
-                                line.clear();
-                            }
-                        });
-                        let sink = lines.clone();
-                        let reader_thread = std::thread::spawn(move || {
-                            let mut buffered = std::io::BufReader::new(reader);
-                            let mut line = String::new();
-                            while let Ok(n) = buffered.read_line(&mut line) {
-                                if n == 0 { break; }
-                                let trimmed = line.trim().to_string();
-                                if !trimmed.is_empty() {
-                                    sink.lock().unwrap().push(trimmed);
-                                }
-                                line.clear();
-                            }
-                        });
-                        // 对照变体：widget=0 未绑定限时运行，区分"绑定模式无输出"与"任何模式都无输出"。
-                        let control = Command::new(&helper_path)
-                            .arg(std::process::id().to_string())
-                            .arg("0")
-                            .env("SPIKE_HOST_PROCESS", "catstella-window-spike")
-                            .env("SPIKE_HOST_CLASS", &host_class_name)
-                            .stdin(Stdio::null())
-                            .stdout(Stdio::piped())
-                            .stderr(Stdio::null())
-                            .spawn();
-                        let mut control_lines = 0usize;
-                        if let Ok(mut control) = control {
-                            let mut control_reader = std::io::BufReader::new(control.stdout.take().expect("control stdout"));
-                            let control_sink: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-                            let control_drain = control_sink.clone();
-                            std::thread::spawn(move || {
+            match helper_path.filter(|path| path.exists()) {
+                Some(helper_path) => {
+                    use std::io::BufRead;
+                    use std::process::Stdio;
+                    let spawn_result = std::process::Command::new(&helper_path)
+                        .arg(std::process::id().to_string())
+                        .arg((pet_hwnd as isize).to_string())
+                        .env("SPIKE_HOST_PROCESS", "spike-external")
+                        .env("SPIKE_HOST_CLASS", &host_class_name)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::null())
+                        .spawn();
+                    match spawn_result {
+                        Ok(mut spawned) => {
+                            let mut reader = spawned.stdout.take().expect("helper stdout");
+                            let lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+                            let sink = lines.clone();
+                            let reader_thread = std::thread::spawn(move || {
+                                let mut buffered = std::io::BufReader::new(reader);
                                 let mut line = String::new();
-                                loop {
-                                    line.clear();
-                                    match control_reader.read_line(&mut line) {
-                                        Ok(0) | Err(_) => break,
-                                        Ok(_) => { control_drain.lock().unwrap().push(line.trim().to_string()); }
+                                while let Ok(n) = buffered.read_line(&mut line) {
+                                    if n == 0 { break; }
+                                    let trimmed = line.trim().to_string();
+                                    if !trimmed.is_empty() {
+                                        sink.lock().unwrap().push(trimmed);
                                     }
+                                    line.clear();
                                 }
                             });
-                            for _ in 0..10 {
-                                thread::sleep(Duration::from_millis(120));
-                                if control.try_wait().ok().flatten().is_some() { break; }
-                            }
-                            control_lines = control_sink.lock().unwrap().len();
-                            let _ = control.kill();
-                            let _ = control.wait();
-                        }
-                        report.kv("helper_control_lines", control_lines);
-                        SetForegroundWindow(host_hwnd);
-                        // 辅助进程心跳 1s，等两拍保证至少输出两行。
-                        thread::sleep(Duration::from_millis(2500));
-                        let exited_early = spawned.try_wait().ok().flatten();
-                        report.kv(
-                            "helper_exit_early",
-                            exited_early.map(|s| s.to_string()).unwrap_or_else(|| "running".into()),
-                        );
-                        let snapshot = lines.lock().unwrap().clone();
-                        report.kv("helper_lines", snapshot.len());
-                        if snapshot.is_empty() {
-                            let stderr_text = errors.lock().unwrap().trim().to_string();
-                            if !stderr_text.is_empty() {
-                                report.kv("helper_stderr", stderr_text);
-                            }
-                        }
-                        let kind_marker = concat!("\"kind\":\"host\"");
-                        let attached_marker = concat!("\"attached\":true");
-                        let host_json = snapshot.iter().rev().find(|l| l.contains(kind_marker));
-                        match host_json {
-                            Some(line) => {
-                                report.kv("helper_kind", "host");
-                                let attached = line.contains(attached_marker);
-                                report.kv("helper_attached", attached);
-                                // bounds 是宿主客户区（原点 ClientToScreen + 客户区尺寸）。
-                                let mut client_origin = POINT { x: 0, y: 0 };
-                                ClientToScreenSpike(host_hwnd, &mut client_origin);
-                                let mut client_size = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                                GetClientRectSpike(host_hwnd, &mut client_size);
-                                let expected = (
-                                    client_origin.x,
-                                    client_origin.y,
-                                    client_size.right - client_size.left,
-                                    client_size.bottom - client_size.top,
-                                );
-                                let reported = parse_bounds(line);
-                                report.kv("helper_bounds_expected", format!("{:?}", expected));
-                                report.kv("helper_bounds_reported", format!("{:?}", reported));
-                                let bounds_match = match reported {
-                                    Some(value) => {
-                                        value.0.abs_diff(expected.0) <= 3
-                                            && value.1.abs_diff(expected.1) <= 3
-                                            && value.2.abs_diff(expected.2) <= 3
-                                            && value.3.abs_diff(expected.3) <= 3
-                                    }
-                                    None => false,
-                                };
-                                report.kv("helper_bounds_match", bounds_match);
-                                let mut helper_pass = attached && bounds_match;
-                                // 宿主移动 → 辅助进程自带 followHost 应平移桌宠。
-                                let mut pet_before_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                                GetWindowRect(pet_hwnd, &mut pet_before_helper);
-                                let mut host_before_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                                GetWindowRect(host_hwnd, &mut host_before_helper);
-                                SetWindowPos(host_hwnd, std::ptr::null_mut(), -200, 120, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-                                thread::sleep(Duration::from_millis(900));
-                                let mut pet_after_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-                                GetWindowRect(pet_hwnd, &mut pet_after_helper);
-                                let helper_delta = (
-                                    pet_after_helper.left - pet_before_helper.left,
-                                    pet_after_helper.top - pet_before_helper.top,
-                                );
-                                let host_moved = (-200 - host_before_helper.left, 120 - host_before_helper.top);
-                                report.kv("helper_host_moved", format!("({},{})", host_moved.0, host_moved.1));
-                                report.kv("helper_follow_delta", format!("({},{})", helper_delta.0, helper_delta.1));
-                                let helper_follow_ok = helper_delta.0.abs() >= 20 && helper_delta.1.abs() >= 10;
-                                report.kv("helper_follow_pass", helper_follow_ok);
-                                helper_pass &= helper_follow_ok;
-                                passed &= helper_pass;
-                                // 宿主挪回可见区；关闭 stdin 触发辅助进程优雅退出。
-                                SetWindowPos(host_hwnd, std::ptr::null_mut(), after_rect.right + 80, after_rect.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-                                drop(spawned.stdin.take());
-                                let _ = spawned.wait();
-                                let _ = spawned.kill();
-                                let _ = reader_thread.join();
-                            }
-                            None => {
-                                report.kv("helper_kind", "not-found");
-                                if let Some(last) = snapshot.last() {
-                                    report.kv("sample_line", last.clone());
+                            // 宿主是独立进程窗口：点击激活它，等辅助进程心跳两拍。
+                            activate_by_click(host_hwnd);
+                            thread::sleep(Duration::from_millis(2500));
+                            let snapshot = lines.lock().unwrap().clone();
+                            report.kv("helper_lines", snapshot.len());
+                            let kind_marker = concat!("\"kind\":\"host\"");
+                            let attached_marker = concat!("\"attached\":true");
+                            let host_json = snapshot.iter().rev().find(|l| l.contains(kind_marker));
+                            match host_json {
+                                Some(line) => {
+                                    report.kv("helper_kind", "host");
+                                    let attached = line.contains(attached_marker);
+                                    report.kv("helper_attached", attached);
+                                    let mut client_origin = POINT { x: 0, y: 0 };
+                                    ClientToScreenSpike(host_hwnd, &mut client_origin);
+                                    let mut client_size = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                    GetClientRect(host_hwnd, &mut client_size);
+                                    let expected = (
+                                        client_origin.x,
+                                        client_origin.y,
+                                        client_size.right - client_size.left,
+                                        client_size.bottom - client_size.top,
+                                    );
+                                    let reported = parse_bounds(line);
+                                    report.kv("helper_bounds_expected", format!("{:?}", expected));
+                                    report.kv("helper_bounds_reported", format!("{:?}", reported));
+                                    let bounds_match = match reported {
+                                        Some(value) => {
+                                            value.0.abs_diff(expected.0) <= 3
+                                                && value.1.abs_diff(expected.1) <= 3
+                                                && value.2.abs_diff(expected.2) <= 3
+                                                && value.3.abs_diff(expected.3) <= 3
+                                        }
+                                        None => false,
+                                    };
+                                    report.kv("helper_bounds_match", bounds_match);
+                                    let mut helper_pass = attached && bounds_match;
+                                    // 宿主移动 → 辅助进程自带 followHost 应平移桌宠。
+                                    let mut pet_before_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                    GetWindowRect(pet_hwnd, &mut pet_before_helper);
+                                    let mut host_before_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                    GetWindowRect(host_hwnd, &mut host_before_helper);
+                                    SetWindowPos(host_hwnd, std::ptr::null_mut(), -200, 120, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                                    thread::sleep(Duration::from_millis(900));
+                                    let mut pet_after_helper = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                                    GetWindowRect(pet_hwnd, &mut pet_after_helper);
+                                    let helper_delta = (
+                                        pet_after_helper.left - pet_before_helper.left,
+                                        pet_after_helper.top - pet_before_helper.top,
+                                    );
+                                    let host_moved = (-200 - host_before_helper.left, 120 - host_before_helper.top);
+                                    report.kv("helper_host_moved", format!("({},{})", host_moved.0, host_moved.1));
+                                    report.kv("helper_follow_delta", format!("({},{})", helper_delta.0, helper_delta.1));
+                                    let helper_follow_ok = helper_delta.0.abs() >= 20 && helper_delta.1.abs() >= 10;
+                                    report.kv("helper_follow_pass", helper_follow_ok);
+                                    helper_pass &= helper_follow_ok;
+                                    passed &= helper_pass;
+                                    SetWindowPos(host_hwnd, std::ptr::null_mut(), pet_rect0.right + 80, pet_rect0.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                                    drop(spawned.stdin.take());
+                                    let _ = spawned.wait();
+                                    let _ = spawned.kill();
+                                    let _ = reader_thread.join();
                                 }
-                                passed = false;
-                                drop(spawned.stdin.take());
-                                let _ = spawned.kill();
-                                let _ = reader_thread.join();
-                                let _ = error_thread.join();
+                                None => {
+                                    report.kv("helper_kind", "not-found");
+                                    if let Some(last) = snapshot.last() {
+                                        report.kv("sample_line", last.clone());
+                                    }
+                                    passed = false;
+                                    drop(spawned.stdin.take());
+                                    let _ = spawned.kill();
+                                    let _ = reader_thread.join();
+                                }
                             }
                         }
-                    }
-                    Err(error) => {
-                        report.kv("helper_spawn_error", error.to_string());
-                        passed = false;
+                        Err(error) => {
+                            report.kv("helper_spawn_error", error.to_string());
+                            passed = false;
+                        }
                     }
                 }
-            } else {
-                report.kv("helper_present", false);
-                passed = false;
+                None => {
+                    report.kv("helper_present", false);
+                    passed = false;
+                }
             }
+            // 宿主在 F 里被移过，恢复摆位。
+            SetWindowPos(host_hwnd, std::ptr::null_mut(), pet_rect0.right + 80, pet_rect0.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 
-            // ---- 批次 D：DPI 与截图 ----
-            report.section("D DPI 与截图");
-            // 跟随实验后重新取实时位置，保证截图与报告坐标一致。
+            // ---- 批次 C：跟随引擎 + 30 轮循环 ----
+            report.section("C 跟随引擎与 30 轮循环");
+            super::start_follow_engine(
+                host_hwnd as isize,
+                pet_hwnd as isize,
+                spike.replace_follow_stop(),
+            );
+            thread::sleep(Duration::from_millis(500));
+
+            // 空闲防刷：宿主持续前台 2.5s，manage_z 不得重复调用 SetWindowPos。
+            activate_by_click(host_hwnd);
+            thread::sleep(Duration::from_millis(400));
+            let z_before = super::Z_CALLS.load(Ordering::Relaxed);
+            thread::sleep(Duration::from_millis(2500));
+            let z_after = super::Z_CALLS.load(Ordering::Relaxed);
+            report.kv("z_setwindowpos_calls_idle", z_after - z_before);
+            passed &= z_after == z_before;
+
+            // 负坐标平移：宿主移到屏幕外负坐标区，桌宠平移量须一致。
+            let mut host_before_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(host_hwnd, &mut host_before_neg);
+            let mut pet_before_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(pet_hwnd, &mut pet_before_neg);
+            SetWindowPos(host_hwnd, std::ptr::null_mut(), -220, host_before_neg.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            thread::sleep(Duration::from_millis(700));
+            let mut pet_after_neg = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(pet_hwnd, &mut pet_after_neg);
+            let neg_delta = (pet_after_neg.left - pet_before_neg.left, pet_after_neg.top - pet_before_neg.top);
+            let neg_host = (-220 - host_before_neg.left, 0);
+            report.kv("negative_host_delta", format!("({},{})", neg_host.0, neg_host.1));
+            report.kv("negative_pet_delta", format!("({},{})", neg_delta.0, neg_delta.1));
+            let neg_ok = (neg_delta.0 - neg_host.0).abs() <= 2 && neg_delta.1.abs() <= 2;
+            report.kv("negative_translation_pass", neg_ok);
+            passed &= neg_ok;
+            SetWindowPos(host_hwnd, std::ptr::null_mut(), pet_rect0.right + 80, pet_rect0.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            thread::sleep(Duration::from_millis(400));
+
+            // 30 轮：ping 点击 / 拖动折返 / 空隙点击送达底板 / 前台切换 z 序；第 10/11/12 轮注入异常场景。
+            let mut cycles_ok = 0usize;
+            let mut cycle_failures: Vec<String> = Vec::new();
+            let threads_before_cycles = thread_count(pet_pid);
+            let mem_before_cycles = memory_kb(pet_pid);
+            for cycle in 1..=30u32 {
+                let mut fails: Vec<String> = Vec::new();
+                // 每轮把桌宠归位到锚点，底板垫回，保证坐标确定性。
+                SetWindowPos(pet_hwnd, std::ptr::null_mut(), pet_rect0.left, pet_rect0.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                SetWindowPos(backdrop_hwnd, std::ptr::null_mut(), pet_rect0.left - 15, pet_rect0.top - 15, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                thread::sleep(Duration::from_millis(120));
+                if windows_sys::Win32::UI::WindowsAndMessaging::IsWindow(pet_hwnd) == 0 {
+                    fails.push("pet-window-lost".into());
+                    cycle_failures.push(format!("cycle{cycle}: {}", fails.join(",")));
+                    break;
+                }
+
+                // 异常场景注入：10=宿主进程关闭；11=宿主重建句柄；12=无效句柄。
+                match cycle {
+                    10 => {
+                        if let Some(child) = host_child.as_mut() {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
+                        thread::sleep(Duration::from_millis(400));
+                        report.kv("cycle10_host_killed", true);
+                    }
+                    11 => {
+                        let _ = std::fs::remove_file(&host_log);
+                        host_child = super::spawn_external("host", super::HOST_TITLE, &host_log, "1F2630").ok();
+                        match super::find_external(super::HOST_TITLE) {
+                            Some((new_hwnd, new_pid)) if new_hwnd != host_hwnd => {
+                                host_hwnd = new_hwnd;
+                                host_pid = new_pid;
+                                super::stop_follow().ok();
+                                thread::sleep(Duration::from_millis(250));
+                                super::start_follow_engine(host_hwnd as isize, pet_hwnd as isize, spike.replace_follow_stop());
+                                thread::sleep(Duration::from_millis(500));
+                                report.kv("cycle11_host_rebuilt", format!("hwnd={} pid={host_pid}", new_hwnd as isize));
+                            }
+                            _ => {
+                                fails.push("host-rebuild-failed".into());
+                            }
+                        }
+                    }
+                    12 => {
+                        super::FOLLOW_HOST.store(0xdead_beef_isize, Ordering::Relaxed);
+                        thread::sleep(Duration::from_millis(400));
+                        let alive = windows_sys::Win32::UI::WindowsAndMessaging::IsWindow(pet_hwnd) != 0
+                            && windows_sys::Win32::UI::WindowsAndMessaging::IsWindow(host_hwnd) != 0;
+                        super::FOLLOW_HOST.store(host_hwnd as isize, Ordering::Relaxed);
+                        thread::sleep(Duration::from_millis(300));
+                        report.kv("cycle12_invalid_handle_survived", alive);
+                        if !alive {
+                            fails.push("invalid-handle-crash".into());
+                        }
+                    }
+                    _ => {}
+                }
+
+                // 0) 点击宿主恢复前台（宿主不与桌宠重叠，点击必然生效）→ 桌宠应置顶。
+                //    cycle 10 宿主已被杀：桌宠按生产语义沉底被盖住，交互断言全部预期退化，只验证存活。
+                let degraded = cycle == 10;
+                if !degraded {
+                    if !activate_by_click(host_hwnd) {
+                        fails.push("host-click-activation".into());
+                    }
+                    let mut host_top_ok = false;
+                    for _ in 0..12 {
+                        thread::sleep(Duration::from_millis(100));
+                        if (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0 {
+                            host_top_ok = true;
+                            break;
+                        }
+                    }
+                    if !host_top_ok {
+                        fails.push("z-not-topmost-over-host".into());
+                    }
+                }
+
+                // 1) 气泡按钮真实点击送达。
+                let ping_before = super::PING_COUNT.load(Ordering::Relaxed);
+                let mut live = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(pet_hwnd, &mut live);
+                click_at(zone_point(&live, PING_CENTER));
+                let mut ping_ok = false;
+                for _ in 0..10 {
+                    thread::sleep(Duration::from_millis(100));
+                    if super::PING_COUNT.load(Ordering::Relaxed) > ping_before {
+                        ping_ok = true;
+                        break;
+                    }
+                }
+                if !ping_ok && !degraded {
+                    fails.push("ping-not-delivered".into());
+                }
+
+                // 2) 拖动跨区折返（捕获不丢，窗口回归锚点）。
+                let art_point = zone_point(&live, art_logical);
+                SetCursorPos(art_point.x, art_point.y);
+                thread::sleep(Duration::from_millis(220));
+                let mut drag_before = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(pet_hwnd, &mut drag_before);
+                let _ = send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
+                thread::sleep(Duration::from_millis(130));
+                for _ in 0..4 {
+                    send_mouse(MOUSEEVENTF_MOVE, 30, 18);
+                    thread::sleep(Duration::from_millis(40));
+                }
+                let mut drag_mid = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(pet_hwnd, &mut drag_mid);
+                for _ in 0..4 {
+                    send_mouse(MOUSEEVENTF_MOVE, -30, -18);
+                    thread::sleep(Duration::from_millis(40));
+                }
+                thread::sleep(Duration::from_millis(140));
+                let _ = send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
+                thread::sleep(Duration::from_millis(140));
+                let mut drag_after = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(pet_hwnd, &mut drag_after);
+                let moved_out = ((drag_mid.left - drag_before.left).abs(), (drag_mid.top - drag_before.top).abs());
+                let net = ((drag_after.left - drag_before.left).abs(), (drag_after.top - drag_before.top).abs());
+                if !degraded && (moved_out.0 <= 60 || moved_out.1 <= 30 || net.0 > 60 || net.1 > 60) {
+                    fails.push(format!("drag out=({},{}) net=({},{})", moved_out.0, moved_out.1, net.0, net.1));
+                }
+
+                // 3) 空隙真实点击穿透送达独立底板（松手后穿透恢复证据）。
+                let backdrop_before = count_clicks(&backdrop_log);
+                let mut live2 = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(pet_hwnd, &mut live2);
+                click_at(zone_point(&live2, blank_logical));
+                let mut blank_ok = false;
+                for _ in 0..8 {
+                    thread::sleep(Duration::from_millis(120));
+                    if count_clicks(&backdrop_log) > backdrop_before {
+                        blank_ok = true;
+                        break;
+                    }
+                }
+                if !blank_ok && !degraded {
+                    fails.push("blank-click-not-delivered".into());
+                }
+
+                // 4) 空隙点击已让底板成为前台 → 桌宠应退普通层级并被前台窗口遮挡。
+                //    「在 fg 之下」= 沿 z 链向下数步内可见；IME/MSCTFIME 等系统窗口
+                //    会紧跟激活窗口插入，不必紧贴，与生产 ForegroundHost 的目标一致。
+                if cycle != 10 {
+                    let mut below_ok = false;
+                    for _ in 0..12 {
+                        thread::sleep(Duration::from_millis(100));
+                        if (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) == 0 {
+                            let mut walker = backdrop_hwnd;
+                            for _ in 0..8 {
+                                walker = GetWindow(walker, GW_HWNDNEXT);
+                                if walker.is_null() {
+                                    break;
+                                }
+                                if walker == pet_hwnd {
+                                    below_ok = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if below_ok {
+                            break;
+                        }
+                    }
+                    if !below_ok {
+                        // 诊断：记录当前前台窗口与桌宠层级，定位 manage_z 是否生效。
+                        let fg = GetForegroundWindow();
+                        let fg_desc = if fg.is_null() {
+                            "none".to_string()
+                        } else {
+                            let mut fg_pid = 0u32;
+                            windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(fg, &mut fg_pid);
+                            format!("{} pid={fg_pid} root={}", window_class(fg), windows_sys::Win32::UI::WindowsAndMessaging::GetAncestor(fg, GA_ROOT) as isize)
+                        };
+                        let pet_top = (GetWindowLongPtrW(pet_hwnd, GWL_EXSTYLE) & (WS_EX_TOPMOST as isize)) != 0;
+                        fails.push(format!(
+                            "z-sink fg=[{fg_desc}] pet_topmost={pet_top} zcalls={}",
+                            super::Z_CALLS.load(Ordering::Relaxed)
+                        ));
+                    }
+                }
+
+                if fails.is_empty() {
+                    cycles_ok += 1;
+                } else {
+                    cycle_failures.push(format!("cycle{cycle}: {}", fails.join(",")));
+                }
+            }
+            report.kv("cycles_passed", format!("{cycles_ok}/30"));
+            for failure in cycle_failures.iter().take(6) {
+                report.kv("cycle_failure", failure);
+            }
+            passed &= cycles_ok == 30;
+
+            // ---- 资源基线（跟随中）----
+            report.section("资源基线 · 跟随中");
+            activate_by_click(host_hwnd);
+            thread::sleep(Duration::from_millis(300));
+            let cpu_follow = cpu_percent(pet_pid, Duration::from_millis(2000));
+            report.kv("cpu_follow_percent", cpu_follow.map(|v| format!("{v:.1}")).unwrap_or_default());
+            let mem_follow = memory_kb(pet_pid);
+            report.kv("mem_follow_ws_kb", mem_follow.map(|m| m.0).unwrap_or(0));
+            report.kv("mem_follow_private_kb", mem_follow.map(|m| m.1).unwrap_or(0));
+            if let (Some(before), Some(after)) = (mem_before_cycles, mem_follow) {
+                report.kv("mem_ws_delta_cycles_kb", after.0 as i64 - before.0 as i64);
+            }
+            report.kv("threads_before_cycles", threads_before_cycles);
+            report.kv("threads_after_cycles", thread_count(pet_pid));
+            spike.current_follow_stop().store(true, Ordering::Relaxed);
+            thread::sleep(Duration::from_millis(300));
+
+            // ---- 批次 D：截图与退出清理 ----
+            report.section("D 截图与退出清理");
             let mut final_rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
             GetWindowRect(pet_hwnd, &mut final_rect);
             let physical_w = final_rect.right - final_rect.left;
@@ -1086,54 +1363,71 @@ mod probe {
                     passed = false;
                 }
             }
-            SetCursorPos(original_cursor.0, original_cursor.1);
+            // 退出清理：先礼貌关闭（WM_CLOSE → 优雅写日志），超时强杀。
+            PostMessageW(backdrop_hwnd, WM_CLOSE, 0, 0);
+            PostMessageW(host_hwnd, WM_CLOSE, 0, 0);
+            let mut cleanup_ok = true;
+            for child in [&mut backdrop_child, &mut host_child].into_iter().flatten() {
+                let mut exited = false;
+                for _ in 0..15 {
+                    if let Some(status) = child.try_wait().ok().flatten() {
+                        let _ = status;
+                        exited = true;
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+                if !exited {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+            // 进程对象已退出（句柄 wait 成功）即视为清理完成；再确认窗口消失。
+            let class_wide: Vec<u16> = super::EXTERNAL_CLASS.encode_utf16().chain(std::iter::once(0)).collect();
+            let backdrop_wide: Vec<u16> = super::BACKDROP_TITLE.encode_utf16().chain(std::iter::once(0)).collect();
+            if FindWindowW(class_wide.as_ptr(), backdrop_wide.as_ptr()) != std::ptr::null_mut() {
+                cleanup_ok = false;
+            }
+            report.kv("cleanup_pass", cleanup_ok);
+            passed &= cleanup_ok;
+            SetCursorPos(pet_rect0.left + 20, pet_rect0.bottom + 40);
         }
-        let _ = zone_at; // 保留引用，避免未使用告警（分区逻辑由窗口轮询线程使用）。
         report.section("结论");
         report.kv("all_pass", passed);
         let _ = std::fs::write(out_dir.join("report.txt"), report.finish());
         passed
     }
+
 }
 
 #[cfg(windows)]
 fn main() {
     let probe_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-output=").map(PathBuf::from));
+    if let Some(out_dir) = &probe_arg {
+        let _ = PING_LOG.set(out_dir.join("bubble-pings.log"));
+    }
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             drag,
             ignore_temporarily,
             exit_spike,
+            bubble_ping,
             open_host,
             follow_host,
             stop_follow
         ])
         .setup(move |app| {
             let pet = app.get_webview_window("pet").expect("configured pet window");
-            let host = app.get_webview_window("testhost").expect("configured test host window");
             let state = Arc::new(Spike {
                 pet: pet.clone(),
-                host: OnceLock::new(),
                 dragging: AtomicBool::new(false),
-                follow_stop: Arc::new(AtomicBool::new(false)),
+                follow_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
                 passthrough: AtomicBool::new(false),
             });
-            let _ = state.host.set(host.clone());
             let _ = SPIKE.set(state.clone());
             start_zone_poller(state.clone());
             if let Some(out_dir) = probe_arg {
-                let backdrop = tauri::WebviewWindowBuilder::new(
-                    app,
-                    "behind",
-                    tauri::WebviewUrl::App("behind.html".into()),
-                )
-                .inner_size(380.0, 500.0)
-                .decorations(false)
-                .skip_taskbar(true)
-                .always_on_top(false)
-                .visible(false)
-                .build()?;
-                probe::run(pet, backdrop, host, out_dir, state);
+                probe::run(pet, out_dir, state);
                 return Ok(());
             }
             pet.show()?;
