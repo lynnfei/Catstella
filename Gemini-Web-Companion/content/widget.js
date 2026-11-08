@@ -69,6 +69,10 @@
       "{user}，AGY 的模型步骤 #{step} 遇到错误了。",
       "AGY 的模型步骤 #{step} 遇到错误了，{user} 可以看看日志喵。"
     ],
+    "model-waiting": [
+      "{user}，AGY 在步骤 #{step} 有话要问你，快去确认喵！",
+      "AGY 在步骤 #{step} 等你确认，本喵先替你盯着。"
+    ],
     webGenerating: [
       "{user}，Gemini 正在生成这一轮回复喵。",
       "Gemini 正在生成回复，{user} 稍等一下喵～"
@@ -1883,7 +1887,7 @@
     function syncAgyTalk() {
       const activity = bridgeState?.online ? bridgeState.desktop?.modelActivity : null;
       const { kind, stepIndex, expiresAt } = activity || {};
-      const ongoing = kind === 'model-running';
+      const ongoing = kind === 'model-running' || kind === 'model-waiting';
       const terminal = ['model-done', 'model-error'].includes(kind) && Number.isFinite(expiresAt) && expiresAt > Date.now();
       if (!Number.isSafeInteger(stepIndex) || (!ongoing && !terminal)) {
         if (statusSource === 'agy') clearStatusLine();
