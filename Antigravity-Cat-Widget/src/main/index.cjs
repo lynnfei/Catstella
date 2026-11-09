@@ -304,7 +304,7 @@ else{
   win.setBounds(desktopBounds(settings.get("x"),settings.get("y")));
   applyStandaloneTopmost();
   if(!win.isVisible())win.showInactive();
-  win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+  if(settings.get("clickThrough"))win.setIgnoreMouseEvents(true,{forward:true});else win.setIgnoreMouseEvents(false);
   updateMenu();
  }
  function syncVisibility(){
@@ -314,7 +314,7 @@ else{
    if(win.isVisible())win.hide();
    return;
   }
-  if(process.platform!=='win32'){
+  if(process.platform!=='win32'&&process.platform!=='darwin'){
    hostArea=null;hostLayout=null;
    applyStandaloneTopmost();
    if(!win.isVisible())win.showInactive();
@@ -327,23 +327,29 @@ else{
    return;
   }
   const previousArea=hostArea;let state=foreground.state;
-  if(state.bounds)state={...state,bounds:screen.screenToDipRect(null,state.bounds)};
+  if(state.bounds)state={...state,bounds:process.platform==='win32'?screen.screenToDipRect(null,state.bounds):state.bounds};
   const placement=hostPlacement(state,settings.get("scale"),settings.get("hostOffsetX"),settings.get("hostOffsetY"),settings.get("hostDock"));
 
-  // Host unavailable (hidden/minimized/too small): never crash or force-hide.
+  // Host unavailable (hidden/minimized/too small/occluded/not in foreground): never crash or force-hide.
   // Standalone mode degrades gracefully to a free-floating desktop pet.
-  if(!placement){
+  if(!placement||state.widgetVisible===false||(state.kind!=="host"&&state.kind!=="self")){
    const wasFollowing=!!hostArea;
    hostArea=null;hostLayout=null;
-   if(settings.get("standaloneDesktopMode")){
+   if(settings.get("standaloneDesktopMode")&&!settings.get("hostWindowOnly")){
     if(wasFollowing||!win.isVisible())degradeToStandalone();
     publish();return;
    }
-   if(win.isVisible())win.hide();
+   if(win.isVisible()){
+    if(process.platform==='darwin')win.setAlwaysOnTop(false);
+    win.hide();
+   }
    return;
   }
 
-  // Host is available - native ForegroundHost.exe owns z-order (do NOT call win.setAlwaysOnTop(false) here!)
+  // Host is available
+  if(process.platform==='darwin'){
+   win.setAlwaysOnTop(true,"floating");
+  }
   if(dragPlacement){hostArea=state.bounds;return false;}
   hostArea=state.bounds;displayScale=placement.scale;artShift=placement.artShift;
   dockSide=Math.abs(placement.visualX-hostArea.x)<2?"left":Math.abs(placement.visualX+displayScale-hostArea.x-hostArea.width)<2?"right":"";
@@ -370,13 +376,12 @@ else{
  function show(){
   if(!win||win.isDestroyed())createWindow();
   if(settings.get("hostWindowOnly"))startForeground(win.getNativeWindowHandle());
-  if(!win.isVisible()){
+  if(!win.isVisible()&&!settings.get("hostWindowOnly")){
    win.show();
-   if(!settings.get("hostWindowOnly"))applyStandaloneTopmost();
-   else win.moveTop();
+   applyStandaloneTopmost();
   }
   syncVisibility();
-  win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+  if(settings.get("clickThrough"))win.setIgnoreMouseEvents(true,{forward:true});else win.setIgnoreMouseEvents(false);
  }
  function apply(partial){
   const allowed=["characterPack","scale","alwaysOnTop","reducedMotion","sound","volume","soundSet","bubbleOn","turnCostOn","turnCostDurationMs","clickThrough","bubblePage","manualQuota","manualPercent","manualWeeklyPercent","hostWindowOnly","standaloneDesktopMode","clickCatAction","easterEggs","ambientChatter","autoUpdateCheck","syncCharacter","syncWallpaper","syncInteraction","petDisplayMode","userHonorificMode","customHonorific"];
@@ -417,7 +422,7 @@ else{
     if(dockSide)dock(dockSide);
    }
    if(!settings.get("hostWindowOnly"))applyStandaloneTopmost();
-   win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+   if(settings.get("clickThrough"))win.setIgnoreMouseEvents(true,{forward:true});else win.setIgnoreMouseEvents(false);
    syncVisibility();
   }
   audio.setEnabled(settings.get("sound"));audio.setVolume(settings.get("volume"));audio.setPreset(settings.get("soundSet"));publish();updateMenu();return snapshot();
@@ -432,7 +437,7 @@ else{
   panel.on("closed",()=>panel=null);
  }
  function reset(){if(settings.get("hostWindowOnly")&&hostArea){settings.update({hostOffsetX:18,hostOffsetY:18,hostDock:""});syncVisibility();publish();return;}if(!win||win.isDestroyed())return;const pos=desktopBounds();artShift=0;dockSide="";win.setBounds(pos);settings.update({x:pos.x,y:pos.y});show();publish();}
- function recall(){show();win?.show();if(!settings.get("hostWindowOnly"))applyStandaloneTopmost();win?.moveTop();if(settings.get("hostWindowOnly")&&!win?.isVisible())openSettings();}
+ function recall(){show();if(win&&!win.isDestroyed()){win.show();if(process.platform==='darwin')win.setAlwaysOnTop(true,"floating");else if(!settings.get("hostWindowOnly"))applyStandaloneTopmost();win.moveTop();}syncVisibility();if(settings.get("hostWindowOnly")&&!win?.isVisible())openSettings();}
  function updateMenu(){
   if(!tray)return;
   const byokSnap=byokGateway?.getSnapshot();
@@ -467,6 +472,7 @@ else{
   {label:"停靠左下角",click:()=>dock("left")},{label:"停靠右下角",click:()=>dock("right")},{label:"重置位置",click:reset},{type:"separator"},{label:"退出 Catstella",click:()=>app.quit()}]));
  }
  function createWindow(){
+  if(process.platform==="darwin"&&app.dock)app.dock.hide();
   const pos=desktopBounds(settings.get("x"),settings.get("y"));
   facing=facingAt(pos.x+pos.width/2,screen.getDisplayMatching(pos).workArea,facing,0);
   win=new BrowserWindow({...pos,frame:false,transparent:true,hasShadow:false,resizable:false,skipTaskbar:true,alwaysOnTop:!settings.get("hostWindowOnly")&&settings.get("alwaysOnTop"),show:false,
@@ -567,12 +573,15 @@ else{
    const bounds=win.getBounds(),scale=displayScale||settings.get("scale");
    dragPlacement={bounds,scale,visualX:bounds.x+(bounds.width-scale)/2+artShift,artShift,dockSide,facing};
    win.setIgnoreMouseEvents(false);
+   if(process.platform==='darwin')win.setAlwaysOnTop(true,"floating");
    return;
   }
   const drag=dragPlacement;
   if(!drag||!["move","end","cancel"].includes(phase))return;
   if(phase==="cancel"){
-   dragPlacement=null;win.setBounds(drag.bounds);displayScale=drag.scale;artShift=drag.artShift;dockSide=drag.dockSide;facing=drag.facing;syncVisibility();win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});publish();return;
+   dragPlacement=null;win.setBounds(drag.bounds);displayScale=drag.scale;artShift=drag.artShift;dockSide=drag.dockSide;facing=drag.facing;syncVisibility();
+   if(settings.get("clickThrough"))win.setIgnoreMouseEvents(true,{forward:true});else win.setIgnoreMouseEvents(false);
+   publish();return;
   }
   if(!Number.isFinite(dx)||!Number.isFinite(dy)||Math.abs(dx)>100000||Math.abs(dy)>100000)return;
   const left=drag.visualX+dx,top=drag.bounds.y+dy;
@@ -585,7 +594,8 @@ else{
   win.setBounds(placement.bounds);
   if(phase==="end"){
    dragPlacement=null;
-   win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+   if(settings.get("clickThrough"))win.setIgnoreMouseEvents(true,{forward:true});else win.setIgnoreMouseEvents(false);
+   if(process.platform==='darwin')win.setAlwaysOnTop(true,"floating");
    try{
     if(hostArea)settings.update({hostOffsetX:placement.hostOffsetX,hostOffsetY:placement.hostOffsetY,hostDock:side});
     else settings.update({x:placement.bounds.x,y:placement.bounds.y});
@@ -608,7 +618,13 @@ else{
    return {total:headPatTotal,today:headPatToday};
   }
  });
- ipcMain.on("widget:hit",(e,interactive)=>{if(trusted(e)&&e.sender===win?.webContents&&!dragPlacement)win.setIgnoreMouseEvents(settings.get("clickThrough")||interactive!==true,{forward:true});});
+ ipcMain.on("widget:hit",(e,interactive)=>{
+  if(trusted(e)&&e.sender===win?.webContents&&!dragPlacement){
+   const ignore=settings.get("clickThrough")||interactive!==true;
+   if(ignore)win.setIgnoreMouseEvents(true,{forward:true});
+   else win.setIgnoreMouseEvents(false);
+  }
+ });
  ipcMain.handle("widget:audio",(e,type)=>trusted(e)&&["press","release"].includes(type)?audio.getAudioFile(type):null);
  quotaAdapter.on("change",()=>{syncQuotaState();publish();});
  byokGateway?.on("change",()=>{publish();updateMenu();});

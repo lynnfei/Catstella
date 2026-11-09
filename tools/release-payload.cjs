@@ -22,5 +22,18 @@ exports.default = ({ appOutDir, electronPlatformName, packager }) => {
     ? path.join(appOutDir, packager.appInfo.productFilename + '.app', 'Contents', 'Resources')
     : path.join(appOutDir, 'resources');
   stripByokUi(path.join(resources, 'app'));
+  if (electronPlatformName === 'darwin') {
+    const nativeDir = path.join(resources, 'app/Antigravity-Cat-Widget/src/native');
+    const swiftSrc = path.join(nativeDir, 'ForegroundHost-mac.swift');
+    const macBin = path.join(nativeDir, 'ForegroundHost-mac');
+    if (fs.existsSync(swiftSrc) && !fs.existsSync(macBin)) {
+      try {
+        const { execFileSync } = require('node:child_process');
+        execFileSync('swiftc', ['-O', swiftSrc, '-o', macBin], { stdio: 'inherit' });
+      } catch (e) {
+        console.warn('Failed to compile ForegroundHost-mac:', e);
+      }
+    }
+  }
 };
 exports.stripByokUi = stripByokUi;

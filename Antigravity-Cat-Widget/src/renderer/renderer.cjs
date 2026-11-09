@@ -310,12 +310,13 @@
  }
  motion.addEventListener("pointerdown",event=>{
   if(event.button!==0||!event.isPrimary||pointer)return;
+  hit=true;api.hit(true);
   const head=hitsHead(event);
   const sleeping=pet.rest==="sleeping";
   pointer={id:event.pointerId,startedAt:performance.now(),sleeping,head,x:event.clientX,y:event.clientY,
    screenX:event.screenX,screenY:event.screenY,distance:0,pressActive:!sleeping,dragging:false};
   pet.activity();
-  motion.setPointerCapture(event.pointerId);
+  try{motion.setPointerCapture(event.pointerId);}catch{}
   if(!sleeping){
    animatePress(true);
    api.pointer("down");
@@ -326,7 +327,7 @@
   if(!sleeping)play("press");
  });
  motion.addEventListener("pointerenter",()=>pet.activity());
- motion.addEventListener("pointermove",event=>{
+ function handlePointerMove(event){
   if(pointer?.id!==event.pointerId)return;
   pointer.distance=Math.max(pointer.distance,pointerDistance(event));
   if(pointer.distance>PetBehavior.tapSlop||pointer.dragging){
@@ -334,7 +335,9 @@
    if(!pointer.dragging){pointer.dragging=true;api.drag?.("start");}
    api.drag?.("move",event.screenX-pointer.screenX,event.screenY-pointer.screenY);
   }
- });
+ }
+ motion.addEventListener("pointermove",handlePointerMove);
+ window.addEventListener("pointermove",handlePointerMove);
  function release(cancel=false,event){
   if(!pointer||(event&&event.pointerId!==pointer.id))return;
   clearTimeout(tapTimer);tapTimer=null;
@@ -354,17 +357,19 @@
   }
  }
  motion.addEventListener("pointerup",event=>release(false,event));
+ window.addEventListener("pointerup",event=>release(false,event));
  motion.addEventListener("pointercancel",event=>release(true,event));
- motion.addEventListener("lostpointercapture",event=>release(true,event));
- window.addEventListener("blur",()=>release(true));
+ window.addEventListener("pointercancel",event=>release(true,event));
+ motion.addEventListener("lostpointercapture",event=>{if(pointer?.dragging||(event.buttons&&event.buttons&1))return;release(true,event);});
+ window.addEventListener("blur",()=>{if(pointer?.dragging)return;release(true);});
  motion.addEventListener("keydown",event=>{
   if(event.key!==" "&&event.key!=="Enter")return;
   event.preventDefault();
   if(event.repeat)return;
   if(!pet.activity(true)&&pet.rest==="awake")activate();
  });
- window.addEventListener("mousemove",e=>{const active=!!e.target.closest(".interactive");if(hit!==active){hit=active;api.hit(active);}});
- window.addEventListener("mouseleave",()=>{hit=false;api.hit(false);});
+ window.addEventListener("mousemove",e=>{if(pointer)return;const active=!!e.target.closest(".interactive");if(hit!==active){hit=active;api.hit(active);}});
+ window.addEventListener("mouseleave",()=>{if(pointer)return;hit=false;api.hit(false);});
 
   function reloadImages(){
     const ts=Date.now();

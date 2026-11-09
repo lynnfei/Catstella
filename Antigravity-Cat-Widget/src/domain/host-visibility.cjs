@@ -1,6 +1,16 @@
 const {EventEmitter}=require("node:events"),{spawn}=require("node:child_process"),path=require("node:path"),fs=require('node:fs'),crypto=require('node:crypto');
 function nativeHelperPath(){
  const dir=path.join(__dirname,'../native');
+ if(process.platform==='darwin'){
+  const bin=path.join(dir,'ForegroundHost-mac');
+  if(!fs.existsSync(bin)){
+   const src=path.join(dir,'ForegroundHost-mac.swift');
+   if(fs.existsSync(src)){
+    try{require('node:child_process').execFileSync('swiftc',['-O',src,'-o',bin],{stdio:'ignore'});}catch{}
+   }
+  }
+  return bin;
+ }
  try{const hash=crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'ForegroundHost.cs'))).digest('hex').slice(0,12);const versioned=path.join(dir,'ForegroundHost.'+hash+'.exe');if(fs.existsSync(versioned))return versioned;}catch{}
  return path.join(dir,'ForegroundHost.exe'); // Installers compile this canonical file from the same source.
 }
@@ -42,14 +52,16 @@ function facingAt(centerX,area,previous="right",deadZone=12){
 class ForegroundMonitor extends EventEmitter{
  constructor(){super();this.state={kind:"unknown",bounds:null};this.lastReport=0;}
  start(handle){
-  if (process.platform !== 'win32') {
-   // ForegroundHost.cs / .exe is Windows-only. On macOS / Linux, fall back to pure desktop pet mode.
+  if (process.platform !== 'win32' && process.platform !== 'darwin') {
+   // Linux falls back to pure desktop pet mode.
    return;
   }
   if(this.child&&Date.now()-this.lastReport>5000)this.stop();
   if(this.child)return;
   this.lastReport=Date.now();
-  const child=spawn(nativeHelperPath(),[String(process.pid),...(handle?[handle.readBigUInt64LE().toString()]:[])],{windowsHide:true,stdio:["pipe","pipe","ignore"]});this.child=child;this.bound=!!handle;
+  const helper=nativeHelperPath();
+  if(!fs.existsSync(helper))return;
+  const child=spawn(helper,[String(process.pid),...(handle?[handle.readBigUInt64LE().toString()]:[])],{windowsHide:true,stdio:["pipe","pipe","ignore"]});this.child=child;this.bound=!!handle;
   let pending="";
   child.stdout.on("data",chunk=>{
    if(this.child!==child)return;

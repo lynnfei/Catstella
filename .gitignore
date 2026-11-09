@@ -5,6 +5,7 @@ tools/vendor/
 evidence/
 tools/local-integration/
 *.exe
+ForegroundHost-mac
 *.lnk
 *.log
 .env*
