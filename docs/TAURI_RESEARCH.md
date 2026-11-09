@@ -207,16 +207,16 @@ Get-Content -LiteralPath (Join-Path $dir 'report.txt')
 
 ```powershell
 # 全量探针（冷启动变体：先设 WEBVIEW2_USER_DATA_FOLDER 指向全新临时目录）
-Set-Location D:\Catstella\prototypes	auri-window-spike
+Set-Location D:/Catstella/prototypes/tauri-window-spike
 cargo build --release --offline
-.	argetelease\catstella-window-spike.exe --probe-output=targetun-cold
-.	argetelease\catstella-window-spike.exe --probe-output=targetun-warm
+./target/release/catstella-window-spike.exe --probe-output=target/run-cold
+./target/release/catstella-window-spike.exe --probe-output=target/run-warm
 # 配置夹具（净化/原子写/旧版回读）
-.	argetelease\catstella-window-spike.exe --probe-fixture=..\..\evidence	auri-window-spike-2026-11-09ixture-old-config.json
+./target/release/catstella-window-spike.exe --probe-fixture=../../evidence/tauri-window-spike-2026-11-09/fixture-old-config.json
 # 跨进程持久化验证（第二阶段）
-.	argetelease\catstella-window-spike.exe --probe-verify-config=targetun-warm
+./target/release/catstella-window-spike.exe --probe-verify-config=target/run-warm
 # 真实扩展对接（隔离浏览器，需 web dist 已构建）
-node browser-checkridge-browser.cjs --out=targetridge-run
+node browser-check/bridge-browser.cjs --out=target/bridge-run
 ```
 
 ## 接续说明（2026-11-09 凌晨批次结束）
