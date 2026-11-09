@@ -137,17 +137,29 @@ fn load_config() -> &'static Mutex<std::collections::BTreeMap<String, serde_json
     })
 }
 
-fn cfg_write(key: &str, value: serde_json::Value) -> Result<(), String> {
+// 事务式写入：候选 map 成功落盘后才提交内存；锁跨读-改-写全程，
+// 任何一步失败内存与磁盘都保持原样（此前先改内存后写盘，失败会导致 get 与磁盘分裂）。
+fn cfg_merge_write(patch: &serde_json::Value) -> Result<serde_json::Value, String> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let patch_map = patch.as_object().ok_or_else(|| "patch must be a JSON object".to_string())?;
     let store = load_config();
     let mut map = store.lock().unwrap();
-    map.insert(key.to_string(), value);
+    let mut candidate = map.clone();
+    for (key, value) in patch_map {
+        candidate.insert(key.clone(), value.clone());
+    }
     // 原子写：临时文件 + rename（Windows 的 rename 带 MOVEFILE_REPLACE_EXISTING 语义）。
     let temp = dir.join(".settings.tmp");
-    let bytes = serde_json::to_vec_pretty(&*map).map_err(|error| error.to_string())?;
+    let bytes = serde_json::to_vec_pretty(&candidate).map_err(|error| error.to_string())?;
     std::fs::write(&temp, bytes).map_err(|error| error.to_string())?;
-    std::fs::rename(&temp, config_file()).map_err(|error| error.to_string())
+    std::fs::rename(&temp, config_file()).map_err(|error| error.to_string())?;
+    *map = candidate.clone();
+    Ok(serde_json::Value::Object(candidate.into_iter().collect()))
+}
+
+fn cfg_write(key: &str, value: serde_json::Value) -> Result<(), String> {
+    cfg_merge_write(&serde_json::json!({ key: value })).map(|_| ())
 }
 
 fn cfg_read(key: &str) -> Option<serde_json::Value> {
@@ -507,16 +519,19 @@ fn widget_ready(window: WebviewWindow, app: tauri::AppHandle) -> Result<serde_js
 #[tauri::command]
 fn widget_save(window: WebviewWindow, app: tauri::AppHandle, patch: serde_json::Value) -> Result<serde_json::Value, String> {
     require_window(&window, "settings")?;
-    let mut merged = match cfg_read("widgetSettings") {
-        Some(serde_json::Value::Object(map)) => map,
-        _ => serde_json::Map::new(),
-    };
-    if let Some(patch_map) = patch.as_object() {
-        for (key, value) in patch_map {
-            merged.insert(key.clone(), value.clone());
-        }
+    // 非对象 patch 明确拒绝（此前是成功 no-op）；失败路径不 emit、也不记成功日志。
+    if !patch.is_object() {
+        widget_log(&format!("{} save rejected error=patch must be a JSON object", now_ms()));
+        return Err("patch must be a JSON object".to_string());
     }
-    cfg_write("widgetSettings", serde_json::Value::Object(merged))?;
+    let nested = serde_json::json!({ "widgetSettings": patch });
+    let merged = match cfg_merge_write(&nested) {
+        Ok(value) => value,
+        Err(error) => {
+            widget_log(&format!("{} save rejected error={}", now_ms(), error));
+            return Err(error);
+        }
+    };
     let snapshot = widget_snapshot();
     let _ = app.emit("widget://snapshot", snapshot.clone());
     widget_log(&format!("{} save accepted tint={}", now_ms(), snapshot["settings"]["bubbleTint"]));
@@ -2291,6 +2306,83 @@ fn main() {
     let probe_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-output=").map(PathBuf::from));
     let verify_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-verify-config=").map(PathBuf::from));
     let bridge_only = std::env::args().find_map(|arg| arg.strip_prefix("--bridge-only=").map(PathBuf::from));
+    let txn_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-txn=").map(PathBuf::from));
+    if let Some(out) = txn_arg {
+        // 配置事务验证：失败后内存/磁盘一致、并发多键无丢失、非对象 patch 明确拒绝。
+        let _ = std::fs::create_dir_all(&out);
+        let mut report = String::new();
+        let mut pass = true;
+        macro_rules! check {
+            ($name:expr, $ok:expr) => {{
+                let ok: bool = $ok;
+                report.push_str(&format!("{}={}\n", $name, ok));
+                if !ok {
+                    pass = false;
+                }
+            }};
+        }
+        let dir = config_dir();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // 1) 失败注入：temp 不可写 → Err → 内存与磁盘均保持旧值。
+        check!("seed_v1", cfg_write("txn", serde_json::json!("v1")).is_ok());
+        let _ = std::fs::remove_file(dir.join(".settings.tmp"));
+        check!("temp_dir_created", std::fs::create_dir(dir.join(".settings.tmp")).is_ok());
+        let failed = cfg_write("txn", serde_json::json!("v2")).is_err();
+        check!("write_v2_failed", failed);
+        let mem_value = cfg_read("txn");
+        check!("memory_still_v1", mem_value == Some(serde_json::json!("v1")));
+        let disk_value: Option<serde_json::Value> = std::fs::read(config_file())
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .and_then(|value: serde_json::Value| value.get("txn").cloned());
+        check!("disk_still_v1", disk_value == Some(serde_json::json!("v1")));
+        let _ = std::fs::remove_dir(dir.join(".settings.tmp"));
+
+        // 2) 并发多键：10 线程同时写不同键（真实并发，非间隔），全部保留。
+        let mut handles = Vec::new();
+        for index in 0..10u32 {
+            handles.push(std::thread::spawn(move || {
+                let key = format!("txn_key_{index}");
+                let value = serde_json::json!(format!("value-from-thread-{index}"));
+                cfg_write(&key, value)
+            }));
+        }
+        let mut concurrent_all_ok = true;
+        for handle in handles {
+            if handle.join().map(|result| result.is_err()).unwrap_or(true) {
+                concurrent_all_ok = false;
+            }
+        }
+        check!("concurrent_writes_ok", concurrent_all_ok);
+        let disk: serde_json::Value = std::fs::read(config_file())
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or(serde_json::json!({}));
+        let mut all_keys_kept = true;
+        for index in 0..10u32 {
+            let key = format!("txn_key_{index}");
+            let expected = serde_json::json!(format!("value-from-thread-{index}"));
+            if disk.get(&key) != Some(&expected) || cfg_read(&key) != Some(expected) {
+                all_keys_kept = false;
+            }
+        }
+        check!("concurrent_keys_kept_mem_and_disk", all_keys_kept);
+
+        // 3) 非对象 patch：cfg 层明确拒绝且状态不变。
+        let before = cfg_read("txn");
+        let rejected = cfg_merge_write(&serde_json::json!("not-an-object")).is_err();
+        check!("non_object_patch_rejected", rejected);
+        check!("state_unchanged_after_reject", cfg_read("txn") == before);
+
+        // 4) widget_save 的失败路径不 emit：Err 在 emit 之前返回（代码序），此处验证失败可从 cfg 层传播。
+        check!("merge_err_propagates", cfg_merge_write(&serde_json::json!("x")).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        report.push_str(&format!("txn_pass={pass}\n"));
+        let _ = std::fs::write(out.join("txn-report.txt"), report);
+        std::process::exit(if pass { 0 } else { 1 });
+    }
     let fixture_arg = std::env::args().find_map(|arg| arg.strip_prefix("--probe-fixture=").map(PathBuf::from));
     if let Some(fixture_path) = fixture_arg {
         // 配置夹具验证：净化语义、未知字段保留、原子写失败不丢旧配置、旧版回读。

@@ -219,6 +219,19 @@ cargo build --release --offline
 node browser-check/bridge-browser.cjs --out=target/bridge-run
 ```
 
+### 第十一轮（同日晨）：配置事务一致性修复（真实缺陷）
+
+用户评审发现的真实缺陷：`cfg_write` 先 `map.insert` 再落盘，写盘失败返回 Err 但内存已更新——get 与磁盘状态分裂，且既有"失败不破坏"验证只覆盖旧文件、未覆盖内存侧。修复与验证：
+
+| 项 | 结果 | 说明 |
+| --- | --- | --- |
+| 事务式写入 | 修复并验证 | 候选 map 成功落盘（temp+rename）后才提交内存；任何一步失败内存/磁盘均原样。注入 temp 写失败：`memory_still_v1=true` + `disk_still_v1=true` |
+| widget_save 事务范围 | 修复并验证 | read→merge→write 收进同一把锁（`cfg_merge_write`）；**真实并发** 10 线程同时写不同键（无间隔）全部保留（内存+磁盘核对一致），不再是 150ms 间隔的伪并发 |
+| 非对象 patch | 修复并验证 | 此前成功 no-op；现明确 reject（`patch must be a JSON object`），拒绝后状态不变；失败路径不 emit、不记成功日志（Err 在 emit 之前返回） |
+| 验证模式 | 新增 `--probe-txn=<目录>` | 独立可复现：失败注入/并发多键/非对象拒绝三项断言（txn-report.txt），未跑 30 轮（本修复不触及窗口/命中路径） |
+
+**验证边界如实说明**：非对象拒绝在 cfg 层（`cfg_merge_write`）以同表达式验证；`widget_save` 的 is_object 分支为同一检查的前置重复，未经真实 IPC 窗口调用（需窗口上下文），标注为代码序审查 + cfg 层等效覆盖。
+
 ## 接续说明（2026-11-09 凌晨批次结束）
 
 本夜完成窗口门槛全部本机可测项与数据门槛（第一～五轮，连续全绿，证据在 `evidence/tauri-window-spike-2026-11-09/`）。下一批建议顺序：
