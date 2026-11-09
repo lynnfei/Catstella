@@ -226,11 +226,19 @@ node browser-check/bridge-browser.cjs --out=target/bridge-run
 | 项 | 结果 | 说明 |
 | --- | --- | --- |
 | 事务式写入 | 修复并验证 | 候选 map 成功落盘（temp+rename）后才提交内存；任何一步失败内存/磁盘均原样。注入 temp 写失败：`memory_still_v1=true` + `disk_still_v1=true` |
-| widget_save 事务范围 | 修复并验证 | read→merge→write 收进同一把锁（`cfg_merge_write`）；**真实并发** 10 线程同时写不同键（无间隔）全部保留（内存+磁盘核对一致），不再是 150ms 间隔的伪并发 |
+| 顶层配置事务范围 | 顶层已验证，子对象结论撤回 | 此轮 **10 线程仅测试 `cfg_write` 的顶层不同键**，没有覆盖 `widgetSettings` 子字段；`4bfce2e` 的 `widget_save` 包装后仍是整体替换子对象，会丢旧字段，不能据此声称该入口并发保存已正确 |
 | 非对象 patch | 修复并验证 | 此前成功 no-op；现明确 reject（`patch must be a JSON object`），拒绝后状态不变；失败路径不 emit、不记成功日志（Err 在 emit 之前返回） |
 | 验证模式 | 新增 `--probe-txn=<目录>` | 独立可复现：失败注入/并发多键/非对象拒绝三项断言（txn-report.txt），未跑 30 轮（本修复不触及窗口/命中路径） |
 
 **验证边界如实说明**：非对象拒绝在 cfg 层（`cfg_merge_write`）以同表达式验证；`widget_save` 的 is_object 分支为同一检查的前置重复，未经真实 IPC 窗口调用（需窗口上下文），标注为代码序审查 + cfg 层等效覆盖。
+
+### 第十二轮（08:55 接手）：widgetSettings 部分保存回归
+
+只修配置子字段事务，不跑全量 30 轮。`widget_save` 现直接调用 `cfg_widget_merge_write`，该 helper 在同一锁内读取旧 `widgetSettings`、合并 patch 字段、写候选整表，成功后才提交内存；通用 `cfg_write` 保留键值整体替换语义。非对象 patch 在 helper 内也明确拒绝。
+
+窄验证扩展 `--probe-txn`：保存未修改字段、Barrier 同步启动的 10 线程写同一子对象的不同字段、temp 写失败后内存整表和磁盘字节均不变、非法 patch 拒绝且不变、其他 `cfg_write` 键仍整体替换。本次不声称真实 IPC 窗口与拖动回归通过，命令入口直接调用的是 `widget_save` 同一个保存 helper。
+
+**08:57 实测结果**：离线 release 编译成功；新二进制运行 `--probe-txn` 返回 0，`txn_pass=true`。包括 `widget_old_field_kept`、`widget_concurrent_fields_kept_mem_and_disk`、失败/拒绝后的内存与磁盘整表不变、`other_cfg_write_replaces` 全部为 true。证据独立保存在 [txn-widget-merge-0857/txn-report.txt](../evidence/tauri-window-spike-2026-11-09/txn-widget-merge-0857/txn-report.txt)，未覆盖上一轮报告。窄探针已退出，隔离配置目录由探针清理；未启动 WebView2 窗口，也未执行全量 30 轮。
 
 ## 接续说明（2026-11-09 凌晨批次结束）
 

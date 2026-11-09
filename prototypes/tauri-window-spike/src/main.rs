@@ -140,14 +140,26 @@ fn load_config() -> &'static Mutex<std::collections::BTreeMap<String, serde_json
 // 事务式写入：候选 map 成功落盘后才提交内存；锁跨读-改-写全程，
 // 任何一步失败内存与磁盘都保持原样（此前先改内存后写盘，失败会导致 get 与磁盘分裂）。
 fn cfg_merge_write(patch: &serde_json::Value) -> Result<serde_json::Value, String> {
+    cfg_merge_at(patch, None)
+}
+
+fn cfg_widget_merge_write(patch: &serde_json::Value) -> Result<serde_json::Value, String> {
+    cfg_merge_at(patch, Some("widgetSettings"))
+}
+
+fn cfg_merge_at(patch: &serde_json::Value, object_key: Option<&str>) -> Result<serde_json::Value, String> {
+    let patch_map = patch.as_object().ok_or_else(|| "patch must be a JSON object".to_string())?;
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let patch_map = patch.as_object().ok_or_else(|| "patch must be a JSON object".to_string())?;
     let store = load_config();
     let mut map = store.lock().unwrap();
     let mut candidate = map.clone();
-    for (key, value) in patch_map {
-        candidate.insert(key.clone(), value.clone());
+    if let Some(key) = object_key {
+        let mut nested = candidate.get(key).and_then(|value| value.as_object()).cloned().unwrap_or_default();
+        for (field, value) in patch_map { nested.insert(field.clone(), value.clone()); }
+        candidate.insert(key.to_string(), serde_json::Value::Object(nested));
+    } else {
+        for (key, value) in patch_map { candidate.insert(key.clone(), value.clone()); }
     }
     // 原子写：临时文件 + rename（Windows 的 rename 带 MOVEFILE_REPLACE_EXISTING 语义）。
     let temp = dir.join(".settings.tmp");
@@ -524,14 +536,10 @@ fn widget_save(window: WebviewWindow, app: tauri::AppHandle, patch: serde_json::
         widget_log(&format!("{} save rejected error=patch must be a JSON object", now_ms()));
         return Err("patch must be a JSON object".to_string());
     }
-    let nested = serde_json::json!({ "widgetSettings": patch });
-    let merged = match cfg_merge_write(&nested) {
-        Ok(value) => value,
-        Err(error) => {
-            widget_log(&format!("{} save rejected error={}", now_ms(), error));
-            return Err(error);
-        }
-    };
+    if let Err(error) = cfg_widget_merge_write(&patch) {
+        widget_log(&format!("{} save rejected error={}", now_ms(), error));
+        return Err(error);
+    }
     let snapshot = widget_snapshot();
     let _ = app.emit("widget://snapshot", snapshot.clone());
     widget_log(&format!("{} save accepted tint={}", now_ms(), snapshot["settings"]["bubbleTint"]));
@@ -2375,8 +2383,38 @@ fn main() {
         check!("non_object_patch_rejected", rejected);
         check!("state_unchanged_after_reject", cfg_read("txn") == before);
 
-        // 4) widget_save 的失败路径不 emit：Err 在 emit 之前返回（代码序），此处验证失败可从 cfg 层传播。
-        check!("merge_err_propagates", cfg_merge_write(&serde_json::json!("x")).is_err());
+        // 4) Exercise the same nested helper called by widget_save, not merely top-level cfg_write.
+        check!("widget_seed", cfg_widget_merge_write(&serde_json::json!({"bubbleTint":"#123456","bubbleOpacity":78})).is_ok());
+        check!("widget_partial_save", cfg_widget_merge_write(&serde_json::json!({"bubbleOpacity":62})).is_ok());
+        check!("widget_old_field_kept", cfg_read("widgetSettings").map(|v| v["bubbleTint"] == "#123456" && v["bubbleOpacity"] == 62).unwrap_or(false));
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(10));
+        let mut handles = Vec::new();
+        for index in 0..10u32 {
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                cfg_widget_merge_write(&serde_json::json!({format!("field_{index}"): index}))
+            }));
+        }
+        check!("widget_concurrent_writes_ok", handles.into_iter().all(|h| h.join().map(|v| v.is_ok()).unwrap_or(false)));
+        let disk_before = std::fs::read(config_file()).unwrap();
+        let disk: serde_json::Value = serde_json::from_slice(&disk_before).unwrap();
+        let memory_before = load_config().lock().unwrap().clone();
+        check!("widget_concurrent_fields_kept_mem_and_disk", (0..10u32).all(|i| {
+            let key = format!("field_{i}");
+            disk["widgetSettings"][&key] == i && memory_before["widgetSettings"][&key] == i
+        }) && memory_before["widgetSettings"]["bubbleTint"] == "#123456");
+        check!("widget_failure_temp_created", std::fs::create_dir(dir.join(".settings.tmp")).is_ok());
+        check!("widget_write_failed", cfg_widget_merge_write(&serde_json::json!({"bubbleTint":"#ffffff"})).is_err());
+        check!("widget_failed_memory_unchanged", *load_config().lock().unwrap() == memory_before);
+        check!("widget_failed_disk_unchanged", std::fs::read(config_file()).unwrap() == disk_before);
+        let _ = std::fs::remove_dir(dir.join(".settings.tmp"));
+        check!("widget_non_object_rejected", cfg_widget_merge_write(&serde_json::json!([1,2])).is_err());
+        check!("widget_rejected_memory_unchanged", *load_config().lock().unwrap() == memory_before);
+        check!("widget_rejected_disk_unchanged", std::fs::read(config_file()).unwrap() == disk_before);
+        check!("other_cfg_write_replaces", cfg_write("replacement", serde_json::json!({"a":1,"b":2})).is_ok()
+            && cfg_write("replacement", serde_json::json!({"b":3})).is_ok()
+            && cfg_read("replacement") == Some(serde_json::json!({"b":3})));
 
         let _ = std::fs::remove_dir_all(&dir);
         report.push_str(&format!("txn_pass={pass}\n"));
