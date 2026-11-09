@@ -36,4 +36,29 @@ document.querySelector('#follow').addEventListener('click', () => {
   void command('follow_host');
 });
 document.querySelector('#unfollow').addEventListener('click', () => void command('stop_follow'));
+document.querySelector('#settings').addEventListener('click', () => {
+  status.textContent = '打开设置实验窗…';
+  void window.widgetApi.command('settings');
+});
 document.querySelector('#exit').addEventListener('click', () => void command('exit_spike'));
+
+// widgetApi 绑定层：快照订阅（跨窗口同步可见生效）+ 权限自检（save 应被拒）。
+(async () => {
+  const api = window.widgetApi;
+  if (!api) return;
+  const syncLog = line => void window.__TAURI__.core.invoke('widget_sync_log', { line });
+  await api.ready();
+  await api.subscribe(snap => {
+    const tint = snap?.settings?.bubbleTint;
+    if (tint) document.documentElement.style.setProperty('--bubble-tint', tint);
+    void syncLog('pet applied tint=' + (tint || 'default'));
+  });
+  await api.onNavigate(page => {
+    status.textContent = '收到导航命令: ' + page;
+    void syncLog('pet navigate ' + page);
+  });
+  const results = {};
+  try { await api.get(); results.get = 'allowed'; } catch { results.get = 'rejected'; }
+  try { await api.save({ probe: true }); results.save = 'allowed'; } catch (error) { results.save = 'rejected: ' + error; }
+  void syncLog('permtest pet get=' + results.get + ' save=' + results.save);
+})();

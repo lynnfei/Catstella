@@ -30,3 +30,6 @@ body { margin: 0; width: 340px; height: 420px; background: transparent; overflow
 
 /* 配置按钮：固定绝对位置（逻辑 128,106 尺寸 96x28），探针按中心 (176,120) 点击。 */
 .cfg-fixed { position: absolute; left: 128px; top: 106px; width: 96px; height: 28px; z-index: 2; }
+
+/* 设置按钮：固定绝对位置（逻辑 232,106 尺寸 84x28），探针按中心 (274,120) 点击。 */
+.settings-fixed { position: absolute; left: 232px; top: 106px; width: 84px; height: 28px; z-index: 2; }

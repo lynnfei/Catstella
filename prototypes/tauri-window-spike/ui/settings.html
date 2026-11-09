@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>Catstella · 设置实验</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { width: 420px; height: 520px; margin: 0; box-sizing: border-box; padding: 16px;
+    background: #f4effc; color: #43305e; font: 13px/1.6 system-ui, sans-serif; overflow: hidden; }
+  h1 { font-size: 15px; margin: 0 0 6px; }
+  .status { min-height: 22px; margin: 6px 0 10px; color: #7a6a92; }
+  .row { margin: 10px 0; display: flex; align-items: center; gap: 10px; }
+  .row button { flex: none; }
+  #apply { position: absolute; left: 20px; top: 80px; width: 120px; height: 30px; }
+  #catalog { margin-top: 14px; border: 1px dashed #cfc0ea; border-radius: 8px; padding: 8px; min-height: 60px; }
+  #catalog div { padding: 2px 0; }
+  .hint { color: #9a8cb2; font-size: 11px; }
+</style>
+<main>
+  <h1>设置实验窗（settings 窗口）</h1>
+  <div class="status" id="status">等待 widgetApi 同步…</div>
+  <button type="button" id="apply">保存并同步双端</button>
+  <div class="row"><label for="tint">气泡颜色</label><input type="color" id="tint" value="#eee6ff" aria-label="气泡颜色"></div>
+  <div class="hint">保存走 widgetApi.save（本窗口授权）；pet 窗口调用同一接口会被拒绝——两侧结果都写入 widget-sync.log。</div>
+  <div id="catalog" aria-label="只读目录">目录加载中…</div>
+</main>
+<script src="widget-api.js"></script>
+<script src="settings.js"></script>
+</html>

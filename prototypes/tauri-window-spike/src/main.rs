@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicIsize, AtomicU32, Ordering}
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
-use tauri::{Manager, WebviewWindow};
+use tauri::{Emitter, Manager, WebviewWindow};
 
 // ---- 窗口分区（逻辑 px，须与 ui/style.css 一致）----
 const WIN_W: f64 = 340.0;
@@ -455,6 +455,119 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+static WIDGET_LOG: OnceLock<PathBuf> = OnceLock::new();
+
+fn widget_log(line: &str) {
+    if let Some(path) = WIDGET_LOG.get() {
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            use std::io::Write as _;
+            let _ = writeln!(file, "{line}");
+            let _ = file.flush();
+        }
+    }
+}
+
+fn widget_snapshot() -> serde_json::Value {
+    let stored = cfg_read("widgetSettings").unwrap_or(serde_json::json!({}));
+    serde_json::json!({
+        "ts": now_ms(),
+        "source": "tauri-spike",
+        "pet": {"kind": "tauri-spike"},
+        "settings": stored
+    })
+}
+
+// 窗口权限：widgetApi.save 是双端设置面，仅 settings 窗口可写；pet 调用被拒（真实 label guard，实测验证）。
+fn require_window(window: &WebviewWindow, allowed: &str) -> Result<(), String> {
+    if window.label() == allowed {
+        Ok(())
+    } else {
+        Err(format!(
+            "window-not-allowed: window '{}' cannot call this command (requires '{}')",
+            window.label(),
+            allowed
+        ))
+    }
+}
+
+#[tauri::command]
+fn widget_get() -> Result<serde_json::Value, String> {
+    Ok(widget_snapshot())
+}
+
+#[tauri::command]
+fn widget_ready(window: WebviewWindow, app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let snapshot = widget_snapshot();
+    let _ = app.emit_to(window.label().to_string(), "widget://snapshot", snapshot.clone());
+    Ok(snapshot)
+}
+
+#[tauri::command]
+fn widget_save(window: WebviewWindow, app: tauri::AppHandle, patch: serde_json::Value) -> Result<serde_json::Value, String> {
+    require_window(&window, "settings")?;
+    let mut merged = match cfg_read("widgetSettings") {
+        Some(serde_json::Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    if let Some(patch_map) = patch.as_object() {
+        for (key, value) in patch_map {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    cfg_write("widgetSettings", serde_json::Value::Object(merged))?;
+    let snapshot = widget_snapshot();
+    let _ = app.emit("widget://snapshot", snapshot.clone());
+    widget_log(&format!("{} save accepted tint={}", now_ms(), snapshot["settings"]["bubbleTint"]));
+    Ok(snapshot)
+}
+
+#[tauri::command]
+fn widget_command(window: WebviewWindow, app: tauri::AppHandle, action: String) -> Result<(), String> {
+    let _ = &window;
+    if action == "settings" {
+        if let Some(settings) = app.get_webview_window("settings") {
+            let anchor = app
+                .get_webview_window("pet")
+                .and_then(|pet| pet.outer_position().ok())
+                .unwrap_or(tauri::PhysicalPosition::new(200, 200));
+            // 摆到桌宠正下方的空档：不与底板（pet-15 起高 465）和宿主（pet.right+80 起）重叠。
+            let _ = settings.set_position(tauri::PhysicalPosition::new(anchor.x, anchor.y + 690));
+            let _ = settings.show();
+            let _ = settings.set_focus();
+        }
+        return Ok(());
+    }
+    if let Some(page) = action.strip_prefix("navigate:") {
+        let _ = app.emit("widget://navigate", page.to_string());
+        return Ok(());
+    }
+    Err(format!("unknown widget command: {action}"))
+}
+
+// 只读 online 面：catalog 返回内置最小清单；任何变更动作显式 unsupported，不假成功。
+#[tauri::command]
+fn widget_online(action: String) -> Result<serde_json::Value, String> {
+    match action.as_str() {
+        "catalog" => Ok(serde_json::json!({
+            "ok": true,
+            "items": [
+                {"id": "gemini-star-v1", "kind": "character", "name": "星语", "description": "实验内置条目", "preview": "/assets/idle.png"},
+                {"id": "lin-cat", "kind": "character", "name": "霓音", "description": "实验内置条目", "preview": ""}
+            ]
+        })),
+        "download" | "install" | "uninstall" | "source" | "preview-theme" => Err(format!(
+            "unsupported_in_spike: online.{action} is read-only in the experiment"
+        )),
+        _ => Err(format!("unknown online action: {action}")),
+    }
+}
+
+#[tauri::command]
+fn widget_sync_log(line: String) -> Result<(), String> {
+    widget_log(&format!("{} page: {line}", now_ms()));
+    Ok(())
 }
 
 #[tauri::command]
@@ -1176,6 +1289,61 @@ mod probe {
         Some((status, head, body))
     }
 
+    // 进程树工作集：spike 主进程 + 全部子进程（WebView2 的 msedgewebview2.exe 是独立进程）。
+    unsafe fn process_tree_ws(root: u32) -> (u64, u32, Vec<(String, u32, u64)>) {
+        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS, PROCESSENTRY32W,
+        };
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == -1isize as HWND || snapshot.is_null() {
+            return (0, 0, Vec::new());
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut procs: Vec<(u32, u32, String)> = Vec::new();
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                let name = String::from_utf16_lossy(
+                    &entry.szExeFile[..entry.szExeFile.iter().position(|c| *c == 0).unwrap_or(0)],
+                );
+                procs.push((entry.th32ProcessID, entry.th32ParentProcessID, name));
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        windows_sys::Win32::Foundation::CloseHandle(snapshot);
+        let mut tree: Vec<(String, u32, u64)> = Vec::new();
+        let mut queue = vec![root];
+        let mut seen = std::collections::BTreeSet::new();
+        seen.insert(root);
+        while let Some(pid) = queue.pop() {
+            for (process_id, parent, name) in &procs {
+                if *parent == pid && seen.insert(*process_id) {
+                    queue.push(*process_id);
+                }
+            }
+        }
+        for (process_id, _, name) in &procs {
+            if !seen.contains(process_id) {
+                continue;
+            }
+            let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, *process_id);
+            if handle.is_null() {
+                continue;
+            }
+            let mut counters: PROCESS_MEMORY_COUNTERS_EX = std::mem::zeroed();
+            counters.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+            if GetProcessMemoryInfo(handle, &mut counters as *mut _ as *mut _, counters.cb) != 0 {
+                tree.push((name.clone(), *process_id, (counters.WorkingSetSize / 1024) as u64));
+            }
+            windows_sys::Win32::Foundation::CloseHandle(handle);
+        }
+        let total = tree.iter().map(|entry| entry.2).sum();
+        let webview_children = tree.iter().filter(|(name, _, _)| name.to_ascii_lowercase().contains("msedgewebview2")).count() as u32;
+        (total, webview_children, tree)
+    }
+
     fn count_clicks(path: &PathBuf) -> usize {
         std::fs::read_to_string(path)
             .map(|content| content.lines().filter(|line| line.starts_with("click ")).count())
@@ -1266,6 +1434,11 @@ mod probe {
             report.kv("mem_idle_ws_kb", mem_idle.map(|m| m.0).unwrap_or(0));
             report.kv("mem_idle_private_kb", mem_idle.map(|m| m.1).unwrap_or(0));
             report.kv("threads_idle", thread_count(pet_pid));
+            // 之前报告的 ~31MB 仅为主进程；这里补整棵进程树（含 WebView2 子进程）。
+            let (tree_idle_ws, tree_idle_webview, _) = process_tree_ws(pet_pid);
+            report.kv("tree_idle_ws_kb", tree_idle_ws);
+            report.kv("tree_idle_webview_children", tree_idle_webview);
+            report.kv("tree_note", "此前 mem_idle_ws_kb=主进程口径；tree_*=含 WebView2 子进程");
             let cpu_idle = cpu_percent(pet_pid, Duration::from_millis(1500));
             report.kv("cpu_idle_percent", cpu_idle.map(|v| format!("{v:.1}")).unwrap_or_default());
 
@@ -1498,6 +1671,73 @@ mod probe {
             report.kv("capture_kept", drag_ok);
             passed &= drag_ok;
             thread::sleep(Duration::from_millis(300));
+
+            // ---- 批次 W：widgetApi 绑定层（跨窗口同步 + 窗口权限拒判）----
+            report.section("W widgetApi 跨窗口同步与权限");
+            let widget_log_path = out_dir.join("widget-sync.log");
+            // pet 页加载即完成 ready/subscribe/permtest——等自检结果落日志。
+            let mut perm_ok = false;
+            for _ in 0..20 {
+                thread::sleep(Duration::from_millis(250));
+                let text = std::fs::read_to_string(&widget_log_path).unwrap_or_default();
+                if text.contains("permtest pet get=allowed save=rejected") {
+                    perm_ok = true;
+                    break;
+                }
+            }
+            report.kv("pet_save_rejected_by_guard", perm_ok);
+            passed &= perm_ok;
+            // 点击「打开设置」→ settings 窗口显示并摆位。
+            click_at(zone_point(&pet_rect0, (274.0, 120.0)));
+            let settings_title_wide: Vec<u16> = "Catstella · 设置实验".encode_utf16().chain(std::iter::once(0)).collect();
+            let tauri_class_wide: Vec<u16> = "Tauri Window".encode_utf16().chain(std::iter::once(0)).collect();
+            let mut settings_hwnd = std::ptr::null_mut();
+            for _ in 0..20 {
+                settings_hwnd = FindWindowW(tauri_class_wide.as_ptr(), settings_title_wide.as_ptr());
+                if !settings_hwnd.is_null() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(150));
+            }
+            let settings_found = !settings_hwnd.is_null();
+            report.kv("settings_window_found", settings_found);
+            passed &= settings_found;
+            if settings_found {
+                thread::sleep(Duration::from_millis(700));
+                // 点击 settings 页「保存并同步双端」：无装饰窗口，客户区=窗口原点；按钮中心 (80,95) 逻辑。
+                let mut sw = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                GetWindowRect(settings_hwnd, &mut sw);
+                let save_point = POINT {
+                    x: sw.left + (80.0 * scale).round() as i32,
+                    y: sw.top + (95.0 * scale).round() as i32,
+                };
+                let before_lines = std::fs::read_to_string(&widget_log_path).unwrap_or_default().lines().count();
+                click_at(save_point);
+                let mut sync_ok = false;
+                for _ in 0..20 {
+                    thread::sleep(Duration::from_millis(250));
+                    let text = std::fs::read_to_string(&widget_log_path).unwrap_or_default();
+                    if text.contains("pet applied tint=#eee6ff") {
+                        sync_ok = true;
+                        break;
+                    }
+                }
+                let lines_now = std::fs::read_to_string(&widget_log_path).unwrap_or_default().lines().count();
+                report.kv("cross_window_sync", sync_ok);
+                report.kv("widget_log_lines", format!("{before_lines}->{lines_now}"));
+                passed &= sync_ok;
+                // settings 页的只读 catalog。
+                let catalog_ok = std::fs::read_to_string(&widget_log_path)
+                    .unwrap_or_default()
+                    .contains("catalog items=2");
+                report.kv("online_catalog_readonly", catalog_ok);
+                passed &= catalog_ok;
+                // 未知动作不假成功。
+                let catalog_bad = std::fs::read_to_string(&widget_log_path)
+                    .unwrap_or_default()
+                    .contains("catalog items=");
+                let _ = catalog_bad;
+            }
 
             // ---- 批次 F：真实 ForegroundHost 辅助进程（参数化副本）----
             report.section("F ForegroundHost 辅助进程绑定独立宿主");
@@ -1900,6 +2140,10 @@ mod probe {
             }
             report.kv("threads_before_cycles", threads_before_cycles);
             report.kv("threads_after_cycles", thread_count(pet_pid));
+            let (tree_follow_ws, tree_follow_webview, _) = process_tree_ws(pet_pid);
+            report.kv("tree_follow_ws_kb", tree_follow_ws);
+            report.kv("tree_follow_webview_children", tree_follow_webview);
+            report.kv("tree_delta_cycles_kb", tree_follow_ws as i64 - tree_idle_ws as i64);
             spike.current_follow_stop().store(true, Ordering::Relaxed);
             thread::sleep(Duration::from_millis(300));
 
@@ -2115,6 +2359,7 @@ fn main() {
     }
     if let Some(out_dir) = &probe_arg {
         let _ = PING_LOG.set(out_dir.join("bubble-pings.log"));
+        let _ = WIDGET_LOG.set(out_dir.join("widget-sync.log"));
     }
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -2123,6 +2368,12 @@ fn main() {
             exit_spike,
             bubble_ping,
             cfg_experiment,
+            widget_get,
+            widget_ready,
+            widget_save,
+            widget_command,
+            widget_online,
+            widget_sync_log,
             open_host,
             follow_host,
             stop_follow
@@ -2153,9 +2404,15 @@ fn main() {
                     report.push_str(&format!("spikePhase={phase:?}\n"));
                     report.push_str(&format!("bubbleTint={tint:?}\n"));
                     report.push_str(&format!("nested={nested:?}\n"));
+                    // widgetApi.save 的跨窗口设置也要跨进程持久化（phase 1 的 settings 窗口保存）。
+                    let widget_tint = cfg_read("widgetSettings")
+                        .and_then(|value| value.get("bubbleTint").cloned());
+                    report.push_str(&format!("widgetSettings.bubbleTint={widget_tint:?}
+"));
                     let pass = phase == Some(serde_json::json!(1))
                         && tint == Some(serde_json::json!("#aabbcc"))
-                        && nested == Some(serde_json::json!({"opacity": 88, "tags": ["a", "b"]}));
+                        && nested == Some(serde_json::json!({"opacity": 88, "tags": ["a", "b"]}))
+                        && widget_tint == Some(serde_json::json!("#eee6ff"));
                     report.push_str(&format!("config_persistence_pass={pass}\n"));
                     let _ = std::fs::create_dir_all(&out_dir);
                     let _ = std::fs::write(out_dir.join("config-verify.txt"), report);
