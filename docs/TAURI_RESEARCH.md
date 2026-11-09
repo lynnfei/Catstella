@@ -188,6 +188,37 @@ Get-Content -LiteralPath (Join-Path $dir 'report.txt')
 
 **30 轮失败证据留档说明**：本日曾出现 29/30（cycle29 drag out=(0,0)）与 27/30（cycle5/6/8 ping/drag 超时型失败）各一次，失败报告文件被后续运行覆盖未及存档，摘录自会话记录。两次失败运行都紧随 1~3 分钟 release 全量重编译（IO/缓存高负载）启动，而 30/30 运行为热缓存启动——时序上与机器资源压力吻合，属观测性证据而非因果证明；拖动重试机制（对应用户再点一次）是在这两次失败之后加入的，后续 30/30 含重试逻辑，特此如实说明。
 
+### 第十轮（同日晨）：绑定层可靠性验收与边界测试
+
+| 验收项 | 结果 | 说明 |
+| --- | --- | --- |
+| 订阅/退订/重订阅 | 通过（含一处时序备注） | 取消后 emit 不再送达；重订阅后每次 emit 恰好送达一次；settings 开关 5 次后订阅无重复无堆积。**时序备注**：首个计数窗口可能计入 `widget_ready` 迟到投递的一次快照（emit_to 与 subscribe 的竞态）——订阅前状态本应由 `get()` 拉取，事件只做增量通知，属标准语义，如实记录 |
+| settings 快速连续保存 | 通过 | 5 连发（150ms 间隔）全部成功且 tint 交替正确、无丢失；最终持久化与两窗显示一致 |
+| 失败写入不破坏 | 通过 | `.settings.tmp` 目录占位使写入失败 → 旧 settings.json 原样保留（夹具轮已证）；非对象 patch 合并无操作（键数不变，无损坏），如实记录为"不拒绝但不破坏" |
+| 边界拒绝 | 通过 | 未知 command（pet+settings 两窗口）、未知 online 动作、online 变更动作（download）均明确 reject；pet 调 `widget_save` 被 label guard 拒绝（日志留证） |
+| 冷/热启动回归 | 30/30 与 30/30 | 冷=全新 WebView2 用户数据目录，热=复用缓存；各自独立目录独立存档（report-cold-start.txt / report-warm-start.txt）。**拖动首试成功率 29/29（非退化轮），重试恢复 0，失败 0**——本两轮无重试介入 |
+| 此前 29/30、27/30 | 已留档说明 | 紧随全量重编译的资源压力时序，见第九轮说明；本轮冷/热均首试即过，与压力假设一致 |
+
+**资源口径澄清**：`tree_*` 为进程树工作集**求和**，共享页（同一 DLL 物理页）会在多进程间重复计入，仅作上界参考；`cpu_*` 一直仅测 spike 主进程，**此前"跟随中 0.0%"不能推广为整树 CPU**，整树 CPU 未测。
+
+**结论表述修正**：迁移门槛中，本机可验证项（窗口层、数据层、协议层、绑定层）已逐项通过；**混合 DPI、锁屏恢复、浮动任务栏实机、100% 缩放、真实 AGY 宿主、AGY CDP、整树 CPU 均未测**——"本机可测范围无未测项"≠"迁移所有门槛已通过"；且 30 轮结果含拖动重试机制（重试对应用户再点一次），非裸首试全绿。
+
+#### 可复现命令
+
+```powershell
+# 全量探针（冷启动变体：先设 WEBVIEW2_USER_DATA_FOLDER 指向全新临时目录）
+Set-Location D:\Catstella\prototypes	auri-window-spike
+cargo build --release --offline
+.	argetelease\catstella-window-spike.exe --probe-output=targetun-cold
+.	argetelease\catstella-window-spike.exe --probe-output=targetun-warm
+# 配置夹具（净化/原子写/旧版回读）
+.	argetelease\catstella-window-spike.exe --probe-fixture=..\..\evidence	auri-window-spike-2026-11-09ixture-old-config.json
+# 跨进程持久化验证（第二阶段）
+.	argetelease\catstella-window-spike.exe --probe-verify-config=targetun-warm
+# 真实扩展对接（隔离浏览器，需 web dist 已构建）
+node browser-checkridge-browser.cjs --out=targetridge-run
+```
+
 ## 接续说明（2026-11-09 凌晨批次结束）
 
 本夜完成窗口门槛全部本机可测项与数据门槛（第一～五轮，连续全绿，证据在 `evidence/tauri-window-spike-2026-11-09/`）。下一批建议顺序：

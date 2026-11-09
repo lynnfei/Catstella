@@ -61,4 +61,34 @@ document.querySelector('#exit').addEventListener('click', () => void command('ex
   try { await api.get(); results.get = 'allowed'; } catch { results.get = 'rejected'; }
   try { await api.save({ probe: true }); results.save = 'allowed'; } catch (error) { results.save = 'rejected: ' + error; }
   void syncLog('permtest pet get=' + results.get + ' save=' + results.save);
+
+  // 订阅可靠性：事件不重复、取消后不收到、重订阅恢复（事件由 widget_test_emit 广播）。
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const emit = () => window.__TAURI__.core.invoke('widget_test_emit');
+  let received = 0;
+  const un1 = await api.subscribe(() => { received += 1; });
+  await emit(); await delay(350);
+  void syncLog('subtest after_sub delivered=' + received);
+  await un1();
+  await emit(); await delay(350);
+  void syncLog('subtest after_unsub delivered=' + received);
+  let received2 = 0;
+  const un2 = await api.subscribe(() => { received2 += 1; });
+  await emit(); await delay(350);
+  void syncLog('subtest resub delivered=' + received2);
+  await un2();
+
+  // settings 反复开关 5 次（页面不重载，订阅不应重复或堆积），最后重开。
+  for (let i = 0; i < 5; i++) {
+    await api.command('settings'); await delay(180);
+    await api.command('settings-hide'); await delay(180);
+  }
+  await api.command('settings'); await delay(300);
+  await emit(); await delay(350);
+  void syncLog('subtest after_toggle resub2=' + received2);
+  // 边界：未知命令 / 未知 online 动作 —— 明确拒绝。
+  try { await api.command('definitely-not-a-command'); void syncLog('boundary unknown-command NOT-rejected'); }
+  catch (error) { void syncLog('boundary unknown-command rejected'); }
+  try { await api.online('make-me-coffee'); void syncLog('boundary unknown-online NOT-rejected'); }
+  catch (error) { void syncLog('boundary unknown-online rejected'); }
 })();

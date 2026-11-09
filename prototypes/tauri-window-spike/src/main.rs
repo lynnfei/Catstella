@@ -543,6 +543,12 @@ fn widget_command(window: WebviewWindow, app: tauri::AppHandle, action: String) 
         let _ = app.emit("widget://navigate", page.to_string());
         return Ok(());
     }
+    if action == "settings-hide" {
+        if let Some(settings) = app.get_webview_window("settings") {
+            let _ = settings.hide();
+        }
+        return Ok(());
+    }
     Err(format!("unknown widget command: {action}"))
 }
 
@@ -562,6 +568,12 @@ fn widget_online(action: String) -> Result<serde_json::Value, String> {
         )),
         _ => Err(format!("unknown online action: {action}")),
     }
+}
+
+// 测试专用：向全部窗口广播一次快照事件（订阅可靠性自检用）。
+#[tauri::command]
+fn widget_test_emit(app: tauri::AppHandle) -> Result<(), String> {
+    app.emit("widget://snapshot", widget_snapshot()).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1913,6 +1925,9 @@ mod probe {
 
             // 30 轮：ping 点击 / 拖动折返 / 空隙点击送达底板 / 前台切换 z 序；第 10/11/12 轮注入异常场景。
             let mut cycles_ok = 0usize;
+            let mut drag_first_pass = 0usize;
+            let mut drag_retry_recovered = 0usize;
+            let mut drag_failed = 0usize;
             let mut cycle_failures: Vec<String> = Vec::new();
             let threads_before_cycles = thread_count(pet_pid);
             let mem_before_cycles = memory_kb(pet_pid);
@@ -2011,6 +2026,7 @@ mod probe {
                 // 2) 拖动跨区折返（捕获不丢，窗口回归锚点）；偶发丢按重试一次（对应用户再点一次）。
                 let mut drag_fail_text = String::from("drag not attempted");
                 let mut drag_checked = false;
+                let mut drag_retry_used = false;
                 for attempt in 0..2 {
                     let art_point = zone_point(&live, art_logical);
                     SetCursorPos(art_point.x, art_point.y);
@@ -2041,6 +2057,7 @@ mod probe {
                         drag_checked = true;
                         if attempt == 0 {
                             // 归位再试。
+                            drag_retry_used = true;
                             SetWindowPos(pet_hwnd, std::ptr::null_mut(), pet_rect0.left, pet_rect0.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
                             continue;
                         }
@@ -2052,7 +2069,19 @@ mod probe {
                 }
                 let _ = drag_checked;
                 if !degraded && !drag_fail_text.is_empty() {
-                    fails.push(drag_fail_text);
+                    fails.push(std::mem::take(&mut drag_fail_text));
+                }
+                // 首试/重试成功率分别统计（失败证据不掩盖）。
+                if !degraded {
+                    if drag_fail_text.is_empty() {
+                        if drag_retry_used {
+                            drag_retry_recovered += 1;
+                        } else {
+                            drag_first_pass += 1;
+                        }
+                    } else {
+                        drag_failed += 1;
+                    }
                 }
 
                 // 3) 空隙真实点击穿透送达独立底板（松手后穿透恢复证据）。
@@ -2121,6 +2150,10 @@ mod probe {
                 }
             }
             report.kv("cycles_passed", format!("{cycles_ok}/30"));
+            let degraded_cycles = 1u32;
+            report.kv("drag_first_pass", format!("{}/{}", drag_first_pass, 30 - degraded_cycles));
+            report.kv("drag_retry_recovered", drag_retry_recovered);
+            report.kv("drag_failed", drag_failed);
             for failure in cycle_failures.iter().take(6) {
                 report.kv("cycle_failure", failure);
             }
@@ -2373,6 +2406,7 @@ fn main() {
             widget_save,
             widget_command,
             widget_online,
+            widget_test_emit,
             widget_sync_log,
             open_host,
             follow_host,
