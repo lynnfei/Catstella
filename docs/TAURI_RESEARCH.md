@@ -175,11 +175,24 @@ Get-Content -LiteralPath (Join-Path $dir 'report.txt')
 
 安全未覆盖项（迁移评审清单）：无共享密钥/令牌鉴权（生产同，迁移可加 nonce）；AGY CDP 通道不在 spike 范围；无速率限制（生产同）；`/companion/wallpaper-image` spike 按固定 id 白名单返回单文件（生产按 manifest 映射，迁移时保留路径校验）；Tauri ACL 目前仅示例 pet 窗口，settings 窗口接入时需单独 capability。
 
+### 第九轮（同日晨）：widgetApi 绑定层落地与窗口权限实测
+
+| 验收项 | 结果 | 说明 |
+| --- | --- | --- |
+| `window.widgetApi` Tauri 绑定层 | 通过 | `get/save/ready`、`subscribe`（Tauri listen，返回取消函数）、`command`（settings/navigate:）、只读 `online("catalog")`；未实现接口（byok/drag/hit/audio/onStep 等 12 个）显式 reject `unsupported in tauri spike`，不假成功 |
+| 独立 settings 窗口跨窗口同步 | 通过 | pet 点击「打开设置」→ 窗口显示于桌宠下方空档；点击「保存并同步双端」→ `widget_save`（settings 窗口）→ 事件广播 → pet 应用 `--bubble-tint` 并回写日志 `pet applied tint=#eee6ff`（链路：settings 点击→IPC→持久化→事件→pet 生效） |
+| 窗口权限拒绝（实测非纸面） | 通过 | pet 页启动即自检：`widget_get` allowed、`widget_save` **rejected**（label guard：`window 'pet' cannot call this command (requires 'settings')`），双端结果均写入 widget-sync.log |
+| 重启持久化 | 通过 | phase 2 新进程读回 `widgetSettings.bubbleTint=#eee6ff` + 夹具字段全绿（config_persistence_pass=true） |
+| 进程树资源基线（修正口径） | 记录 | **此前 ~31MB 仅为主进程**；进程树含 7 个 msedgewebview2 子进程：idle 树总 ~457MB、follow 中 ~474MB（+17MB/30 轮），CPU 仍 ~0%。后续对比以此口径为准 |
+| 30 轮回归 | 30/30 | widgetApi 窗口共存下零 cycle 失败（此前一次 21/30 系 settings 窗口盖住宿主点击区，摆位修正后消失） |
+
+**30 轮失败证据留档说明**：本日曾出现 29/30（cycle29 drag out=(0,0)）与 27/30（cycle5/6/8 ping/drag 超时型失败）各一次，失败报告文件被后续运行覆盖未及存档，摘录自会话记录。两次失败运行都紧随 1~3 分钟 release 全量重编译（IO/缓存高负载）启动，而 30/30 运行为热缓存启动——时序上与机器资源压力吻合，属观测性证据而非因果证明；拖动重试机制（对应用户再点一次）是在这两次失败之后加入的，后续 30/30 含重试逻辑，特此如实说明。
+
 ## 接续说明（2026-11-09 凌晨批次结束）
 
 本夜完成窗口门槛全部本机可测项与数据门槛（第一～五轮，连续全绿，证据在 `evidence/tauri-window-spike-2026-11-09/`）。下一批建议顺序：
 
-1. **联动协议门槛（迁移顺序第三步）**：Rust 侧 `/companion/*` 最小服务已验证（第六轮，备用端口 3922）。剩余：隔离浏览器加载真实扩展→发现 spike 服务→跑通握手/状态流（需浏览器自动化或用户在场）。
+1. ~~联动协议门槛~~ 已完成：Rust 侧 `/companion/*`（第六轮）+ 隔离浏览器加载真实扩展完成握手/壁纸/断线重连（host-resolver-rules 隔离法）。
 2. ~~widgetApi 面清单~~ 已完成（见上表）。剩余：按清单落地 Tauri command/event 绑定层与各窗口 capability。
 3. ~~跟随引擎自动重扫描~~ 已完成（第七轮：兜底轮询自动重绑，免手动 stop/start）。
 4. **需要环境/用户的待测项**：混合 DPI 与负坐标屏（多屏）、锁屏恢复（不能在用户会话上做）、浮动任务栏实机重影（真实 Win11 任务栏场景）、100% 缩放复测（改系统 DPI）、真实 AGY 宿主跟随（用户在场时）。
