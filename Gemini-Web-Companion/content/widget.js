@@ -307,8 +307,7 @@
       bottom: 102%;
       right: 0;
       width: min(296px, calc(100vw - 16px));
-      /* 颜色与透明度可调：底色走 --kg-bubble-tint，整体透明度走 --kg-bubble-alpha */
-      background: color-mix(in srgb, var(--kg-bubble-tint, #161026) 94%, transparent);
+      background: rgba(22, 16, 38, 0.94);
       backdrop-filter: blur(22px) saturate(140%);
       -webkit-backdrop-filter: blur(22px) saturate(140%);
       border: 1px solid rgba(190, 160, 245, 0.35);
@@ -316,7 +315,6 @@
       box-shadow: 0 14px 40px rgba(8, 5, 22, 0.65), inset 0 1px 0 rgba(240, 215, 255, 0.22);
       padding: 14px 16px;
       color: #f1edfa;
-      opacity: var(--kg-bubble-alpha, 1);
       animation: kimino-bubble-pop 0.28s cubic-bezier(0.18, 0.9, 0.32, 1.2);
       transform-origin: bottom right;
       z-index: 10;
@@ -332,10 +330,10 @@
       height: 0;
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
-      border-top: 8px solid color-mix(in srgb, var(--kg-bubble-tint, #161026) 94%, transparent);
+      border-top: 8px solid rgba(22, 16, 38, 0.94);
     }
     .kimino-bubble.below-pet::after {
-      top: -8px; bottom: auto; border-top: 0; border-bottom: 8px solid color-mix(in srgb, var(--kg-bubble-tint, #161026) 94%, transparent);
+      top: -8px; bottom: auto; border-top: 0; border-bottom: 8px solid rgba(22, 16, 38, 0.94);
     }
 
     .kimino-bubble-header {
@@ -1180,8 +1178,8 @@
     try {
       const stored = await api.storageGet([
         'enabled', 'character', 'soundEnabled', 'widgetScale', 'widgetPos',
-        'bubbleVisible', 'bubbleTint', 'bubbleOpacity', 'onlineCharacterPacks', 'syncCharacter',
-        'petDisplayMode', 'agyBridgeState', 'ambientChatter', 'syncAgyUsage', 'quotaView', 'showAgyQuotaInCompact',
+        'bubbleVisible', 'chatTint', 'chatOpacity', 'onlineCharacterPacks', 'syncCharacter',
+        'petDisplayMode', 'agyBridgeState', 'ambientChatter', 'syncAgyUsage', 'quotaView', 'quotaDisplay', 'showAgyQuotaInCompact',
         'syncInteraction', 'userHonorificMode', 'customHonorific'
       ]);
       config = { ...config, ...stored };
@@ -1195,6 +1193,13 @@
     bubbleVisible = config.bubbleVisible !== false;
     syncAgyUsage = config.syncAgyUsage !== false;
     let quotaView = config.quotaView === 'compact' ? 'compact' : 'classic';
+    let quotaDisplay = config.quotaDisplay === 'used' ? 'used' : 'remaining';
+    const quotaValue = remaining => {
+      if (!Number.isFinite(remaining)) return null;
+      const value = Math.round(Math.max(0,Math.min(100,remaining)));
+      return quotaDisplay === 'used' ? 100-value : value;
+    };
+    const quotaLabel = () => quotaDisplay === 'used' ? '已使用' : '剩余';
     let showAgyQuotaInCompact = config.showAgyQuotaInCompact === true;
     let syncInteraction = config.syncInteraction !== false;
     let honorificMode = readHonorificMode(config.userHonorificMode);
@@ -1270,7 +1275,7 @@
           <div class="kg-quota-legacy">
           <div class="quota-block">
             <div class="quota-title-row">
-              <span class="quota-name">当前用量 (5h)</span>
+              <span class="quota-name">5 小时额度</span>
               <span class="quota-pct cur-quota-pct">--%</span>
             </div>
             <div class="quota-track">
@@ -1389,6 +1394,12 @@
                   <option value="compact">反重力式圆环</option>
                 </select>
               </div>
+              <div class="kg-row">
+                <label class="kg-row-label" for="kg-quota-display"><span>额度显示方式</span><small>适用于网页额度与同步的反重力额度</small></label>
+                <select class="kg-skin-style" id="kg-quota-display" aria-label="额度显示方式">
+                  <option value="remaining">剩余额度</option><option value="used">已使用额度</option>
+                </select>
+              </div>
               <div class="kg-row kg-compact-agy-row" hidden>
                 <div class="kg-row-label">
                   <span>显示反重力模型用量</span>
@@ -1401,15 +1412,15 @@
                 <label class="kg-switch"><input type="checkbox" class="kg-cfg" data-key="bubbleVisible"><span class="kg-switch-track"></span></label>
               </div>
               <div class="kg-row">
-                <label class="kg-row-label" for="kg-bubble-tint"><span>气泡颜色</span><small>改动即时生效，桌宠气泡就是预览</small></label>
-                <input type="color" class="kg-color-input" id="kg-bubble-tint" value="#161026" aria-label="气泡颜色">
+                <label class="kg-row-label" for="kg-chat-tint"><span>对话气泡颜色</span><small>只调整用户消息与 Gemini 回答，文字保持清晰</small></label>
+                <input type="color" class="kg-color-input" id="kg-chat-tint" value="#181224" aria-label="对话气泡颜色">
               </div>
               <div class="kg-slider-block">
                 <div class="kg-slider-head">
-                  <span>气泡不透明度</span>
-                  <span class="kg-val kg-val-bubble">100%</span>
+                  <span>对话气泡不透明度</span>
+                  <span class="kg-val kg-val-chat">100%</span>
                 </div>
-                <input type="range" class="kg-range" id="kg-bubble-opacity" min="30" max="100" step="1" aria-label="气泡不透明度">
+                <input type="range" class="kg-range" id="kg-chat-opacity" min="0" max="100" step="1" aria-label="对话气泡不透明度">
               </div>
               <div class="kg-row">
                 <label class="kg-row-label" for="kg-honorific-mode"><span>桌宠互动称呼</span><small>跟随桌面需要同步互动偏好</small></label>
@@ -1531,16 +1542,11 @@
     const spriteImg = wrapper.querySelector('.kimino-sprite');
     const earGlow = wrapper.querySelector('.kimino-ear-glow');
     const bubble = wrapper.querySelector('.kimino-bubble');
-    // 气泡颜色与透明度：改动即时反映到桌宠气泡本身，设置面板不另做预览。
-    const DEFAULT_BUBBLE_TINT = '#161026';
-    const normalizeBubbleTint = value => /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_BUBBLE_TINT;
-    function applyBubbleStyle(tint, opacity) {
-      if (!bubble) return;
-      bubble.style.setProperty('--kg-bubble-tint', normalizeBubbleTint(tint));
-      const alpha = Number.isFinite(Number(opacity)) ? Math.min(100, Math.max(30, Number(opacity))) : 100;
-      bubble.style.setProperty('--kg-bubble-alpha', String(alpha / 100));
-    }
-    applyBubbleStyle(config.bubbleTint, config.bubbleOpacity);
+    // 对话气泡颜色与透明度：改动即时反映到桌宠气泡本身，设置面板不另做预览。
+    const DEFAULT_CHAT_TINT = '#181224';
+    const normalizeChatTint = value => /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_CHAT_TINT;
+    function applyChatStyle(tint, opacity) { window.KiminoPreviewChatStyle?.(tint, opacity); }
+    applyChatStyle(config.chatTint, config.chatOpacity);
     const dialogueEl = wrapper.querySelector('.kimino-dialogue');
     let currentLine = { template: getDialogue() };
     function paintDialogue(line = currentLine) {
@@ -1588,11 +1594,11 @@
       const groups = [{
         name: 'Gemini 网页',
         rows: [
-          { label: quota?.displaySource === 'estimate' ? '剩余额度 · 会话估算' : '剩余额度 (5h)',
+          { label: quota?.displaySource === 'estimate' ? '5 小时 · 会话估算' : '5 小时额度',
             remaining: usedToLeft(data?.fatiguePercent), unknownLabel: '待同步',
             resetAt: quota?.fiveResetEpoch, resetLabel: quota?.currentResetTime ? '重置时间 ' + quota.currentResetTime : '',
             state: quota?.fivePending ? 'pending' : '' },
-          { label: '每周剩余', remaining: usedToLeft(quota?.weeklyUsagePercent), unknownLabel: '待同步',
+          { label: '每周额度', remaining: usedToLeft(quota?.weeklyUsagePercent), unknownLabel: '待同步',
             resetAt: quota?.weeklyResetEpoch, resetLabel: quota?.weeklyResetTime ? '重置时间 ' + quota.weeklyResetTime : '',
             state: quota?.weeklyPending ? 'pending' : '' }
         ]
@@ -1618,6 +1624,7 @@
           ] });
         }
       }
+      for (const group of groups) for (const row of group.rows) row.display = quotaDisplay;
       const signature = JSON.stringify(groups);
       if (signature !== usageSignature) { usageSignature = signature; usageViewer.data = { groups }; }
     }
@@ -1677,8 +1684,8 @@
       if (agyCompRow && agyCompVal) {
         const aq = syncAgyUsage && bridgeState?.online ? bridgeState.desktop?.agyQuota : null;
         if (aq && (typeof aq.fiveHour === 'number' || typeof aq.weekly === 'number')) {
-          const f5 = typeof aq.fiveHour === 'number' ? `5h 余 ${Math.round(aq.fiveHour)}%` : '5h —';
-          const fw = typeof aq.weekly === 'number' ? `1w 余 ${Math.round(aq.weekly)}%` : '1w —';
+          const f5 = typeof aq.fiveHour === 'number' ? `5h ${quotaLabel()} ${quotaValue(aq.fiveHour)}%` : '5h —';
+          const fw = typeof aq.weekly === 'number' ? `1w ${quotaLabel()} ${quotaValue(aq.weekly)}%` : '1w —';
           agyCompVal.textContent = `${f5} · ${fw}`;
           agyCompRow.style.display = 'flex';
         } else {
@@ -2170,7 +2177,7 @@
       settingsFeedback.hidden = !message;
     };
     const settingsKeys = [
-      'enabled', 'skinStyle', 'skinEnabled', 'quotaView', 'syncAgyUsage', 'showAgyQuotaInCompact', 'bubbleVisible', 'bubbleTint', 'bubbleOpacity', 'ambientChatter', 'soundEnabled', 'widgetScale',
+      'enabled', 'skinStyle', 'skinEnabled', 'quotaView', 'quotaDisplay', 'syncAgyUsage', 'showAgyQuotaInCompact', 'bubbleVisible', 'chatTint', 'chatOpacity', 'ambientChatter', 'soundEnabled', 'widgetScale',
       'wallpaperOpacity', 'wallpaperBlur', 'character', 'wallpaperId', 'customWallpapers',
       'webWallpaperSlideshow','webWallpaperInterval','webWallpaperCycle','webWallpaperFit','webWallpaperTransition',
       'userHonorificMode', 'customHonorific',
@@ -2223,6 +2230,9 @@
         });
         settingsPanel.querySelector('.kg-skin-style').value =
           window.KiminoSkinStyle?.read(st) ?? (st.skinEnabled === false ? 'native' : 'glass');
+        quotaDisplay = st.quotaDisplay === 'used' ? 'used' : 'remaining';
+        settingsPanel.querySelector('#kg-quota-display').value = quotaDisplay;
+        paintQuota(latestTrackerSnapshot);updateVisibilityAndBridgeUI();
         settingsPanel.querySelector('#kg-quota-style').value = st.quotaView === 'compact' ? 'compact' : 'classic';
         settingsPanel.querySelector('.kg-compact-agy-row').hidden = st.quotaView !== 'compact';
         honorificSelect.value = readHonorificMode(st.userHonorificMode);
@@ -2233,13 +2243,13 @@
         if (rScale) { rScale.value = scale; if (kgValScale) kgValScale.textContent = scale + 'px'; }
         if (shadow.activeElement !== opacitySlider) renderOpacity(st.wallpaperOpacity);
         if (shadow.activeElement !== blurSlider) renderBlur(st.wallpaperBlur);
-        applyBubbleStyle(st.bubbleTint, st.bubbleOpacity);
-        const bubbleTintInput = settingsPanel.querySelector('#kg-bubble-tint');
-        const rBubble = settingsPanel.querySelector('#kg-bubble-opacity');
-        if (bubbleTintInput && shadow.activeElement !== bubbleTintInput) bubbleTintInput.value = normalizeBubbleTint(st.bubbleTint);
+        applyChatStyle(st.chatTint, st.chatOpacity);
+        const chatTintInput = settingsPanel.querySelector('#kg-chat-tint');
+        const rBubble = settingsPanel.querySelector('#kg-chat-opacity');
+        if (chatTintInput && shadow.activeElement !== chatTintInput) chatTintInput.value = normalizeChatTint(st.chatTint);
         if (rBubble) {
-          if (shadow.activeElement !== rBubble) rBubble.value = Number.isFinite(Number(st.bubbleOpacity)) ? Math.min(100, Math.max(30, Number(st.bubbleOpacity))) : 100;
-          settingsPanel.querySelector('.kg-val-bubble').textContent = rBubble.value + '%';
+          if (shadow.activeElement !== rBubble) rBubble.value = Number.isFinite(Number(st.chatOpacity)) ? Math.min(100, Math.max(0, Number(st.chatOpacity))) : 76;
+          settingsPanel.querySelector('.kg-val-chat').textContent = rBubble.value + '%';
         }
         settingsPanel.querySelector('.kg-wallpaper-style').hidden = curSyncWall;
         wallCycle.checked = st.webWallpaperSlideshow === true;
@@ -2616,6 +2626,8 @@
       const skinSelect = settingsPanel.querySelector('.kg-skin-style');
       const quotaSelect = settingsPanel.querySelector('#kg-quota-style');
       quotaSelect.addEventListener('change', () => void saveLocal({ quotaView: quotaSelect.value }));
+      const quotaDisplaySelect = settingsPanel.querySelector('#kg-quota-display');
+      quotaDisplaySelect.addEventListener('change', () => void saveLocal({ quotaDisplay: quotaDisplaySelect.value }));
       honorificSelect.addEventListener('change', () => void saveLocal({ userHonorificMode: honorificSelect.value }));
       honorificInput.addEventListener('change', () => {
         honorificInput.value = readHonorificName(honorificInput.value);
@@ -2655,17 +2667,34 @@
         kgValOpacity.textContent = opacitySlider.value + '%';
         window.KiminoPreviewWallpaperOpacity?.(Number(opacitySlider.value) / 100);
       });
-      // 气泡颜色与透明度：拖动即保存并直接反映在桌宠气泡上。
-      const bubbleTintInput = settingsPanel.querySelector('#kg-bubble-tint');
-      const bubbleOpacitySlider = settingsPanel.querySelector('#kg-bubble-opacity');
-      bubbleTintInput.addEventListener('input', () => {
-        applyBubbleStyle(bubbleTintInput.value, bubbleOpacitySlider.value);
-        void api.storageSet({ bubbleTint: bubbleTintInput.value });
+      // 对话气泡颜色与透明度：拖动即保存并直接反映在桌宠气泡上。
+      const chatTintInput = settingsPanel.querySelector('#kg-chat-tint');
+      const chatOpacitySlider = settingsPanel.querySelector('#kg-chat-opacity');
+      let bubbleSaveRevision = 0, bubbleSaveQueue = Promise.resolve();
+      const saveBubble = updates => {
+        const revision = ++bubbleSaveRevision;
+        bubbleSaveQueue = bubbleSaveQueue.then(async () => {
+          const ok = await api.storageSet(updates);
+          if (revision !== bubbleSaveRevision) return;
+          reportSettings(ok ? '' : '未能保存对话气泡外观，请重试。');
+          if (!ok) {
+            const saved = await api.storageGet(['chatTint','chatOpacity']);
+            if (revision !== bubbleSaveRevision) return;
+            applyChatStyle(saved.chatTint,saved.chatOpacity);
+            chatTintInput.value = normalizeChatTint(saved.chatTint);
+            chatOpacitySlider.value = Math.min(100,Math.max(0,Number.isFinite(saved.chatOpacity) ? saved.chatOpacity : 76));
+            settingsPanel.querySelector('.kg-val-chat').textContent = chatOpacitySlider.value + '%';
+          }
+        }).catch(() => reportSettings('未能保存对话气泡外观，请重试。'));
+      };
+      chatTintInput.addEventListener('input', () => {
+        applyChatStyle(chatTintInput.value, chatOpacitySlider.value);
+        saveBubble({ chatTint: chatTintInput.value });
       });
-      bubbleOpacitySlider.addEventListener('input', () => {
-        settingsPanel.querySelector('.kg-val-bubble').textContent = bubbleOpacitySlider.value + '%';
-        applyBubbleStyle(bubbleTintInput.value, bubbleOpacitySlider.value);
-        void api.storageSet({ bubbleOpacity: Number(bubbleOpacitySlider.value) });
+      chatOpacitySlider.addEventListener('input', () => {
+        settingsPanel.querySelector('.kg-val-chat').textContent = chatOpacitySlider.value + '%';
+        applyChatStyle(chatTintInput.value, chatOpacitySlider.value);
+        saveBubble({ chatOpacity: Number(chatOpacitySlider.value) });
       });
       opacitySlider.addEventListener('change', async () => {
         const selected = opacitySlider.value;
@@ -2756,6 +2785,44 @@
     setTimeout(sendHeartbeat, 400);
 
     // 订阅追踪器数据
+    function paintQuota(data) {
+      if (!data?.realQuota) return;
+        const curPct = data.fatiguePercent;
+        const sourceTag = wrapper.querySelector('.quota-source-tag');
+        if (sourceTag) {
+          sourceTag.textContent = data.realQuota.fivePending || data.realQuota.displaySource === 'official' ? '官方限额' : '会话估算';
+        }
+
+        const curRemain = quotaValue(Number.isFinite(curPct) ? 100-curPct : null);
+        curQuotaPct.textContent = data.realQuota.fivePending ? '等待更新' : curRemain === null ? '待同步' : `${quotaLabel()} ${curRemain}%`;
+        curQuotaBar.style.width = `${curRemain ?? 0}%`;
+        curQuotaBar.style.background = getBarGradient(curPct);
+        curQuotaReset.textContent = data.realQuota.fivePending ? '已到重置时间' : data.realQuota.currentResetTime
+          ? `重置时间: ${data.realQuota.currentResetTime}`
+          : '实时推算中';
+
+        if (data.realQuota.weeklyPending) {
+          weekQuotaPct.textContent = '等待更新';
+          weekQuotaBar.style.width = '0%';
+          weekQuotaReset.textContent = '已到重置时间';
+        } else if (Number.isFinite(data.realQuota.weeklyUsagePercent)) {
+          const weekRemain = quotaValue(100-data.realQuota.weeklyUsagePercent);
+          weekQuotaPct.textContent = `${quotaLabel()} ${weekRemain}%`;
+          weekQuotaBar.style.width = `${weekRemain}%`;
+          weekQuotaBar.style.background = getBarGradient(data.realQuota.weeklyUsagePercent);
+          weekQuotaReset.textContent = data.realQuota.weeklyResetTime
+            ? `重置时间: ${data.realQuota.weeklyResetTime}`
+            : '每周限额';
+        } else {
+          weekQuotaPct.textContent = '待同步';
+          weekQuotaBar.style.width = '0%';
+          weekQuotaReset.textContent = data.realQuota.weeklyResetTime
+            ? `重置时间: ${data.realQuota.weeklyResetTime}`
+            : '点右上🔄同步拉取账本';
+        }
+
+    }
+
     if (window.__KIMINO_TRACKER__) {
       window.__KIMINO_TRACKER__.subscribe((data) => {
         const activityChanged = data.activity !== lastActivity;
@@ -2769,38 +2836,7 @@
         metaTokens.textContent = `预估: ~${totalK}k tokens`;
 
         const curPct = data.fatiguePercent;
-        const sourceTag = wrapper.querySelector('.quota-source-tag');
-        if (sourceTag) {
-          sourceTag.textContent = data.realQuota.fivePending || data.realQuota.displaySource === 'official' ? '官方限额' : '会话估算';
-        }
-
-        const curRemain = Math.max(0, Math.min(100, 100 - curPct));
-        curQuotaPct.textContent = data.realQuota.fivePending ? '等待更新' : `剩余 ${curRemain}%`;
-        curQuotaBar.style.width = `${curRemain}%`;
-        curQuotaBar.style.background = getBarGradient(curPct);
-        curQuotaReset.textContent = data.realQuota.fivePending ? '已到重置时间' : data.realQuota.currentResetTime
-          ? `重置时间: ${data.realQuota.currentResetTime}`
-          : '实时推算中';
-
-        if (data.realQuota.weeklyPending) {
-          weekQuotaPct.textContent = '等待更新';
-          weekQuotaBar.style.width = '0%';
-          weekQuotaReset.textContent = '已到重置时间';
-        } else if (typeof data.realQuota.weeklyUsagePercent === 'number') {
-          const weekRemain = Math.max(0, Math.min(100, 100 - data.realQuota.weeklyUsagePercent));
-          weekQuotaPct.textContent = `剩余 ${weekRemain}%`;
-          weekQuotaBar.style.width = `${weekRemain}%`;
-          weekQuotaBar.style.background = getBarGradient(data.realQuota.weeklyUsagePercent);
-          weekQuotaReset.textContent = data.realQuota.weeklyResetTime
-            ? `重置时间: ${data.realQuota.weeklyResetTime}`
-            : '每周限额';
-        } else {
-          weekQuotaPct.textContent = '待同步';
-          weekQuotaBar.style.width = '0%';
-          weekQuotaReset.textContent = data.realQuota.weeklyResetTime
-            ? `重置时间: ${data.realQuota.weeklyResetTime}`
-            : '点右上🔄同步拉取账本';
-        }
+        paintQuota(data);
 
         earGlow.className = 'kimino-ear-glow';
         charBox.classList.remove('rate-limited');
@@ -2863,6 +2899,11 @@
 
     api.onChanged((changes, area) => {
       if (area === 'local') {
+        if (changes.chatTint || changes.chatOpacity) {
+          if (changes.chatTint) config.chatTint = changes.chatTint.newValue;
+          if (changes.chatOpacity) config.chatOpacity = changes.chatOpacity.newValue;
+          applyChatStyle(config.chatTint,config.chatOpacity);
+        }
         if (Object.keys(changes).every(key => ['headPatTotal','headPatToday','headPatDay'].includes(key))) return;
         if (changes.character) {
           localCharacter = changes.character.newValue || 'gemini-star-v1';
@@ -2885,6 +2926,7 @@
         if (changes.agyBridgeState || changes.syncInteraction || changes.userHonorificMode || changes.customHonorific) paintDialogue();
         if (changes.syncAgyUsage) syncAgyUsage = changes.syncAgyUsage.newValue !== false;
         if (changes.showAgyQuotaInCompact) showAgyQuotaInCompact = changes.showAgyQuotaInCompact.newValue === true;
+        if (changes.quotaDisplay) { quotaDisplay = changes.quotaDisplay.newValue === 'used' ? 'used' : 'remaining'; paintQuota(latestTrackerSnapshot); }
         if (changes.quotaView) quotaView = changes.quotaView.newValue === 'compact' ? 'compact' : 'classic';
         if (changes.character || changes.onlineCharacterPacks || changes.syncCharacter || changes.agyBridgeState) paintFrame();
         if (changes.soundEnabled !== undefined) {
