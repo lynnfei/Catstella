@@ -9,7 +9,12 @@ test("zh-CN dictionary loads cleanly with expanded Antigravity UI coverage", () 
   const dictPath = path.join(__dirname, "../assets/localization/zh-CN.json");
   const raw = JSON.parse(fs.readFileSync(dictPath, "utf8"));
   const keys = Object.keys(raw).filter((k) => !k.startsWith("$"));
-  assert(keys.length >= 1600, `Expected >= 1600 dictionary entries, got ${keys.length}`);
+  assert(keys.length >= 2000, `Expected >= 2000 dictionary entries, got ${keys.length}`);
+  for (const k of keys) {
+    assert.equal(typeof raw[k], "string", `Non-string value for "${k}"`);
+    assert(raw[k].trim().length > 0, `Empty translation for "${k}"`);
+  }
+  assert.equal(Object.hasOwn(raw, "Orchestrator"), false, 'Standalone "Orchestrator" must remain untranslated for model selector badge clarity');
   for (const required of [
     "Agent said",
     "You said",
@@ -26,7 +31,20 @@ test("zh-CN dictionary loads cleanly with expanded Antigravity UI coverage", () 
     "Voice Mode",
     "Remote Control",
     "Build With Google Plugins",
-    "Signed-in accounts"
+    "Signed-in accounts",
+    "Breadcrumb",
+    "Response actions",
+    "Orchestrator Settings",
+    "Orchestrator Model",
+    "Executor Model",
+    "Enable terminal sandbox",
+    "Clear Browsing Data?",
+    "Hive",
+    "Export GIF",
+    "Graph view",
+    "Filters (active)",
+    "Compare with now",
+    "Waiting on @coordinator"
   ]) {
     assert.equal(typeof raw[required], "string", `Missing translation for "${required}"`);
     assert(raw[required].length > 0, `Empty translation for "${required}"`);

@@ -8,7 +8,7 @@ async function installLocalization(config){
   return window[key].status();
  }
  let dict=config.dict&&typeof config.dict==="object"?config.dict:{};
- const textSkip=".monaco-editor,.cm-editor,.xterm,.integrated-terminal,pre,code,script,style,textarea,input,[contenteditable=true],[role=textbox],[role=combobox]";
+ const textSkip=".monaco-editor,.cm-editor,.xterm,.integrated-terminal,pre,code,script,style,textarea,input,[contenteditable=true],[role=textbox],[role=combobox],[data-markdown-root],[data-testid='user-message-content'],.agy-user-bubble,[data-testid='user-message-bubble']";
  const codeSkip=".monaco-editor,.cm-editor,.xterm,.integrated-terminal,pre,code,script,style";
  const textOriginals=new Map();
  const attrOriginals=new Map();
@@ -42,8 +42,12 @@ async function installLocalization(config){
   let m;
   if((m=trimmed.match(/^Version\s+([0-9.]+)$/i)))return"版本 "+m[1];
   if((m=trimmed.match(/^Show\s+(\d+)\s+earlier\s+steps?$/i)))return"显示 "+m[1]+" 个较早步骤";
-  if((m=trimmed.match(/^Worked\s+for\s+(\d+[a-z]+)$/i)))return"已工作 "+m[1];
-  if((m=trimmed.match(/^(\d+[a-z]+)\s+ago$/i)))return m[1]+" 前";
+  if((m=trimmed.match(/^Worked\s+for\s+(<?\d+[a-z]+(?:\s+\d+[a-z]+)*)$/i)))return"已工作 "+m[1];
+  if((m=trimmed.match(/^(\d+[a-z]+(?:\s+\d+[a-z]+)*)\s+ago$/i)))return m[1]+" 前";
+  if((m=trimmed.match(/^(\d+)\s+(seconds?|minutes?|hours?|days?|weeks?)\s+ago$/i))){
+   const u=m[2].toLowerCase()[0];
+   if(TIME_UNITS[u])return m[1]+" "+TIME_UNITS[u];
+  }
   if((m=trimmed.match(/^(?:resets?|refresh(?:es)?)\s+in\s+([^.]+)$/i)))return m[1]+" 后重置";
   if((m=trimmed.match(/^(\d+)\s+files?\s+changed$/i)))return m[1]+" 个文件已更改";
   if((m=trimmed.match(/^Turn\s+(\d+)\s+of\s+(\d+)$/i)))return"第 "+m[1]+" / "+m[2]+" 轮";
@@ -90,6 +94,52 @@ async function installLocalization(config){
   if((m=trimmed.match(/^Opening\s+(.+)$/)))return"正在打开 "+m[1];
   if((m=trimmed.match(/^Pressing\s+(.+)$/)))return"正在按下 "+m[1];
   if((m=trimmed.match(/^Scrolling\s+(.+)$/)))return"正在滚动 "+m[1];
+  if((m=trimmed.match(/^Project:\s*(.+)$/)))return"项目："+m[1];
+  if((m=trimmed.match(/^Conversation:\s*(.+)$/)))return"对话："+m[1];
+  if((m=trimmed.match(/^Select\s+project,\s+current:\s+(.+)$/i)))return"选择项目，当前："+m[1];
+  if((m=trimmed.match(/^Branch,\s+current:\s+(.+)$/i)))return"分支，当前："+m[1];
+  if((m=trimmed.match(/^Plan,\s+(\d+)\s+of\s+(\d+)\s+steps?\s+done$/i)))return"计划：已完成 "+m[1]+" / "+m[2]+" 步";
+  if((m=trimmed.match(/^Go\s+to\s+turn\s+(\d+)\s+of\s+(\d+)$/i)))return"跳转到第 "+m[1]+" / "+m[2]+" 轮";
+  if((m=trimmed.match(/^Question\s+(\d+)\s+of\s+(\d+)$/i)))return"问题 "+m[1]+" / "+m[2];
+  if((m=trimmed.match(/^Go\s+to\s+page\s+(\d+)$/i)))return"跳转到第 "+m[1]+" 页";
+  if((m=trimmed.match(/^Go\s+to\s+slide\s+(\d+)$/i)))return"跳转到第 "+m[1]+" 张幻灯片";
+  if((m=trimmed.match(/^Page\s+(\d+)\s+failed\s+to\s+load$/i)))return"第 "+m[1]+" 页加载失败";
+  if((m=trimmed.match(/^Unfold\s+lines\s+(\d+)-(\d+)$/i)))return"展开第 "+m[1]+"-"+m[2]+" 行";
+  if((m=trimmed.match(/^(\d+)\s+lines?\s+added,\s+(\d+)\s+lines?\s+removed$/i)))return"新增 "+m[1]+" 行，删除 "+m[2]+" 行";
+  if((m=trimmed.match(/^(\d+)\s+comments?$/i)))return m[1]+" 条评论";
+  if((m=trimmed.match(/^(\d+)\s+cookies?$/i)))return m[1]+" 个 Cookie";
+  if((m=trimmed.match(/^(\d+)\s+days?$/i)))return m[1]+" 天";
+  if((m=trimmed.match(/^(\d+)\s+seconds?$/i)))return m[1]+" 秒";
+  if((m=trimmed.match(/^\+(\d+)\s+more$/i)))return"另有 "+m[1]+" 项";
+  if((m=trimmed.match(/^(\d+)\s+models?\s+selected$/i)))return"已选 "+m[1]+" 个模型";
+  if((m=trimmed.match(/^Preview\s+unavailable\s+[—-]\s+(.+)$/i)))return"无法预览 — "+m[1];
+  if((m=trimmed.match(/^More\s+(?:actions|options)\s+for\s+(.+)$/)))return m[1]+" 的更多操作";
+  if((m=trimmed.match(/^Delete\s+cookies\s+for\s+(.+)$/)))return"清除 "+m[1]+" 的 Cookie";
+  if((m=trimmed.match(/^Search\s+Google\s+for\s+"(.+)"$/)))return"在 Google 搜索 \""+m[1]+"\"";
+  if((m=trimmed.match(/^Fix\s+with\s+Agent:\s*(.+)$/)))return"让智能体修复："+m[1];
+  if((m=trimmed.match(/^Cost\s+summary:\s*(.+)$/)))return"费用摘要："+m[1];
+  if((m=trimmed.match(/^Details\s+for\s+(.+)$/)))return m[1]+" 详情";
+  if((m=trimmed.match(/^Move\s+to\s+Group:\s*(.+)$/)))return"移动到分组："+m[1];
+  if((m=trimmed.match(/^Plugins\s+in\s+(.+)$/)))return m[1]+" 中的插件";
+  if((m=trimmed.match(/^Review\s+(.+)\s+before\s+installing$/)))return"安装前先审查 "+m[1];
+  if((m=trimmed.match(/^Run\s+(.+)\s+now$/)))return"立即运行 "+m[1];
+  if((m=trimmed.match(/^Show\s+(.+)\s+in\s+folder$/)))return"在文件夹中显示 "+m[1];
+  if((m=trimmed.match(/^Sign\s+in\s+to\s+(.+)\s+remotely$/)))return"远程登录 "+m[1];
+  if((m=trimmed.match(/^Sign\s+in\s+to\s+(.+)$/)))return"登录 "+m[1];
+  if((m=trimmed.match(/^Switch\s+environment\s+\((.+)\)$/)))return"切换环境 ("+m[1]+")";
+  if((m=trimmed.match(/^System\s+default\s+\((.+)\)$/)))return"系统默认 ("+m[1]+")";
+  if((m=trimmed.match(/^Reset\s+(.+)\s+to\s+default$/)))return"将 "+m[1]+" 重置为默认";
+  if((m=trimmed.match(/^Open\s+URL\s+in\s+system\s+browser:\s*(.+)$/)))return"在系统浏览器中打开链接："+m[1];
+  if((m=trimmed.match(/^Remove\s+(.+)\s+from\s+list$/)))return"从列表中移除 "+m[1];
+  if((m=trimmed.match(/^Account\s+this\s+MCP\s+server\s+uses:\s*(.+)$/)))return"此 MCP 服务器使用的账号："+m[1];
+  if((m=trimmed.match(/^Detached\s+at\s+([0-9a-f]+)$/i)))return"游离提交于 "+m[1];
+  if((m=trimmed.match(/^Cancel\s+\(([^)]+)\)$/)))return"取消 ("+m[1]+")";
+  if((m=trimmed.match(/^Voice\s+[Ss]peed,\s*(.+)$/)))return"语速，"+m[1];
+  if((m=trimmed.match(/^(.+)\s+\(experimental\)$/)))return m[1]+"（实验性）";
+  if((m=trimmed.match(/^(.+)\s+\(Remote\)$/)))return m[1]+"（远程）";
+  if((m=trimmed.match(/^(\d+)\s+stuck$/i)))return m[1]+" 个卡住";
+  if((m=trimmed.match(/^(\d+)\s+waiting\s+on\s+(@\S+)$/i)))return m[1]+" 个正在等待 "+m[2];
+  if((m=trimmed.match(/^Waiting\s+on\s+(@\S+)$/i)))return"正在等待 "+m[1];
   if(parent&&parent.closest&&!parent.closest("kbd,table,.katex")&&(parent.tagName==="TIME"||parent.closest("nav,aside,[role='navigation'],[aria-label*='Sidebar'],[aria-label*='侧边栏'],[aria-label*='Archive'],[aria-label*='Pin']"))){
    if((m=trimmed.match(/^(\d+)([smhdw])$/))&&TIME_UNITS[m[2]])return m[1]+TIME_UNITS[m[2]];
   }
@@ -148,16 +198,24 @@ async function installLocalization(config){
   if(!active||!root)return;
   if(root.nodeType===Node.TEXT_NODE){translateNode(root);return;}
   if(root.nodeType!==Node.ELEMENT_NODE&&root.nodeType!==Node.DOCUMENT_FRAGMENT_NODE&&root.nodeType!==Node.DOCUMENT_NODE)return;
+  let skipText=false;
   if(root.nodeType===Node.ELEMENT_NODE){
+   if(root.closest&&root.closest(codeSkip))return;
    scanElementAttrs(root);
    if(root.shadowRoot){observeRoot(root.shadowRoot);scan(root.shadowRoot);}
-   if(root.closest&&root.closest(textSkip))return;
+   skipText=Boolean(root.closest&&root.closest(textSkip));
   }
-  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
-   acceptNode:n=>n.nodeValue&&resolveHit(n.nodeValue,n.parentElement)!==undefined?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT
-  });
-  let node;
-  while(node=walker.nextNode())translateNode(node);
+  if(!skipText){
+   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
+    acceptNode:n=>{
+     const p=n.parentElement;
+     if(!p||p.closest(textSkip))return NodeFilter.FILTER_REJECT;
+     return n.nodeValue&&resolveHit(n.nodeValue,p)!==undefined?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;
+    }
+   });
+   let node;
+   while(node=walker.nextNode())translateNode(node);
+  }
   if(root.querySelectorAll){
    for(const el of root.querySelectorAll("[placeholder],[title],[aria-label]"))scanElementAttrs(el);
    for(const el of root.querySelectorAll("*")){
