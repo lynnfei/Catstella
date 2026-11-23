@@ -15,11 +15,13 @@ function extractModelInfo(doc=document){
  if(!modelBtn)return null;
  const aria=modelBtn.getAttribute('aria-label')||'';
  const currentMatch=aria.match(/(?:current:|当前[：:])\s*(.+)$/i);
- const fullText=(currentMatch?currentMatch[1]:modelBtn.innerText).replace(/\n/g,' ').trim();
+ const fullText=(currentMatch?currentMatch[1]:modelBtn.innerText).replace(/\s+/g,' ').trim();
  if(!fullText)return null;
- const thinkingMatch=fullText.match(/\b(High|Medium|Low|Minimal|Max|None|Off|Extended|Auto)\b/i);
- const thinking=thinkingMatch?thinkingMatch[1]:null;
- const modelName=thinking?fullText.replace(new RegExp('\\b'+thinking+'\\b','i'),'').trim():fullText;
+ const parenMatch=fullText.match(/\(\s*(Extra\s+High|Very\s+High|XHigh|Extra|High|Medium|Low|Minimal|Max|None|Off|Extended|Auto)(?:\s+thinking)?\s*\)/i);
+ const wordMatch=parenMatch?null:fullText.match(/\b(Extra\s+High|Very\s+High|XHigh|Extra|High|Medium|Low|Minimal|Max|None|Off|Extended|Auto)\b/i);
+ const matched=parenMatch||wordMatch;
+ const thinking=matched?matched[1].replace(/\s+/g,' ').trim():null;
+ const modelName=matched?(fullText.slice(0,matched.index)+' '+fullText.slice(matched.index+matched[0].length)).replace(/\s{2,}/g,' ').trim():fullText;
  return {modelName,thinking:thinking||"默认",fullText};
 }
 const emptyChannel=()=>({fiveHour:null,weekly:null,fiveHourReset:"",weeklyReset:""});

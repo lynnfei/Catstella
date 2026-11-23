@@ -9,9 +9,9 @@ async function main(){
   const page=await browser.newPage({viewport:{width:1000,height:800}});
   await page.setContent(`<style>
    body{margin:0;background:#17121c}#root{height:800px}.agy-sheet{height:800px;width:1000px}
-   #chat{height:650px;overflow-y:auto;isolation:isolate;mask-image:linear-gradient(transparent,black 28px)}
+   #chat{height:650px;overflow-y:auto;isolation:isolate;container-type:size;overflow-anchor:none;mask-image:linear-gradient(transparent,black 28px)}
    .scroll-mt-4{padding-top:60px;width:720px;margin-left:120px}.answer{height:1200px}
-  </style><main id="root"><section class="agy-sheet"><div class="h-full overflow-y-auto isolate outline-none" id="chat"><div class="scroll-mt-4"><div data-testid="agent-response"><div class="px-2 py-1"><div class="answer leading-relaxed select-text"></div></div></div></div></div></section></main>`);
+  </style><main id="root"><section class="agy-sheet"><div data-testid="autoscroll-viewport" class="h-full overflow-y-auto isolate outline-none" id="chat"><div class="scroll-mt-4"><div data-testid="agent-response"><div class="px-2 py-1"><div class="answer leading-relaxed select-text"></div></div></div></div></div></section></main>`);
   const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="800"><defs><pattern id="p" width="16" height="16" patternUnits="userSpaceOnUse"><rect width="16" height="16" fill="#100040"/><rect width="8" height="16" fill="#fff080"/></pattern></defs><rect width="1000" height="800" fill="url(#p)"/></svg>');
   const config={owner:'scroll-glass-test',image,wallpaperId:'stripes',opacity:1,scrim:0,outputMode:'glass',replyOpacity:0,transition:'none'};
   await page.evaluate(installTheme,config);
@@ -34,7 +34,7 @@ async function main(){
   const late=await page.evaluate(()=>{
    const chat=document.querySelector('#chat');chat.scrollTop=0;
    chat.innerHTML='<div class="scroll-mt-4"><div data-testid="agent-response"><div class="answer markdown-body"></div></div></div>';
-   chat.className='h-full overflow-auto isolate';
+   chat.className='isolate';
    chat.style.maskImage='linear-gradient(transparent,black 28px)';
    return getComputedStyle(chat).maskImage;
   });

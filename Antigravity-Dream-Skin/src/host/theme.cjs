@@ -1,7 +1,7 @@
 // Serialized into the host by its existing local CDP endpoint. No app files are modified.
 async function installTheme(config){
  const key="__agyDreamSkinV2";
- const engineRevision="2026-11-12-chat-appearance-v6",mountKey="__agyDreamSkinMountV2";
+ const engineRevision="2026-11-24-agy-233-v7",mountKey="__agyDreamSkinMountV2";
  if(window[key]){if(window[key].owner!==config.owner)throw new Error("皮肤由另一个运行实例管理");if(window[key].engineRevision===engineRevision&&window[key].status().applied){await window[key].update(config);return window[key].status();}window[key].destroy();}
  // Initial image decoding yields to other callers. Keep one initializer and let
  // later calls replace its desired config instead of leaving orphan observers.
@@ -378,7 +378,7 @@ async function installTheme(config){
     a backdrop root, so reply blur samples an empty surface instead of wallpaper.
     Unmask only AI-containing chat scrollers in glass mode. CSS keeps late/native
     class and inline-style changes correct on their first frame; no scroll hook. */
- html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root])[data-agy-output-mode="glass"] .agy-sheet :is(.overflow-y-auto,.overflow-auto,[role="log"],[data-testid="conversation-scroll"],[data-testid="chat-scroll"]):has(:is(${aiRole}):not(:where(${roleExcluded}))) {
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root])[data-agy-output-mode="glass"] .agy-sheet :is(.overflow-y-auto,.overflow-auto,[role="log"],[data-testid="autoscroll-viewport"],[data-testid="conversation-scroll"],[data-testid="chat-scroll"]):has(:is(${aiRole}):not(:where(${roleExcluded}))) {
   mask-image:none!important;-webkit-mask-image:none!important;
  }
  html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(.agy-user-bubble,[data-testid="user-message-bubble"],user-query,.user-query) {

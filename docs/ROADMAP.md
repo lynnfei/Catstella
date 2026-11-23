@@ -23,7 +23,7 @@
 ## 当前验收和发包
 
 - [x] **桌宠长跑复测。** 2026-11-24 用户实机长跑复测通过。已验证账本写入失败重试、渲染崩溃恢复和单实例行为，保留恢复日志供后续排查。[本轮验收](QA_RECOVERY_CHAT_2026-11-12.md)
-- [ ] **AGY 2.33+ 主题注入与滚动毛玻璃重适配及复测。** Antigravity v2.33.0 起默认关闭本地 CDP 调试端口（不生成 `DevToolsActivePort`），导致皮肤、汉化与客户端额度失联。2026-11-24 已完成适配：`shared/host.cjs` 增强安装探测与 `cdp-disabled` 状态诊断，新增快捷方式配置工具（`tools/enable-agy-cdp.cjs`）与设置中心「反重力」页一键配置/启动引导，并补强 2.33 模型/额度解析。待保存退出并通过已配置的快捷方式重启 Antigravity 后，实机复测主题注入、滚动毛玻璃与额度读取。见 [原滚动毛玻璃记录](AGY_SCROLL_GLASS_2026-11-11.md)。
+- [x] **AGY 2.33+ 主题注入与滚动毛玻璃重适配及复测。** Antigravity v2.33.0 起默认关闭本地 CDP 调试端口（不生成 `DevToolsActivePort`），导致皮肤、汉化与客户端额度失联。2026-11-24 已完成适配与实机复测：通过已配置快捷方式启动真实 Antigravity v2.33.0（CDP 端口 `1191`、`StarSuite.exe` PID `16904`）实测确认 `.agy-sheet` 壁纸层对齐、零大面积不透明遮罩、回复区 `backdrop-filter: blur(28px) saturate(1.35)` 生效且额度通道实时可读；同步完成 `theme.cjs` `v7`（为 `autoscroll-viewport` + `container-type: size` 滚动包装显式解除遮罩并更新像素回归 `verify-agy-scroll-glass.cjs`）、`host-quota.cjs`（修复 `Extra High` / `XHigh` / 括号思考等级解析）及汉化字典/引擎全面扩充（`zh-CN.json` 增至 2,332 条、隔离对话正文并补全 Swarm 蜂群面板与动态模板）。见 [原滚动毛玻璃记录](AGY_SCROLL_GLASS_2026-11-11.md)。
 - [x] **Web 长输入与地图边栏复测。** 2026-11-24 用户实机复测通过。渐隐仅绘制在聊天栏内，保留壁纸对齐与底部遮挡。[修复记录](WEB_SIDEBAR_FADE_2026-11-10.md)
 - [x] **设置点击与动画第二轮实测。** 2026-11-24 用户实机手感复测通过。[测量记录](SETTINGS_FRAMES_2026-11-10.md)
 - [x] **本轮拖动／设置性能实机体验。** 2026-11-24 用户实机复测通过。[本轮 QA](QA_DRAG_SETTINGS_2026-11-10.md)
