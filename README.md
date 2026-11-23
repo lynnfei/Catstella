@@ -105,6 +105,11 @@ npm test
 
 快捷键：`Ctrl+Alt+G` 唤回挂件；`Ctrl+Alt+Shift+G` 关闭鼠标穿透。托盘图标右键可打开设置中心。
 
+### ⚠️ Antigravity v2.33+ 兼容提示
+Antigravity v2.33.0 起默认不再在启动时开启本地 CDP 调试端口（`DevToolsActivePort`），直接启动会导致主题注入、汉化与客户端额度读取处于等待连接状态。
+- **一键适配（Windows）**：打开 Catstella 设置中心「反重力」页点击「配置快捷方式（开启调试通道）」，或运行 `node tools/enable-agy-cdp.cjs --apply`；配置后完全退出并重开 Antigravity 即可恢复（不修改宿主安装包，可随时还原）。
+- **命令行 / macOS / Linux 启动**：为 Antigravity 传入 `--remote-debugging-port=0 --remote-debugging-address=127.0.0.1`。
+
 ---
 
 ## 🔒 隐私与本地数据边界 (Privacy & Security)
