@@ -21,6 +21,7 @@ const fixture = `
   window.store = { syncWallpaper: true, wallpaperId: 'old',
     agyBridgeState:{online:true,desktop:{characterPackIds:['online-sample-cat'],wallpaperIds:[]}} };
   window.openedTabs = [];
+  window.storageListeners = [];
   window.chrome = {
     runtime: {
       id: 'catstella', getURL: p => location.origin + '/' + p,
@@ -31,8 +32,14 @@ const fixture = `
     },
     storage: { local: {
       get(keys, cb) { queueMicrotask(() => cb(structuredClone(store))); },
-      set(value, cb) { Object.assign(store, value); queueMicrotask(cb); }
-    } },
+      set(value, cb) {
+        if (window.failStorage) { chrome.runtime.lastError={message:'storage full'}; queueMicrotask(()=>{cb();delete chrome.runtime.lastError;}); }
+        else {
+          const changes=Object.fromEntries(Object.entries(value).map(([key,newValue])=>[key,{oldValue:store[key],newValue}]));
+          Object.assign(store, value); queueMicrotask(()=>{cb();storageListeners.forEach(listener=>listener(changes,'local'));});
+        }
+      }
+    }, onChanged:{addListener(listener){storageListeners.push(listener);}} },
     tabs: { create: async value => openedTabs.push(value) },
     action: { setBadgeText: ({text}) => window.badge = text }
   };
@@ -125,9 +132,20 @@ const fixture = `
     assert.equal(await detail.locator('.hub-theme-reading').isVisible(),true);
     await detail.getByRole('button', { name: '应用配色' }).click();
     await detail.getByText('已应用 示例主题').waitFor();
+    await page.evaluate(()=>KIMINO_API.storageSet({onlinePalette:'pink',wallpaperOpacity:.43}));
+    await detail.getByRole('button',{name:'当前搭配',exact:true}).click();
+    assert.equal(await detail.locator('.hub-detail-art').getAttribute('data-palette'),'pink');
+    assert.equal(await detail.locator('.hub-theme-sample').evaluate(el=>el.style.getPropertyValue('--sample-opacity')),'0.43');
+    await page.evaluate(()=>KIMINO_API.storageSet({onlinePalette:'ocean',wallpaperOpacity:.75}));
     await detail.getByRole('button', { name: '关闭' }).click();
     await detail.waitFor({state:'hidden'});
     assert.deepEqual(await page.evaluate(() => [store.onlinePalette, store.wallpaperOpacity, store.wallpaperId]), ['ocean', .75, 'old']);
+    await page.getByRole('button',{name:'预览 示例主题'}).click();
+    await page.evaluate(()=>KIMINO_API.storageSet({onlineThemeRevision:'0'.repeat(64)}));
+    await detail.getByRole('button',{name:'更新到最新版',exact:true}).click();
+    await detail.getByText('已安装 1 项，可从本地图库切换。').waitFor();
+    assert.equal(await page.evaluate(()=>store.onlineThemeRevision),catalog.items.find(item=>item.id==='night').sha256);
+    await detail.getByRole('button',{name:'关闭'}).click();await detail.waitFor({state:'hidden'});
     await page.getByRole('button', { name: '预览 示例桌宠' }).click();
     await detail.getByText('桌面端已安装',{exact:true}).waitFor();
     assert.equal(await detail.getByRole('button',{name:'仅桌面端可用'}).getAttribute('aria-disabled'),'true');
@@ -138,6 +156,14 @@ const fixture = `
     await detail.waitFor({state:'hidden'});
     await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === '预览 示例桌宠');
     assert.ok(await page.evaluate(() => store.onlineCharacterPacks['online-sample-cat'].frames.idle));
+    await page.evaluate(()=>KIMINO_API.storageSet({character:'online-sample-cat',syncCharacter:false}));
+    const queued = await page.evaluate(async()=>Promise.all([
+      KIMINO_API.sendMessage({type:'KG_ONLINE',action:'download',value:'sample-cat'}),
+      KIMINO_API.sendMessage({type:'KG_ONLINE',action:'uninstall',value:'sample-cat'})
+    ]));
+    assert(queued.every(result=>result.ok));
+    assert.equal(await page.evaluate(()=>!!store.onlineCharacterPacks['online-sample-cat']),false,'uninstall runs after the queued install');
+    assert.equal(await page.evaluate(()=>store.character),'gemini-star-v1');
     await page.setViewportSize({width:480,height:560});
     const opener = page.getByRole('button', { name: '预览 示例壁纸' });
     await opener.scrollIntoViewIfNeeded();
@@ -176,12 +202,36 @@ const fixture = `
     await page.waitForFunction(() => store.pendingOnlineWallpaper === false);
     assert.equal(desktopSyncWallpaper, false, 'the first successful sync must keep the new Web wallpaper independent');
     assert.equal(await page.evaluate(() => store.syncWallpaper), false);
+    // A revision-less legacy item remains usable, and removing it restores a valid selection.
+    await opener.click();
+    await page.evaluate(()=>{delete store.customWallpapers[0].revision;});
+    await detail.getByRole('button',{name:'卸载',exact:true}).click();
+    await page.evaluate(()=>{window.failStorage=true;});
+    await detail.getByRole('button',{name:'确认卸载？',exact:true}).click();
+    await detail.getByText('素材操作失败，请重试。').waitFor();
+    assert.equal(await page.evaluate(()=>store.customWallpapers.length),1);
+    await page.evaluate(()=>{window.failStorage=false;});
+    await detail.getByRole('button',{name:'卸载',exact:true}).click();
+    await detail.getByRole('button',{name:'确认卸载？',exact:true}).click();
+    await detail.getByText('已卸载，可随时重新安装。').waitFor();
+    assert.equal(await page.evaluate(()=>store.wallpaperId),'gemini-character-sheet-v1');
+    assert.equal(await page.evaluate(()=>store.customWallpapers.length),0);
+    await detail.getByRole('button',{name:'安装这项素材',exact:true}).click();
+    await detail.getByRole('button',{name:'使用这项素材',exact:true}).waitFor();
+    await detail.getByRole('button',{name:'关闭'}).click();
+    await detail.waitFor({state:'hidden'});
     corrupt = true;
     assert.equal(await page.evaluate(async () => (await window.KIMINO_API.sendMessage({ type: 'KG_ONLINE', action: 'download', value: 'sample' })).ok), false);
     assert.equal(await page.evaluate(() => store.customWallpapers[0].dataUrl), saved.url);
     disconnected = true;
     await page.getByRole('button', { name: '刷新目录' }).click();
     await page.getByText(/无法连接 GitHub/).waitFor();
+    await page.getByRole('button',{name:'预览 示例主题'}).click();
+    await detail.getByRole('button',{name:'卸载',exact:true}).click();
+    await detail.getByRole('button',{name:'确认卸载？',exact:true}).click();
+    await detail.getByText('已卸载，可随时重新安装。').waitFor();
+    assert.deepEqual(await page.evaluate(()=>[store.onlineThemeId,store.onlinePalette,store.wallpaperOpacity]),[null,'violet',.88]);
+    await detail.getByRole('button',{name:'关闭'}).click();await detail.waitFor({state:'hidden'});
     await page.getByRole('checkbox', { name: '自动检查更新' }).uncheck();
     await page.getByText(/自动检查已关闭/).waitFor();
     assert.equal(await page.evaluate(() => window.badge), '');

@@ -425,9 +425,7 @@ html.kimino-dream-active [data-kg-fade-host] {
   position: fixed !important;
   z-index: -1 !important;
   pointer-events: none !important;
-  /* 透明底（2026-11-09 黑雾根治）：暗色实底会让渐变带比周围壁纸更暗形成黑雾。
-     层后面就是真壁纸（z -99999），镜像壁纸半透明处直接透出真壁纸，无缝。 */
-  background-color: transparent !important;
+  background-color: var(--kg-palette-base, #211e2d) !important;
   border-radius: 22px !important;
   overflow: hidden !important;
 }
@@ -435,12 +433,9 @@ html.kimino-dream-active [data-kg-fade-host] {
   position: absolute !important;
   inset: 0 !important;
   pointer-events: none !important;
-  background-color: transparent !important;
+  background-color: var(--kg-palette-base, #211e2d) !important;
   background-size: var(--kg-wallpaper-fit, cover) !important;
   background-position: center center !important;
-  /* 视口锚定（2026-11-09 黑雾根治）：镜像壁纸按视口裁切，与真壁纸
-     （fixed 全视口 cover/contain）逐像素对齐，渐变带与周围壁纸完全无缝。 */
-  background-attachment: fixed !important;
   background-repeat: no-repeat !important;
   transition: opacity 0.6s ease !important;
 }
@@ -714,10 +709,11 @@ html.kimino-dream-active :is(input-area-v2, [data-kg="composer"], .input-area-co
    ================================================================ */
 html.kimino-dream-active :is(
   [role="menu"],
-  [role="dialog"],
   [role="listbox"],
   .mat-menu-panel
 ),
+/* Media dialogs preserve their native viewport-based positioning. */
+html.kimino-dream-active [role="dialog"]:not(:has(img, canvas, video)),
 html.kimino-dream-active :is(pre, code, .code-block, table):not(:is(pre, code, .code-block, table) *) {
   background-color: rgba(24, 20, 36, 0.90) !important;
   border-color: rgba(174, 142, 218, 0.22) !important;
@@ -742,6 +738,10 @@ html.kimino-dream-active .cdk-overlay-backdrop.image-expansion-dialog-backdrop {
 
 html.kimino-dream-active .image-expansion-dialog {
   background-color: transparent !important;
+  /* A filter on the content shell makes fixed media use the header-sized
+     shell as its containing block. Keep blur on the separate backdrop only. */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   box-shadow: none !important;
 }
 
@@ -922,4 +922,13 @@ html.kimino-dream-active input-area-v2 :is(.input-area-container, .input-area, .
   background-color: transparent !important;
   background-image: none !important;
   box-shadow: none !important;
+}
+
+/* Conversation controls affect reading backgrounds, never pet/quota surfaces or text opacity. */
+/* 用户消息与卡片走 --kg-chat-alpha；模型回答走 --kg-reply-alpha（未设置时回退 chat alpha，保持既有视觉）。 */
+html.kimino-dream-active[data-kg-chat-custom] :is(.user-query-bubble-with-background,[data-kg="bubble"],[data-kg="card"]) {
+ background-color:rgba(var(--kg-chat-rgb),var(--kg-chat-alpha))!important; background-image:none!important;
+}
+html.kimino-dream-active[data-kg-chat-custom] model-response:not(:has([data-kg="thinking"])) {
+ background-color:rgba(var(--kg-chat-rgb),var(--kg-reply-alpha))!important; background-image:none!important;
 }

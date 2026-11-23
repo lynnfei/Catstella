@@ -44,14 +44,19 @@
       if (!pill || !host || !scroller || host.contains(scroller)) { this.destroy(); return; }
       const composer = pill.getBoundingClientRect();
       const pane = source.getBoundingClientRect();
-      if (composer.height <= 0 || pane.width <= 0) { this.destroy(); return; }
+      const chat = scroller.getBoundingClientRect();
+      // The wallpaper spans the whole workspace, including Maps/Canvas panes.
+      // Keep its full geometry for image alignment, but paint only within chat.
+      const chatLeft = Math.max(pane.left, chat.left);
+      const chatRight = Math.min(pane.right, chat.right);
+      if (composer.height <= 0 || pane.width <= 0 || chat.width <= 0 || chatRight <= chatLeft) { this.destroy(); return; }
       const banner = host.querySelector('.inline-upgrade-banner-row, .gem-banner-container, [data-test-id="gem-banner-description-input"]');
       const bannerRect = banner?.getBoundingClientRect();
       const top = bannerRect && bannerRect.height > 0 && bannerRect.top > 50 && bannerRect.top < composer.top
         ? bannerRect.top : composer.top;
       const start = Math.max(0, Math.round(top - 8));
       const end = Math.max(start + 24, Math.round(Math.min(top + 56, composer.bottom)));
-      const signature = [pane.left, pane.top, pane.width, pane.height, composer.left, start, end].join('_');
+      const signature = [pane.left, pane.top, pane.width, pane.height, composer.left, chatLeft, chatRight, start, end].join('_');
 
       if (this.host !== host || !this.layer?.isConnected) {
         this.destroy();
@@ -92,6 +97,7 @@
       style.height = (pane.height / sy) + 'px';
       const a = Math.max(0, (start - pane.top) / sy);
       const b = Math.max(a + 1, (end - pane.top) / sy);
+      style.setProperty('clip-path', `inset(0px ${Math.max(0, (pane.right - chatRight) / sx)}px 0px ${Math.max(0, (chatLeft - pane.left) / sx)}px)`);
       const span = b - a;
       const mask = `linear-gradient(to bottom, transparent 0px, transparent ${a}px, rgba(0,0,0,.05) ${a + span * .18}px, rgba(0,0,0,.20) ${a + span * .38}px, rgba(0,0,0,.48) ${a + span * .60}px, rgba(0,0,0,.76) ${a + span * .80}px, rgba(0,0,0,.94) ${a + span * .94}px, black ${b}px, black 100%)`;
       style.setProperty('mask-image', mask);

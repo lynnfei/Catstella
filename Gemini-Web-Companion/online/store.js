@@ -1,7 +1,7 @@
 window.mountCatstellaStore = async (root, { maintenance, scrollHost } = {}) => {
   const api = window.KIMINO_API;
   const call = (action,value) => api.sendMessage({type:'KG_ONLINE',action,value});
-  const keys = ['autoUpdateCheck','customWallpapers','onlineCharacterPacks','character','wallpaperId','onlinePalette','onlineThemeId','syncCharacter','syncWallpaper','agyBridgeState','agySyncedWallpaper',
+  const keys = ['autoUpdateCheck','customWallpapers','onlineCharacterPacks','character','wallpaperId','wallpaperOpacity','onlinePalette','onlineThemeId','onlineThemeRevision','syncCharacter','syncWallpaper','agyBridgeState','agySyncedWallpaper',
     'webWallpaperSlideshow','webWallpaperInterval','webWallpaperCycle'];
   let [builtIn, stored] = await Promise.all([
     fetch(api.getURL('assets/gallery.json')).then(response => response.json()).catch(() => ({})),
@@ -20,7 +20,7 @@ window.mountCatstellaStore = async (root, { maintenance, scrollHost } = {}) => {
     if (item.kind === 'theme') {
       const known = {'violet-default':'violet','midnight-blue':'ocean'}[item.id];
       const active = known ? known === (stored.onlinePalette || 'violet') : stored.onlineThemeId === item.id;
-      return {installed:active,active};
+      return {installed:active,active,revision:stored.onlineThemeId === item.id ? stored.onlineThemeRevision || '' : ''};
     }
     const isPet = item.kind === 'character';
     const built = (isPet ? builtIn.characters : builtIn.wallpapers)?.find(entry => entry.id === item.id);
@@ -54,7 +54,7 @@ window.mountCatstellaStore = async (root, { maintenance, scrollHost } = {}) => {
       return custom?.dataUrl || (local && api.getURL(local.preview || local.src));
     },
     selection,
-    currentTheme: () => ({preset:stored.onlinePalette || 'violet',onlineThemeId:stored.onlineThemeId || ''}),
+    currentTheme: () => ({preset:stored.onlinePalette || 'violet',opacity:(stored.wallpaperOpacity ?? .88) * 100}),
     call:async (action,value) => {
       const result = await call(action,value);
       if ((action === 'download' || action === 'uninstall') && result?.ok) stored = await api.storageGet(keys);

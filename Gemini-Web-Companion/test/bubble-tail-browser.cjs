@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
-const source = path.join(root, 'content');
+const source = path.join(root, process.argv.includes('--built') ? 'dist/chromium/content' : 'content');
 
 async function main() {
   const browser = await chromium.launch({ headless: true, channel: process.env.SKIN_BROWSER_CHANNEL || 'msedge' });

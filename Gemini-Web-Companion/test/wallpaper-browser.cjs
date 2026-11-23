@@ -175,8 +175,9 @@ async function main() {
     assert.deepEqual(await viewer.locator('section').nth(1).locator('dt').allTextContents(), ['5 小时', '每周', 'Argon · 每周']);
     assert.match(await viewer.locator('section').nth(1).innerText(), /余 55%/);
     const webMeter = viewer.locator('section').first();
-    assert.match(await webMeter.innerText(), /已使用 38%/);
-    assert.match(await webMeter.innerText(), /已使用 17%/);
+    // 2026-11-09 口径统一为剩余百分比（数据同一来源：38% 已用 = 62% 剩余）。
+    assert.match(await webMeter.innerText(), /剩余 62%/);
+    assert.match(await webMeter.innerText(), /剩余 83%/);
     assert.match(await webMeter.innerText(), /重置时间 15:32/);
     assert.equal(await viewer.locator('.panel').evaluate(el => getComputedStyle(el).borderTopWidth), '0px');
     await compactToggle.click();

@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
   soundVolume: 0.5,
   wallpaperOpacity: 0.88,
   bubbleVisible: true,
+  quotaDisplay: 'remaining',
   ambientChatter: false,
   autoUpdateCheck: true,
   syncCharacter: true,
@@ -74,7 +75,7 @@ async function onlineAvailability() {
   try {
     bundledGallery ||= fetch(extApi.runtime.getURL('assets/gallery.json')).then(response => response.json()).catch(() => ({}));
     const [items, bundled, local] = await Promise.all([
-      online.list(), bundledGallery, safeStorageGet(['onlineCharacterPacks', 'customWallpapers','onlinePalette','onlineThemeId','seenOnlineUpdates','agyBridgeState'])
+      online.list(), bundledGallery, safeStorageGet(['onlineCharacterPacks', 'customWallpapers','onlinePalette','onlineThemeId','onlineThemeRevision','seenOnlineUpdates','agyBridgeState'])
     ]);
     if (online.catalogOffline()) return { ok:false, reason:'connection' };
     const seen = new Set(Array.isArray(local.seenOnlineUpdates) ? local.seenOnlineUpdates : []);
@@ -86,9 +87,13 @@ async function onlineAvailability() {
         : item.kind === 'character' ? bundled.characters?.some(x => x.id === item.id) || local.onlineCharacterPacks?.['online-' + item.id]
         : bundled.wallpapers?.some(x => x.id === item.id) || local.customWallpapers?.some(x => x.id === 'custom:online-' + item.id);
       const revision = item.id + ':' + item.sha256;
+      const savedRevision = item.kind === 'theme' ? local.onlineThemeId === item.id && local.onlineThemeRevision :
+        item.kind === 'character' ? local.onlineCharacterPacks?.['online-' + item.id]?.revision :
+        local.customWallpapers?.find(w=>w.id === 'custom:online-' + item.id)?.revision;
+      const outdated = !!savedRevision && savedRevision !== item.sha256;
       const desktopIds = item.kind === 'wallpaper' ? desktop?.wallpaperIds || [desktop?.wallpaperId]
         : item.kind === 'character' ? desktop?.characterPackIds || [desktop?.characterPack] : [];
-      if (!installed && !desktopIds.includes(item.id) && !desktopIds.includes('online-' + item.id) && !seen.has(revision)) {
+      if ((outdated || !installed && !desktopIds.includes(item.id) && !desktopIds.includes('online-' + item.id)) && !seen.has(revision)) {
         updates.push({kind:item.kind,revision});
       }
     }
@@ -100,7 +105,7 @@ async function onlineAvailability() {
 async function installOnlineAsset(id, applyAfterwards) {
   const asset = await online.download(id);
   if (asset.theme) {
-    return { ok: await safeStorageSet({ onlinePalette: asset.theme.palette, onlineThemeId: id, wallpaperOpacity: asset.theme.opacity / 100 }) };
+    return { ok: await safeStorageSet({ onlinePalette: asset.theme.palette, onlineThemeId: id, onlineThemeRevision: asset.item.sha256, wallpaperOpacity: asset.theme.opacity / 100 }) };
   }
   if (asset.character) {
     // Decode every frame before changing the saved gallery.
@@ -167,10 +172,11 @@ async function onlineAction({ action, value }) {
       return await task;
     }
     if (action === 'uninstall' && typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,60}$/i.test(value)) {
+      const task = installQueue.then(() => serializeAppearance(async () => {
       // 主题：清回内置星轨紫；桌宠/壁纸：从本地库移除，正在使用的回退默认项。
       const theme = await safeStorageGet(['onlineThemeId']);
       if (theme.onlineThemeId === value) {
-        return { ok: await safeStorageSet({ onlineThemeId: null, onlinePalette: 'violet', wallpaperOpacity:.88 }) };
+        return { ok: await safeStorageSet({ onlineThemeId: null, onlineThemeRevision: null, onlinePalette: 'violet', wallpaperOpacity:.88 }) };
       }
       const { onlineCharacterPacks } = await safeStorageGet(['onlineCharacterPacks']);
       if (onlineCharacterPacks && Object.prototype.hasOwnProperty.call(onlineCharacterPacks, 'online-' + value)) {
@@ -181,13 +187,17 @@ async function onlineAction({ action, value }) {
         return { ok: await safeStorageSet({ onlineCharacterPacks: packs, ...reset }) };
       }
       const wallpaperId = 'custom:online-' + value;
-      const { customWallpapers = [], wallpaperId: activeId } = await safeStorageGet(['customWallpapers', 'wallpaperId']);
+      const { customWallpapers = [], wallpaperId: activeId, webWallpaperCycle } = await safeStorageGet(['customWallpapers', 'wallpaperId', 'webWallpaperCycle']);
       if (Array.isArray(customWallpapers) && customWallpapers.some(w => w?.id === wallpaperId)) {
         const wallpapers = customWallpapers.filter(w => w?.id !== wallpaperId);
-        const selection = activeId === wallpaperId ? { wallpaperId: 'gemini-character-sheet-v1', webWallpaperCycle: null } : {};
+        const selection = activeId === wallpaperId ? { wallpaperId: 'gemini-character-sheet-v1', webWallpaperCycle: null } :
+          webWallpaperCycle?.id === wallpaperId ? { webWallpaperCycle: null } : {};
         return { ok: await safeStorageSet({ customWallpapers: wallpapers, ...selection }) };
       }
       return { ok: false, reason: 'not-installed' };
+      }));
+      installQueue = task.catch(() => {});
+      return await task;
     }
     return { ok: false };
   } catch (error) {

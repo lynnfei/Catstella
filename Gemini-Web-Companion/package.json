@@ -5,7 +5,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "test": "node --test test/turn-watcher.test.cjs test/runtime.test.cjs",
-    "test:browser": "node test/skin-browser.cjs && node test/fade-browser.cjs && node test/wallpaper-browser.cjs && node test/interaction-browser.cjs && node test/online-browser.cjs"
+    "test:browser": "node test/skin-browser.cjs && node test/image-viewer-browser.cjs && node test/fade-browser.cjs && node test/wallpaper-browser.cjs && node test/interaction-browser.cjs && node test/online-browser.cjs"
   },
   "author": "Antigravity & Kimino",
   "license": "MIT"

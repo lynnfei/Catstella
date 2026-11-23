@@ -57,13 +57,19 @@ async function main() {
           '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240"><rect width="200" height="240" fill="#8b6fd3"/></svg>'
         ),
         storageGet: async () => window.state,
-        storageSet: async value => { window.storageWrites.push(value); return true; },
-        onChanged: () => {},
+        storageSet: async value => {
+          window.storageWrites.push(value);
+          if (window.failStorage) return false;
+          Object.assign(window.state,value);
+          return true;
+        },
+        onChanged: listener => { window.notifyStorage = listener; },
         sendMessage: async message => message.type === 'KG_HEAD_PAT' ? { total: ++window.headPatTotal,today:window.headPatTotal } : null
       };
     });
     await page.addScriptTag({ path: path.join(source, 'ambient.js') });
     await page.addScriptTag({ path: path.join(source, 'pet-behavior.js') });
+    await page.addScriptTag({ path: path.join(source, 'usage-viewer.js') });
     await page.addScriptTag({ path: path.join(source, 'widget.js') });
 
     await page.waitForFunction(() => {
@@ -148,6 +154,28 @@ async function main() {
     await page.locator('.btn-open-settings').click();
     assert.deepEqual(await page.locator('.kg-seg-btn').allTextContents(), ['双端同显','仅桌面端']);
     assert.equal(await page.locator('.kg-seg-btn.active').getAttribute('data-mode'), 'both');
+    await page.evaluate(()=>emitTracker({fatiguePercent:25,realQuota:{weeklyUsagePercent:40,displaySource:'official'}}));
+    assert.equal(await page.locator('.cur-quota-pct').textContent(),'剩余 75%');
+    assert.equal(await page.locator('.week-quota-pct').textContent(),'剩余 60%');
+    const display=page.getByLabel('额度显示方式',{exact:true});
+    await display.selectOption('used');
+    await page.waitForFunction(()=>state.quotaDisplay==='used');
+    assert.equal(await page.locator('.cur-quota-pct').textContent(),'已使用 25%');
+    assert.equal(await page.locator('.cur-quota-bar').evaluate(el=>el.style.width),'25%');
+    assert.equal(await page.locator('.week-quota-pct').textContent(),'已使用 40%');
+    await page.evaluate(()=>{
+      Object.assign(state,{quotaView:'compact',showAgyQuotaInCompact:true,agyBridgeState:{online:true,desktop:{agyQuota:{fiveHour:80,geminiWeekly:35}}}});
+      notifyStorage({quotaView:{newValue:'compact'},showAgyQuotaInCompact:{newValue:true},agyBridgeState:{newValue:state.agyBridgeState}},'local');
+    });
+    assert((await page.locator('.catstella-usage-viewer .reading span').allTextContents()).includes('已使用 25%'));
+    assert((await page.locator('.catstella-usage-viewer .reading span').allTextContents()).includes('已使用 20%'),'AGY remaining is inverted only for presentation');
+    await display.selectOption('remaining');
+    await page.waitForFunction(()=>state.quotaDisplay==='remaining');
+    assert((await page.locator('.catstella-usage-viewer .reading span').allTextContents()).includes('剩余 75%'));
+    assert((await page.locator('.catstella-usage-viewer .reading span').allTextContents()).includes('剩余 80%'));
+    await page.evaluate(()=>emitTracker({fatiguePercent:100,realQuota:{fivePending:true,weeklyPending:true}}));
+    assert.equal(await page.locator('.cur-quota-pct').textContent(),'等待更新');
+    assert.equal(await page.locator('.week-quota-pct').textContent(),'等待更新');
     assert.deepEqual(errors, []);
     console.log('PASS: web pet drag moves without activating; short stationary taps still animate.');
   } finally {

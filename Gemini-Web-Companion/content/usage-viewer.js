@@ -193,7 +193,7 @@
         const isUsed = row.display === 'used';
         const displayed = value === null ? null : isUsed ? 100 - value : value;
         const label = waiting ? '等待更新' : value === null ? (row.unknownLabel || '—')
-          : isUsed ? `已使用 ${displayed}%` : `余 ${displayed}%`;
+          : isUsed ? `已使用 ${displayed}%` : `剩余 ${displayed}%`;
         if (amount.textContent !== label) amount.textContent = label;
         reading.classList.toggle('is-muted', value === null);
         meter.style.display = value === null ? 'none' : '';

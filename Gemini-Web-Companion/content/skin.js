@@ -119,16 +119,58 @@
   };
 
   let configRevision = 0;
+  let chatRevision = 0, chatReady = false;
+  const chatKeys = ['chatTint','chatOpacity','replyOpacity','syncChatStyle','agyBridgeState'];
+  const chatConfig = {};
+  const readChatStyle = config => {
+    const desktop = config.agyBridgeState?.desktop?.chatAppearance;
+    if (config.syncChatStyle === true && config.agyBridgeState?.online === true && desktop &&
+        /^#[0-9a-f]{6}$/i.test(desktop.tint || '') && Number.isFinite(desktop.opacity) && Number.isFinite(desktop.reply)) {
+      return { tint:desktop.tint, opacity:desktop.opacity, reply:desktop.reply, following:true };
+    }
+    return { tint:config.chatTint, opacity:config.chatOpacity, reply:config.replyOpacity, following:false };
+  };
+  window.KiminoReadChatStyle = readChatStyle;
+  const applyChatConfig = () => {
+    const {tint,opacity,reply} = readChatStyle(chatConfig);
+    paintChatStyle(tint,opacity,reply);
+  };
+  const paintChatStyle = (tint, opacity, reply) => {
+    if (typeof opacity === 'string' && opacity.trim()) opacity = Number(opacity);
+    if (typeof reply === 'string' && reply.trim()) reply = Number(reply);
+    const root = document.documentElement;
+    const replyCustom = Number.isFinite(reply);
+    const custom = /^#[0-9a-f]{6}$/i.test(tint || '') || Number.isFinite(opacity) || replyCustom;
+    root.toggleAttribute('data-kg-chat-custom', custom);
+    const hex = /^#[0-9a-f]{6}$/i.test(tint || '') ? tint.slice(1) : '181224';
+    root.style.setProperty('--kg-chat-rgb',[0,2,4].map(i=>parseInt(hex.slice(i,i+2),16)).join(','));
+    const chatAlpha = (Number.isFinite(opacity) ? Math.max(0,Math.min(100,opacity)) : 76)/100;
+    root.style.setProperty('--kg-chat-alpha',String(chatAlpha));
+    // 回答透明度：未设置时与用户气泡同值（保持既有视觉）；0=全透、1=不透。
+    // 记住最后已知值：跨标签页只广播一个键的变更时，另一维度不回退。
+    const chatReply = replyCustom ? Math.max(0,Math.min(100,reply)) : null;
+    root.style.setProperty('--kg-reply-alpha',String(chatReply === null ? chatAlpha : chatReply/100));
+  };
+  window.KiminoPreviewChatStyle = (...values) => {
+    ++chatRevision;
+    paintChatStyle(...values);
+  };
   const loadAndApply = async () => {
     const revision = ++configRevision;
     const previousOpacityRevision = opacityRevision;
     const previousBlurRevision = blurRevision;
+    const previousChatRevision = chatRevision;
     const res = await api.storageGet([
       'skinStyle', 'skinEnabled', 'wallpaperOpacity', 'wallpaperBlur', 'wallpaperId', 'customWallpapers', 'customWallpaper',
       'syncWallpaper', 'agyBridgeState', 'agySyncedWallpaper', 'onlinePalette',
-      'webWallpaperSlideshow','webWallpaperInterval','webWallpaperCycle','webWallpaperFit','webWallpaperTransition'
+      'webWallpaperSlideshow','webWallpaperInterval','webWallpaperCycle','webWallpaperFit','webWallpaperTransition',...chatKeys.filter(key=>key!=='agyBridgeState')
     ]);
     const style = window.KiminoSkinStyle?.read(res) ?? (res?.skinEnabled === false ? 'native' : 'glass');
+    if (!chatReady) {
+      chatReady = true;
+      for (const key of chatKeys) if (!Object.hasOwn(chatConfig,key)) chatConfig[key] = res[key];
+      if (previousChatRevision === chatRevision) applyChatConfig();
+    }
     const isEnabled = style !== 'native';
     const opacity = res && typeof res.wallpaperOpacity === 'number' ? res.wallpaperOpacity : 0.88;
 
@@ -390,6 +432,11 @@
     try {
       api.onChanged((changes, area) => {
         if (area !== 'local') return;
+        if (chatKeys.some(key=>changes[key])) {
+          const previous = JSON.stringify(readChatStyle(chatConfig));
+          for (const key of chatKeys) if (changes[key]) chatConfig[key] = changes[key].newValue;
+          if (previous !== JSON.stringify(readChatStyle(chatConfig))) applyChatConfig();
+        }
         if (changes.wallpaperOpacity) setWallpaperOpacity(changes.wallpaperOpacity.newValue);
         if (changes.wallpaperBlur && !usingDesktopWallpaper) setWallpaperBlur(changes.wallpaperBlur.newValue);
         const before = changes.agyBridgeState?.oldValue;

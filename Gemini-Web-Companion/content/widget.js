@@ -301,24 +301,44 @@
       animation: kimino-warning-flash 2s infinite ease-in-out;
     }
 
-    /* ========= 气泡面板 ========= */
+    /* ========= 气泡面板 (Astral Holo-Prism Bubble v3) ========= */
     .kimino-bubble {
       position: absolute;
       bottom: 102%;
       right: 0;
-      width: min(296px, calc(100vw - 16px));
-      background: rgba(22, 16, 38, 0.94);
-      backdrop-filter: blur(22px) saturate(140%);
-      -webkit-backdrop-filter: blur(22px) saturate(140%);
-      border: 1px solid rgba(190, 160, 245, 0.35);
-      border-radius: 18px;
-      box-shadow: 0 14px 40px rgba(8, 5, 22, 0.65), inset 0 1px 0 rgba(240, 215, 255, 0.22);
-      padding: 14px 16px;
-      color: #f1edfa;
-      animation: kimino-bubble-pop 0.28s cubic-bezier(0.18, 0.9, 0.32, 1.2);
+      width: min(304px, calc(100vw - 16px));
+      background-color: rgba(22, 16, 38, 0.94);
+      background-image:
+        radial-gradient(125% 95% at 12% 0%, rgba(244, 114, 182, 0.16) 0%, transparent 56%),
+        radial-gradient(110% 85% at 92% 100%, rgba(56, 189, 248, 0.14) 0%, transparent 58%),
+        linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 46%);
+      backdrop-filter: blur(26px) saturate(165%);
+      -webkit-backdrop-filter: blur(26px) saturate(165%);
+      border: 1px solid rgba(216, 180, 254, 0.38);
+      border-radius: 20px;
+      box-shadow:
+        0 20px 48px rgba(6, 3, 18, 0.72),
+        0 0 28px rgba(168, 85, 247, 0.16),
+        inset 0 1px 0 rgba(255, 240, 255, 0.28);
+      padding: 15px 16px 14px;
+      color: #f5f0ff;
+      animation: kimino-bubble-pop 0.3s cubic-bezier(0.18, 0.9, 0.32, 1.2);
       transform-origin: bottom right;
       z-index: 10;
       margin-bottom: 12px;
+    }
+
+    .kimino-bubble::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 18px;
+      right: 18px;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(244, 114, 182, 0), rgba(244, 114, 182, 0.85), rgba(192, 132, 252, 0.9), rgba(56, 189, 248, 0.85), rgba(56, 189, 248, 0));
+      opacity: 0.88;
+      pointer-events: none;
     }
 
     .kimino-bubble::after {
@@ -340,18 +360,20 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
-      padding-bottom: 7px;
-      border-bottom: 1px solid rgba(185, 155, 234, 0.2);
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(216, 180, 254, 0.2);
     }
 
     .kimino-header-title {
       font-size: 13px;
-      font-weight: 600;
-      color: #e9d5ff;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      color: #f5d0fe;
+      text-shadow: 0 1px 10px rgba(217, 70, 239, 0.28);
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
     }
 
     .kimino-header-actions {
@@ -361,52 +383,63 @@
     }
 
     .kimino-btn-icon {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      color: #ddd6fe;
-      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+      border: 1px solid rgba(216, 180, 254, 0.24);
+      color: #ede9fe;
+      border-radius: 999px;
       cursor: pointer;
-      padding: 3px 7px;
+      padding: 3.5px 9px;
       font-size: 11px;
+      font-weight: 600;
       line-height: 1.2;
-      transition: all 0.18s ease;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+      transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
     }
 
     .kimino-btn-icon:hover {
-      background: rgba(192, 132, 252, 0.28);
-      color: #fff;
-      border-color: #c084fc;
+      transform: translateY(-1px);
+      background: linear-gradient(135deg, rgba(217, 70, 239, 0.34), rgba(139, 92, 246, 0.32));
+      color: #ffffff;
+      border-color: rgba(232, 121, 249, 0.68);
+      box-shadow: 0 4px 12px rgba(192, 132, 252, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.24);
     }
-    .kimino-header-actions .kimino-btn-icon { min-width: 25px; min-height: 25px; white-space: nowrap; }
+    .kimino-header-actions .kimino-btn-icon { min-width: 26px; min-height: 26px; white-space: nowrap; }
     .kimino-header-actions .kimino-btn-icon:focus-visible { outline: 2px solid var(--kg-palette-accent, #bda2f2); outline-offset: 2px; }
 
     .kimino-dialogue {
+      position: relative;
       font-size: 13px;
-      line-height: 1.5;
-      color: #f3e8ff;
-      min-height: 38px;
+      line-height: 1.56;
+      color: #f8f2ff;
+      min-height: 40px;
       cursor: pointer;
-      padding: 5px 7px;
-      border-radius: 9px;
-      transition: background 0.2s;
+      padding: 8px 11px;
+      border-radius: 12px;
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.065), rgba(192, 132, 252, 0.04));
+      border: 1px solid rgba(216, 180, 254, 0.16);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.18s ease;
     }
 
     .kimino-dialogue:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(217, 70, 239, 0.09));
+      border-color: rgba(232, 121, 249, 0.34);
     }
 
     .kimino-dialogue-hint {
       font-size: 10px;
-      color: #c084fc;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #d8b4fe;
       text-align: right;
-      margin-top: 2px;
-      opacity: 0.72;
+      margin-top: 4px;
+      opacity: 0.82;
     }
 
     .kimino-quota-panel {
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px dashed rgba(185, 155, 234, 0.22);
+      margin-top: 10px;
+      padding-top: 9px;
+      border-top: 1px dashed rgba(216, 180, 254, 0.24);
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -419,43 +452,51 @@
     .quota-block {
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      gap: 4px;
+      padding: 6px 8px;
+      border-radius: 10px;
+      background: rgba(15, 10, 28, 0.36);
+      border: 1px solid rgba(255, 255, 255, 0.07);
     }
 
     .quota-title-row {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       font-size: 11px;
       color: #cbd5e1;
     }
 
     .quota-name {
-      color: #c4b5fd;
-      font-weight: 500;
+      color: #d8b4fe;
+      font-weight: 600;
     }
 
     .quota-pct {
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
       color: #f8fafc;
     }
 
     .quota-track {
       width: 100%;
       height: 6px;
-      background: rgba(255, 255, 255, 0.12);
-      border-radius: 4px;
+      background: rgba(8, 5, 18, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
       overflow: hidden;
     }
 
     .quota-bar {
       height: 100%;
-      border-radius: 4px;
+      border-radius: 999px;
+      box-shadow: 0 0 10px rgba(192, 132, 252, 0.4);
       transition: width 0.4s ease, background 0.4s ease;
     }
 
     .quota-sub {
       font-size: 10px;
-      color: #94a3b8;
+      color: #a8b8d0;
       display: flex;
       justify-content: space-between;
     }
@@ -464,26 +505,27 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: rgba(139, 92, 246, 0.14);
-      border: 1px solid rgba(167, 139, 250, 0.28);
-      border-radius: 8px;
-      padding: 5px 8px;
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(56, 189, 248, 0.1));
+      border: 1px solid rgba(192, 132, 252, 0.34);
+      border-radius: 10px;
+      padding: 6px 10px;
       font-size: 10.5px;
-      color: #ede9fe;
+      color: #f3e8ff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
     }
 
     .agy-companion-label {
-      color: #d8b4fe;
-      font-weight: 600;
+      color: #f0abfc;
+      font-weight: 700;
     }
 
     .session-meta-row {
       display: flex;
       justify-content: space-between;
       font-size: 10px;
-      color: #c4b5fd;
-      padding-top: 4px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      color: #d8b4fe;
+      padding-top: 5px;
+      border-top: 1px solid rgba(255, 255, 255, 0.09);
     }
 
     .kimino-rate-alert {
@@ -857,22 +899,36 @@
     .kg-tab-pane [hidden], .kg-settings-feedback[hidden] { display: none !important; }
     .kg-settings-feedback { flex: none; margin: 0 14px 8px; color: #fbc4bc; font-size: 11px; }
     .kg-store {
-      position: fixed; width: min(960px, calc(100vw - 24px)); max-height: min(780px, calc(100dvh - 24px));
-      margin: auto; padding: 0; border: 1px solid #695382; border-radius: 22px; overflow: hidden;
-      color: #f2eaff; background: #251b35; font: 13px/1.5 system-ui,sans-serif;
-      box-shadow: 0 22px 75px #120b20bb; color-scheme: dark;
+      position: fixed; width: min(980px, calc(100vw - 24px)); max-height: min(800px, calc(100dvh - 24px));
+      margin: auto; padding: 0; border: 1px solid rgba(216, 180, 254, 0.38); border-radius: 24px; overflow: hidden;
+      color: #f6f0ff;
+      background:
+        radial-gradient(120% 80% at 15% 0%, rgba(217, 70, 239, 0.16) 0%, transparent 55%),
+        radial-gradient(100% 70% at 90% 100%, rgba(56, 189, 248, 0.12) 0%, transparent 55%),
+        linear-gradient(165deg, rgba(30, 21, 50, 0.98) 0%, rgba(18, 12, 34, 0.99) 100%);
+      font: 13px/1.55 system-ui,sans-serif;
+      box-shadow: 0 28px 90px rgba(6, 3, 18, 0.82), inset 0 1px 0 rgba(255, 240, 255, 0.22);
+      color-scheme: dark;
     }
-    .kg-store::backdrop { background: #160d25a6; }
+    .kg-store::backdrop { background: rgba(12, 7, 24, 0.72); backdrop-filter: blur(8px); }
     .kg-store[open] { display: flex; flex-direction: column; }
-    .kg-store-head { flex: none; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid #584571; }
-    .kg-store-head h2 { margin: 0; font-size: 17px; }
-    .kg-store-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 14px clamp(10px,3vw,22px); }
-    .kg-store-maintenance { margin: 12px 0 4px; padding-top: 10px; border-top: 1px solid #584571; }
-    .kg-store-maintenance summary { cursor: pointer; margin-bottom: 7px; }
-    .kg-store-maintenance .btn-row { display: flex; gap: 6px; margin-top: 8px; }
+    .kg-store-head {
+      flex: none; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      border-bottom: 1px solid rgba(216, 180, 254, 0.22);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0));
+    }
+    .kg-store-head h2 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -0.01em; color: #fae8ff; }
+    .kg-store-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px clamp(12px,3vw,24px); }
+    .kg-store-maintenance { margin: 14px 0 4px; padding-top: 12px; border-top: 1px solid rgba(216, 180, 254, 0.2); }
+    .kg-store-maintenance summary { cursor: pointer; margin-bottom: 7px; font-weight: 600; color: #e9d5ff; }
+    .kg-store-maintenance .btn-row { display: flex; gap: 8px; margin-top: 8px; }
     .kg-store-head button, .kg-store-maintenance button {
-      border: 1px solid #695382; border-radius: 8px; padding: 5px 10px; color: inherit;
-      background: #382a4b; font: inherit; cursor: pointer;
+      border: 1px solid rgba(216, 180, 254, 0.34); border-radius: 999px; padding: 6px 14px; color: #f5f0ff;
+      background: rgba(58, 41, 84, 0.78); font: inherit; font-weight: 600; cursor: pointer;
+      transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+    }
+    .kg-store-head button:hover, .kg-store-maintenance button:hover {
+      background: rgba(147, 51, 234, 0.46); border-color: rgba(232, 121, 249, 0.68); transform: translateY(-1px);
     }
     .kg-store-maintenance .hint { color: #c8b9df; }
     .kg-char-card:focus-visible, .kg-thumb:focus-visible, .kg-thumb-del:focus-visible {
@@ -1178,7 +1234,7 @@
     try {
       const stored = await api.storageGet([
         'enabled', 'character', 'soundEnabled', 'widgetScale', 'widgetPos',
-        'bubbleVisible', 'chatTint', 'chatOpacity', 'onlineCharacterPacks', 'syncCharacter',
+        'bubbleVisible', 'chatTint', 'chatOpacity', 'replyOpacity', 'onlineCharacterPacks', 'syncCharacter',
         'petDisplayMode', 'agyBridgeState', 'ambientChatter', 'syncAgyUsage', 'quotaView', 'quotaDisplay', 'showAgyQuotaInCompact',
         'syncInteraction', 'userHonorificMode', 'customHonorific'
       ]);
@@ -1412,6 +1468,10 @@
                 <label class="kg-switch"><input type="checkbox" class="kg-cfg" data-key="bubbleVisible"><span class="kg-switch-track"></span></label>
               </div>
               <div class="kg-row">
+                <label class="kg-row-label" for="kg-sync-chat-style"><span>对话气泡跟随桌面</span><small id="kg-chat-sync-status">使用网页设置</small></label>
+                <label class="kg-switch"><input type="checkbox" id="kg-sync-chat-style" aria-label="对话气泡跟随桌面"><span class="kg-switch-track"></span></label>
+              </div>
+              <div class="kg-row">
                 <label class="kg-row-label" for="kg-chat-tint"><span>对话气泡颜色</span><small>只调整用户消息与 Gemini 回答，文字保持清晰</small></label>
                 <input type="color" class="kg-color-input" id="kg-chat-tint" value="#181224" aria-label="对话气泡颜色">
               </div>
@@ -1421,6 +1481,14 @@
                   <span class="kg-val kg-val-chat">100%</span>
                 </div>
                 <input type="range" class="kg-range" id="kg-chat-opacity" min="0" max="100" step="1" aria-label="对话气泡不透明度">
+              </div>
+              <div class="kg-slider-block">
+                <div class="kg-slider-head">
+                  <span>回答气泡不透明度</span>
+                  <span class="kg-val kg-val-reply">跟随用户气泡</span>
+                </div>
+                <input type="range" class="kg-range" id="kg-reply-opacity" min="0" max="100" step="1" aria-label="回答气泡不透明度">
+                <small class="kg-hint" style="opacity:.7">默认跟随上面的用户气泡透明度；单独拖动后仅影响模型回答的底色。点击状态文字可恢复跟随。</small>
               </div>
               <div class="kg-row">
                 <label class="kg-row-label" for="kg-honorific-mode"><span>桌宠互动称呼</span><small>跟随桌面需要同步互动偏好</small></label>
@@ -1545,8 +1613,7 @@
     // 对话气泡颜色与透明度：改动即时反映到桌宠气泡本身，设置面板不另做预览。
     const DEFAULT_CHAT_TINT = '#181224';
     const normalizeChatTint = value => /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_CHAT_TINT;
-    function applyChatStyle(tint, opacity) { window.KiminoPreviewChatStyle?.(tint, opacity); }
-    applyChatStyle(config.chatTint, config.chatOpacity);
+    const previewChatStyle = (tint,opacity,reply) => window.KiminoPreviewChatStyle?.(tint,opacity,reply);
     const dialogueEl = wrapper.querySelector('.kimino-dialogue');
     let currentLine = { template: getDialogue() };
     function paintDialogue(line = currentLine) {
@@ -2177,7 +2244,7 @@
       settingsFeedback.hidden = !message;
     };
     const settingsKeys = [
-      'enabled', 'skinStyle', 'skinEnabled', 'quotaView', 'quotaDisplay', 'syncAgyUsage', 'showAgyQuotaInCompact', 'bubbleVisible', 'chatTint', 'chatOpacity', 'ambientChatter', 'soundEnabled', 'widgetScale',
+      'enabled', 'skinStyle', 'skinEnabled', 'quotaView', 'quotaDisplay', 'syncAgyUsage', 'showAgyQuotaInCompact', 'bubbleVisible', 'chatTint', 'chatOpacity', 'replyOpacity', 'syncChatStyle', 'ambientChatter', 'soundEnabled', 'widgetScale',
       'wallpaperOpacity', 'wallpaperBlur', 'character', 'wallpaperId', 'customWallpapers',
       'webWallpaperSlideshow','webWallpaperInterval','webWallpaperCycle','webWallpaperFit','webWallpaperTransition',
       'userHonorificMode', 'customHonorific',
@@ -2185,7 +2252,7 @@
     ];
     const appearanceOf = state => JSON.stringify([state?.online, state?.desktop?.characterPack,
       state?.desktop?.characterPackIds, state?.desktop?.wallpaperId, state?.desktop?.wallpaperRev,
-      state?.desktop?.slideshow,state?.desktop?.slideshowIntervalMinutes]);
+      state?.desktop?.slideshow,state?.desktop?.slideshowIntervalMinutes,state?.desktop?.chatAppearance]);
     const saveLocal = async (updates) => {
       const saved = await api.storageSet(updates);
       reportSettings(saved ? '' : '未能保存网页选择，请重试。');
@@ -2243,14 +2310,23 @@
         if (rScale) { rScale.value = scale; if (kgValScale) kgValScale.textContent = scale + 'px'; }
         if (shadow.activeElement !== opacitySlider) renderOpacity(st.wallpaperOpacity);
         if (shadow.activeElement !== blurSlider) renderBlur(st.wallpaperBlur);
-        applyChatStyle(st.chatTint, st.chatOpacity);
+        const appearance = window.KiminoReadChatStyle?.(st) || {tint:st.chatTint,opacity:st.chatOpacity,reply:st.replyOpacity,following:false};
+        const chatSync = settingsPanel.querySelector('#kg-sync-chat-style');
+        chatSync.checked = st.syncChatStyle === true;
+        settingsPanel.querySelector('#kg-chat-sync-status').textContent = appearance.following ? '已跟随桌面'
+          : chatSync.checked ? (isOnline ? '桌面暂未提供气泡设置，使用网页设置' : '桌面未连接，使用网页设置') : '使用网页设置';
         const chatTintInput = settingsPanel.querySelector('#kg-chat-tint');
         const rBubble = settingsPanel.querySelector('#kg-chat-opacity');
-        if (chatTintInput && shadow.activeElement !== chatTintInput) chatTintInput.value = normalizeChatTint(st.chatTint);
-        if (rBubble) {
-          if (shadow.activeElement !== rBubble) rBubble.value = Number.isFinite(Number(st.chatOpacity)) ? Math.min(100, Math.max(0, Number(st.chatOpacity))) : 76;
-          settingsPanel.querySelector('.kg-val-chat').textContent = rBubble.value + '%';
-        }
+        const rReply = settingsPanel.querySelector('#kg-reply-opacity');
+        for (const control of [chatTintInput,rBubble,rReply]) control.disabled = appearance.following;
+        if (appearance.following || shadow.activeElement !== chatTintInput) chatTintInput.value = normalizeChatTint(appearance.tint);
+        if (appearance.following || shadow.activeElement !== rBubble) rBubble.value = Number.isFinite(appearance.opacity) ? appearance.opacity : 76;
+        const hasReply = Number.isFinite(appearance.reply);
+        if (appearance.following || shadow.activeElement !== rReply) rReply.value = hasReply ? appearance.reply : rBubble.value;
+        settingsPanel.querySelector('.kg-val-chat').textContent = rBubble.value + '%';
+        const replyLabel = settingsPanel.querySelector('.kg-val-reply');
+        replyLabel.dataset.custom = String(hasReply);
+        replyLabel.textContent = hasReply ? rReply.value + '%' : '跟随用户气泡';
         settingsPanel.querySelector('.kg-wallpaper-style').hidden = curSyncWall;
         wallCycle.checked = st.webWallpaperSlideshow === true;
         wallMinutes.disabled = !wallCycle.checked;
@@ -2667,9 +2743,12 @@
         kgValOpacity.textContent = opacitySlider.value + '%';
         window.KiminoPreviewWallpaperOpacity?.(Number(opacitySlider.value) / 100);
       });
-      // 对话气泡颜色与透明度：拖动即保存并直接反映在桌宠气泡上。
+      const chatSync = settingsPanel.querySelector('#kg-sync-chat-style');
+      chatSync.addEventListener('change',()=>void saveLocal({syncChatStyle:chatSync.checked}));
       const chatTintInput = settingsPanel.querySelector('#kg-chat-tint');
       const chatOpacitySlider = settingsPanel.querySelector('#kg-chat-opacity');
+      const replySlider = settingsPanel.querySelector('#kg-reply-opacity');
+      const replyLabel = settingsPanel.querySelector('.kg-val-reply');
       let bubbleSaveRevision = 0, bubbleSaveQueue = Promise.resolve();
       const saveBubble = updates => {
         const revision = ++bubbleSaveRevision;
@@ -2678,23 +2757,46 @@
           if (revision !== bubbleSaveRevision) return;
           reportSettings(ok ? '' : '未能保存对话气泡外观，请重试。');
           if (!ok) {
-            const saved = await api.storageGet(['chatTint','chatOpacity']);
+            const saved = await api.storageGet(settingsKeys);
             if (revision !== bubbleSaveRevision) return;
-            applyChatStyle(saved.chatTint,saved.chatOpacity);
-            chatTintInput.value = normalizeChatTint(saved.chatTint);
-            chatOpacitySlider.value = Math.min(100,Math.max(0,Number.isFinite(saved.chatOpacity) ? saved.chatOpacity : 76));
-            settingsPanel.querySelector('.kg-val-chat').textContent = chatOpacitySlider.value + '%';
+            const appearance = window.KiminoReadChatStyle?.(saved) || {tint:saved.chatTint,opacity:saved.chatOpacity,reply:saved.replyOpacity};
+            previewChatStyle(appearance.tint,appearance.opacity,appearance.reply);
+            chatTintInput.value = normalizeChatTint(appearance.tint);
+            chatOpacitySlider.value = Number.isFinite(appearance.opacity) ? appearance.opacity : 76;
+            replySlider.value = Number.isFinite(appearance.reply) ? appearance.reply : chatOpacitySlider.value;
+            await syncSettingsUI();
           }
         }).catch(() => reportSettings('未能保存对话气泡外观，请重试。'));
       };
+      const previewLocalChat = () => previewChatStyle(chatTintInput.value,Number(chatOpacitySlider.value),
+        replyLabel.dataset.custom === 'true' ? Number(replySlider.value) : null);
       chatTintInput.addEventListener('input', () => {
-        applyChatStyle(chatTintInput.value, chatOpacitySlider.value);
-        saveBubble({ chatTint: chatTintInput.value });
+        if (chatTintInput.disabled) return;
+        previewLocalChat();
+        saveBubble({chatTint:chatTintInput.value});
       });
       chatOpacitySlider.addEventListener('input', () => {
+        if (chatOpacitySlider.disabled) return;
         settingsPanel.querySelector('.kg-val-chat').textContent = chatOpacitySlider.value + '%';
-        applyChatStyle(chatTintInput.value, chatOpacitySlider.value);
-        saveBubble({ chatOpacity: Number(chatOpacitySlider.value) });
+        if (replyLabel.dataset.custom !== 'true') replySlider.value = chatOpacitySlider.value;
+        previewLocalChat();
+        saveBubble({chatOpacity:Number(chatOpacitySlider.value)});
+      });
+      replySlider.addEventListener('input', () => {
+        if (replySlider.disabled) return;
+        const value = Number(replySlider.value);
+        replyLabel.dataset.custom = 'true';
+        replyLabel.textContent = value + '%';
+        previewLocalChat();
+        saveBubble({replyOpacity:value});
+      });
+      replyLabel.addEventListener('click', () => {
+        if (replySlider.disabled) return;
+        replyLabel.dataset.custom = 'false';
+        replySlider.value = chatOpacitySlider.value;
+        replyLabel.textContent = '跟随用户气泡';
+        previewLocalChat();
+        saveBubble({replyOpacity:null});
       });
       opacitySlider.addEventListener('change', async () => {
         const selected = opacitySlider.value;
@@ -2899,11 +3001,6 @@
 
     api.onChanged((changes, area) => {
       if (area === 'local') {
-        if (changes.chatTint || changes.chatOpacity) {
-          if (changes.chatTint) config.chatTint = changes.chatTint.newValue;
-          if (changes.chatOpacity) config.chatOpacity = changes.chatOpacity.newValue;
-          applyChatStyle(config.chatTint,config.chatOpacity);
-        }
         if (Object.keys(changes).every(key => ['headPatTotal','headPatToday','headPatDay'].includes(key))) return;
         if (changes.character) {
           localCharacter = changes.character.newValue || 'gemini-star-v1';

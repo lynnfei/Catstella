@@ -95,7 +95,7 @@
     }
     function refreshAssets() {
       assetStates.clear();
-      if (onCount) onCount(catalogOnline ? entries.flatMap(entry => entry.frames).filter(item => !assetState(item).installed) : []);
+      if (onCount) onCount(catalogOnline ? entries.flatMap(entry => entry.frames).filter(item => !assetState(item).installed || hasUpdate(item)) : []);
     }
     function rotation(stage, advance, active = () => true) {
       let playing = motionAllowed(), visible = false, hovering = false, timer;
@@ -188,14 +188,8 @@
             // 搭配对比：用当前正在使用的配色渲染同一块示意场景。
             const activeTheme = currentTheme?.();
             hint.textContent = '当前搭配';
-            const key = 'current:' + (activeTheme?.onlineThemeId || activeTheme?.preset || 'violet');
-            if (!palettePreviews.has(key)) palettePreviews.set(key,
-              activeTheme?.onlineThemeId ? Promise.resolve().then(() => call('preview-theme',activeTheme.onlineThemeId)).catch(() => null)
-                : Promise.resolve({ok:true,palette:activeTheme?.preset === 'ocean' ? 'ocean' : 'violet'}));
-            void palettePreviews.get(key).then(result => {
-              if (!result?.ok) { hint.textContent = '暂无法读取当前搭配'; return; }
-              box.dataset.palette = result.palette;
-            });
+            box.dataset.palette = ['violet','pink','ocean','onyx'].includes(activeTheme?.preset) ? activeTheme.preset : 'violet';
+            if (Number.isFinite(activeTheme?.opacity)) theme.style.setProperty('--sample-opacity',String(activeTheme.opacity / 100));
           } else {
             const key = item.id + ':' + item.sha256;
             if (!palettePreviews.has(key)) {
@@ -400,11 +394,12 @@
       const removeLabel = removeArm ? '确认卸载？' : '卸载';
       if (removeButton.textContent !== removeLabel) removeButton.textContent = removeLabel;
       if (removeButton.hidden && document.activeElement === removeButton) useButton.focus({preventScroll:true});
-      if (shownPicture?.id !== item.id || shownPicture.preview !== state.preview) {
+      const appearance = compareCurrent ? JSON.stringify(currentTheme?.()) : item.sha256;
+      if (shownPicture?.id !== item.id || shownPicture.preview !== state.preview || shownPicture.appearance !== appearance) {
         const picture = art(item,true); picture.classList.add('hub-detail-art');
         stage.replaceChildren(picture);
         if (dialog.open) reveal(picture, 3, 160);
-        shownPicture = {id:item.id,preview:state.preview};
+        shownPicture = {id:item.id,preview:state.preview,appearance};
       }
       title.textContent = item.name; title.hidden = entry.title === item.name;
       description.textContent = item.description; description.hidden = !item.description;
