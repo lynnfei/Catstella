@@ -1,0 +1,597 @@
+/* ==========================================================================
+   Catstella Settings UI Study — Accessible & Performant Shared Primitives
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+  --font-sans: "Segoe UI", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", monospace;
+  --ink: #221938;
+  --ink-secondary: #4e426c;
+  --ink-muted: #5e517d; /* >= 6.8:1 on white/lavender surface */
+  --accent: #693ed1;    /* >= 6.4:1 white text on accent button */
+  --accent-strong: #542bb9;
+  --accent-soft: #efe9fc;
+  --line: #dfd5f2;
+  --line-strong: #c5b3e8;
+  --focus-ring: #5a2fd1;
+  --ok-ink: #166534;
+  --ok-bg: #dcfce7;
+  --warn-ink: #92400e;
+  --warn-bg: #fef3c7;
+  --danger-ink: #991b1b;
+  --danger-bg: #fee2e2;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  font-size: clamp(13.5px, 0.2vw + 13px, 15px);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Respect native [hidden] even inside flex/grid utility containers */
+[hidden] {
+  display: none !important;
+}
+
+/* Skip Link for Keyboard Users (no offscreen fixed bleed in fullPage scroll) */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 9999;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+}
+.skip-link:focus-visible {
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  padding: 8px 14px;
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* Explicit Accessible Focus Ring Everywhere */
+:where(button, a, input, select, summary, [tabindex]):focus-visible {
+  outline: 2.5px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbar styling */
+.content-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* Containment boundaries prevent global layout churn when one card mutates */
+.settings-page {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}
+.settings-page[hidden] {
+  display: none !important;
+}
+
+/* Page Entrance Animation: Opt-in ONLY when user allows motion */
+@keyframes pageFadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-reduced-motion="true"]) .settings-page.is-entering {
+    animation: pageFadeSlide 170ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  html:not([data-reduced-motion="true"]) .pet-preview-sprite {
+    transition: transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.15), opacity 160ms ease;
+  }
+}
+
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-name: none !important;
+  animation-duration: 0s !important;
+  transition-property: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-name: none !important;
+    animation-duration: 0s !important;
+    transition-property: none !important;
+  }
+}
+
+/* Accessible Switch Control (<input type="checkbox" class="cs-switch" switch>) */
+.cs-switch {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  min-width: 44px;
+  min-height: 26px;
+  margin: 0;
+  border-radius: 999px;
+  border: 1.5px solid var(--line-strong);
+  background: #e9e2f6;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cs-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(56, 35, 112, 0.22);
+  box-shadow: 0 1px 2px rgba(24, 16, 48, 0.16);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-reduced-motion="true"]) .cs-switch,
+  html:not([data-reduced-motion="true"]) .cs-switch::after {
+    transition: background-color 140ms ease, border-color 140ms ease, transform 150ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
+  }
+}
+
+.cs-switch:checked {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+}
+
+.cs-switch:checked::after {
+  transform: translateX(18px);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.cs-switch:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+/* Accessible Range Slider using --control-value percentage */
+.cs-range-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
+
+.cs-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px; /* large hit target even with slender 6px visual track */
+  background: transparent;
+  margin: 0;
+  cursor: pointer;
+  --control-value: 50%;
+}
+
+.cs-range::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--control-value),
+    #ede7fa var(--control-value),
+    #ede7fa 100%
+  );
+}
+
+.cs-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6.5px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(32, 18, 72, 0.25);
+}
+
+.cs-range::-moz-range-track {
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: #ede7fa;
+}
+
+.cs-range::-moz-range-progress {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.cs-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2.5px solid var(--accent);
+}
+
+/* Magnetic Interval Ruler Ticks — True Numeric Percentage Positions */
+.ruler-ticks {
+  position: relative;
+  height: 18px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  user-select: none;
+}
+.ruler-ticks span {
+  position: absolute;
+  top: 0;
+  left: var(--stop-pct, 0%);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.ruler-ticks span:first-child {
+  left: 0;
+  transform: none;
+}
+.ruler-ticks span:last-child {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.ruler-ticks span.is-active {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+@media (max-width: 560px) {
+  .ruler-ticks span[data-ruler-stop="5"] {
+    display: none;
+  }
+}
+
+/* Select & Input Baseline */
+.cs-select,
+.cs-input {
+  min-height: 36px;
+  padding: 6px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.cs-select:hover,
+.cs-input:hover {
+  border-color: var(--accent);
+}
+
+.cs-number-input {
+  width: 78px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Accessible Buttons (>= 34px desktop, 40px narrow) */
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cs-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.cs-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.cs-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+  color: #ffffff;
+}
+
+.cs-btn.primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.cs-btn.ghost {
+  background: transparent;
+}
+
+.cs-btn.danger {
+  color: var(--danger-ink);
+  border-color: #f3b8bc;
+  background: #fff5f5;
+}
+.cs-btn.danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+/* True WAI-ARIA Tablist Pattern (Single-row horizontal strip + bottom bar indicator) */
+.cs-tablist {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+}
+.cs-tablist::-webkit-scrollbar {
+  display: none;
+}
+
+.cs-tab {
+  position: relative;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cs-tab:hover {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.cs-tab[aria-selected="true"] {
+  color: var(--accent-strong);
+}
+
+.cs-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -2px;
+  border-block-end: 3px solid var(--accent);
+}
+
+/* Telemetry Pill HUD */
+.perf-pill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: #faf8ff;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+
+.perf-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.perf-metric strong {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.perf-op-label {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+/* Host Chat Atelier Preview Card (No blur loops, pure CSS var paints) */
+.atelier-stage {
+  --sample-base: #21192f;
+  --sample-page: #3e2c58;
+  --sample-card: #594472;
+  --sample-accent: #e5c7ff;
+  --sample-wp-opacity: 0.28;
+  --sample-scrim: 0.34;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(90, 56, 168, 0.28);
+  background: var(--sample-base);
+  color: #f6f2ff;
+  min-height: 152px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.atelier-bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: var(--sample-wp-opacity);
+  pointer-events: none;
+}
+
+.atelier-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--sample-base);
+  opacity: var(--sample-scrim);
+  pointer-events: none;
+}
+
+.atelier-chrome {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--sample-accent);
+  font-weight: 600;
+}
+
+.atelier-messages {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.atelier-bubble-user {
+  align-self: flex-end;
+  max-width: 82%;
+  padding: 6px 10px;
+  border-radius: 10px 10px 3px 10px;
+  background: var(--sample-card);
+  color: #ffffff;
+  font-size: 11.5px;
+}
+
+.atelier-bubble-ai {
+  align-self: flex-start;
+  max-width: 88%;
+  padding: 7px 10px;
+  border-radius: 10px 10px 10px 3px;
+  background: color-mix(in oklab, var(--sample-page) 86%, black 14%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f6f2ff;
+  font-size: 11.5px;
+}
+
+.atelier-input-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgba(15, 11, 24, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  color: #e4dcfa;
+}
+
+.status-live-msg[data-tone="error"] {
+  color: var(--danger-ink);
+  font-weight: 700;
+}
+.status-live-msg[data-tone="undo"] {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+/* Forced Colors Mode (Windows High Contrast) Fallbacks */
+@media (forced-colors: active) {
+  .cs-switch {
+    border: 2px solid ButtonText;
+    background: Canvas;
+  }
+  .cs-switch:checked {
+    background: Highlight;
+  }
+  .cs-switch::after {
+    background: ButtonText;
+    border-color: Canvas;
+  }
+  .cs-switch:checked::after {
+    background: HighlightText;
+  }
+  .cs-tab[aria-selected="true"]::after {
+    border-block-end-color: Highlight;
+  }
+  .nav-item[aria-current="page"] {
+    border: 2px solid Highlight !important;
+  }
+  .cs-btn.primary {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+}
+
+@media (max-width: 600px) {
+  .cs-btn {
+    min-height: 38px;
+  }
+}

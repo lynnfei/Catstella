@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catstella 设置 UI 原型 · 方案三：偏手账</title>
+  <link rel="stylesheet" href="../shared/settings-controls.css">
+  <link rel="stylesheet" href="journal.css">
+  <script src="../shared/store.js" defer></script>
+  <script src="../shared/perf-meter.js" defer></script>
+  <script src="../shared/settings-core.js" defer></script>
+</head>
+<body class="theme-journal">
+  <a class="skip-link" href="#main-content">跳到主设置区</a>
+
+  <header class="study-topbar" aria-label="设计探索切换栏">
+    <div class="study-nav-cluster">
+      <a class="study-link" href="../index.html">← 对比总览</a>
+      <a class="study-link" href="../compact/index.html">清爽紧凑</a>
+      <a class="study-link" href="../frosted/index.html">轻毛玻璃</a>
+      <a class="study-link is-current" href="index.html">✦ 偏手账（猫星手札）</a>
+      <a class="study-link" href="../web-chatter-demo/index.html">Web 碎碎念分支</a>
+    </div>
+    <div class="study-toggles">
+      <label class="inline-check"><input type="checkbox" data-sim="reduced-motion"> 模拟减弱动效</label>
+      <label class="inline-check"><input type="checkbox" data-sim="narrow-frame"> 模拟窄窗 (460px)</label>
+      <label class="inline-check" title="模拟 IPC 写入被拒绝，用于测试保存失败提示、草稿保留与回退"><input type="checkbox" data-sim="save-failure"> 模拟保存失败</label>
+    </div>
+  </header>
+
+  <div class="telemetry-bar-wrap">
+    <div id="perf-hud-mount"></div>
+  </div>
+
+  <div class="app-stage" id="settings-app-root">
+    <div class="journal-shell">
+      <div class="window-header">
+        <div class="window-brand">
+          <span class="brand-mark" aria-hidden="true">📒</span>
+          <h1 class="window-title">Catstella · 猫星手札设置本</h1>
+          <span class="variant-chip">方案三 · 偏手账胶带风</span>
+          <span class="journal-stamp" id="journal-stamp-badge">✦ 已盖章同步</span>
+        </div>
+
+        <div class="save-cluster">
+          <label class="inline-check">
+            <input type="checkbox" data-bind-key="autoSave" data-label="即时自动保存"> 即时保存
+          </label>
+          <span class="dirty-pill" data-role="dirty-badge">已自动同步生效 ✓</span>
+          <button type="button" class="cs-btn" data-action="undo" disabled>撤销</button>
+          <button type="button" class="cs-btn ghost" data-action="discard-draft" hidden>放弃改动</button>
+          <button type="button" class="cs-btn primary" data-action="save-now" hidden>盖章保存</button>
+          <button type="button" class="cs-btn preview-mobile-toggle" data-action="toggle-preview-dock" aria-expanded="false" aria-controls="live-preview-dock">实时预览</button>
+        </div>
+      </div>
+
+      <div class="status-strip">
+        <span class="status-live-msg" data-role="save-status" role="status" aria-live="polite">
+          纸感点阵与胶带拍立得纯 CSS 绘制（0 模糊层）；开启「减弱动效」时拍立得倾角会自动摆正。
+        </span>
+      </div>
+
+      <div class="shell-body">
+        <nav class="side-nav notebook-tabs" aria-label="手账分切页">
+          <button type="button" class="nav-item active" data-target="overview" aria-current="page">🏠 今日总览</button>
+          <button type="button" class="nav-item" data-target="character" data-tab-hue="sakura" aria-current="false">🐱 贴纸立绘</button>
+          <button type="button" class="nav-item" data-target="wallpaper" data-tab-hue="warm" aria-current="false">🖼️ 相册明信片</button>
+          <button type="button" class="nav-item" data-target="quota" data-tab-hue="sky" aria-current="false">📊 额度手账</button>
+          <button type="button" class="nav-item" data-target="interact" aria-current="false">💬 悄悄话札</button>
+          <button type="button" class="nav-item" data-target="about" data-tab-hue="warm" aria-current="false">✨ 扉页与重置</button>
+
+          <div class="nav-footer-note">
+            ✦ 手账便签注：<br>
+            0 runtime blur<br>
+            高对比墨色文字 ≥ 11:1
+          </div>
+        </nav>
+
+        <main class="content-scroll" id="main-content" tabindex="-1">
+          <!-- Page 1: Overview -->
+          <section class="settings-page" data-page="overview">
+            <header class="page-head">
+              <div><h2 class="page-title">今日猫星记录页</h2><p class="page-subtitle">像翻开桌边小手账一样，记录双端额度、陪伴台词与换装皮肤。</p></div>
+            </header>
+
+            <div class="section-stack">
+              <div class="kpi-grid">
+                <div class="kpi-tile is-warm">
+                  <span class="kpi-label">AGY 5 小时剩余</span>
+                  <span class="kpi-value" data-bind-text="manualFiveHourLeft">96%</span>
+                  <span class="kpi-foot">Gemini 3.8 Flash · 满电</span>
+                </div>
+                <div class="kpi-tile">
+                  <span class="kpi-label">双端联机笔记</span>
+                  <span class="kpi-value">已同步</span>
+                  <span class="kpi-foot">桌面在前时 Web 懂事让位</span>
+                </div>
+                <div class="kpi-tile">
+                  <span class="kpi-label">今日摸头贴花</span>
+                  <span class="kpi-value" data-bind-text="headPatToday">18 次</span>
+                  <span class="kpi-foot">手账总计 <span data-bind-text="headPatTotal">1954 次</span></span>
+                </div>
+              </div>
+
+              <div class="note-card">
+                <div class="card-head"><span>书签直达</span><span class="card-tag">点一下翻到对应分页</span></div>
+                <div class="quick-actions-grid">
+                  <button type="button" class="quick-jump-btn" data-jump-page="character"><span>🐱 换个小猫贴纸立绘</span><span>→</span></button>
+                  <button type="button" class="quick-jump-btn" data-jump-page="wallpaper"><span>🖼️ 挑选明信片背景与配色</span><span>→</span></button>
+                  <button type="button" class="quick-jump-btn" data-jump-page="quota"><span>📊 查看双源额度记账栏</span><span>→</span></button>
+                  <button type="button" class="quick-jump-btn" data-jump-page="interact"><span>💬 修改称呼与碎碎念习惯</span><span>→</span></button>
+                </div>
+              </div>
+
+              <div class="note-card">
+                <div class="card-head"><span>每日陪伴开关</span></div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="j-ov-pet">召唤桌面猫猫桌宠</label><div class="row-desc">在屏幕一角陪你敲代码与摸鱼</div></div>
+                  <div class="row-control"><input id="j-ov-pet" class="cs-switch" type="checkbox" switch data-bind-key="petVisible" data-label="显示桌面桌宠"></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="j-ov-wp">铺上 Antigravity 宿主明信片</label><div class="row-desc">给聊天框贴一层低饱和护眼背景纸</div></div>
+                  <div class="row-control"><input id="j-ov-wp" class="cs-switch" type="checkbox" switch data-bind-key="wallpaperEnabled" data-label="启用宿主壁纸"></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="j-ov-chat">空闲自动碎碎念</label><div class="row-desc">挂机时偶尔冒出一句短台词</div></div>
+                  <div class="row-control"><input id="j-ov-chat" class="cs-switch" type="checkbox" switch data-bind-key="ambientChatter" data-label="空闲碎碎念"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 2: Character -->
+          <section class="settings-page" data-page="character" hidden>
+            <header class="page-head">
+              <div><h2 class="page-title">贴纸角色与立绘比例</h2><p class="page-subtitle">和风胶带固定着两只招牌猫猫；点一下试看差分表情！</p></div>
+            </header>
+            <div class="section-stack">
+              <div class="note-card">
+                <div class="card-head"><span>我的看板猫贴纸</span><span class="card-tag">胶带拍立得卡片</span></div>
+                <div class="char-grid">
+                  <button type="button" class="char-card is-selected" data-char-id="gemini-star-v1" aria-pressed="true">
+                    <img class="char-thumb" src="../../../Antigravity-Cat-Widget/assets/character-packs/gemini-star-v1/frames/idle.png" alt="星语 · Stella">
+                    <div><div class="char-card-title">星语 · Stella</div><div class="char-card-sub">星空魔女 · 紫发异色瞳</div></div>
+                  </button>
+                  <button type="button" class="char-card" data-char-id="lin-cat" aria-pressed="false">
+                    <img class="char-thumb" src="../../../Antigravity-Cat-Widget/assets/character-packs/lin-cat/frames/idle.png" alt="霓音 · LinCat">
+                    <div><div class="char-card-title">霓音 · LinCat</div><div class="char-card-sub">粉色双马尾 · 全息航行服</div></div>
+                  </button>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><div class="row-title">试看实时表情</div><div class="row-desc">右侧立绘舞台同步更新状态与悄悄话</div></div>
+                  <div class="expr-strip" role="group" aria-label="试看表情差分">
+                    <button type="button" class="chip-btn is-selected" data-expr-id="idle" aria-pressed="true">待机</button>
+                    <button type="button" class="chip-btn" data-expr-id="proud" aria-pressed="false">得意</button>
+                    <button type="button" class="chip-btn" data-expr-id="shy" aria-pressed="false">害羞</button>
+                    <button type="button" class="chip-btn" data-expr-id="angry" aria-pressed="false">炸毛</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="note-card">
+                <div class="card-head"><span>尺码与贴图透明度</span></div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="pet-size">桌宠缩放比例</label></div>
+                  <div class="row-control"><div class="range-pair"><input id="pet-size" class="cs-range" type="range" min="0.6" max="1.35" step="0.02" data-bind-key="petSize" data-label="桌宠缩放比例"><output class="val-badge" for="pet-size" data-bind-text="petSize">92%</output></div></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="pet-opacity">桌宠不透明度</label></div>
+                  <div class="row-control"><div class="range-pair"><input id="pet-opacity" class="cs-range" type="range" min="0.35" max="1" step="0.02" data-bind-key="petOpacity" data-label="桌宠不透明度"><output class="val-badge" for="pet-opacity" data-bind-text="petOpacity">96%</output></div></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="pet-topmost">窗口永远置顶</label></div>
+                  <div class="row-control"><input id="pet-topmost" class="cs-switch" type="checkbox" switch data-bind-key="petTopmost" data-label="窗口置顶"></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="pet-sync-web">同步角色到 Chrome 网页伴侣</label></div>
+                  <div class="row-control"><input id="pet-sync-web" class="cs-switch" type="checkbox" switch data-bind-key="syncWebCharacter" data-label="同步角色到网页"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 3: Wallpaper & Theme -->
+          <section class="settings-page" data-page="wallpaper" hidden>
+            <header class="page-head">
+              <div><h2 class="page-title">明信片壁纸与墨水主题色</h2><p class="page-subtitle">挑选一张星空明信片夹进宿主界面。</p></div>
+            </header>
+
+            <div class="cs-tablist" role="tablist" aria-label="壁纸与主题子视图" style="margin-bottom: 12px;">
+              <button type="button" class="cs-tab" role="tab" id="tab-wp-gallery" aria-controls="panel-wp-gallery" aria-selected="true">明信片画廊</button>
+              <button type="button" class="cs-tab" role="tab" id="tab-wp-theme" aria-controls="panel-wp-theme" aria-selected="false">墨水主题色</button>
+            </div>
+
+            <div id="panel-wp-gallery" role="tabpanel" aria-labelledby="tab-wp-gallery" class="section-stack">
+              <div class="note-card">
+                <div class="gallery-toolbar">
+                  <div><strong style="font-size:13px;" data-preview="wp-name">星语 · 星幕夜话</strong><span class="card-tag" style="margin-left:8px;" data-preview="wp-meta">星语夜曲包 · 1672 × 941</span></div>
+                  <div class="view-seg" role="group" aria-label="画廊排列模式">
+                    <button type="button" class="is-active" data-wp-view="carousel" aria-pressed="true">横滑</button>
+                    <button type="button" data-wp-view="grid" aria-pressed="false">网格</button>
+                  </div>
+                </div>
+                <div class="gallery-list is-carousel" data-gallery-list>
+                  <button type="button" class="wp-card is-selected" data-wallpaper-id="gemini-character-sheet-v1" aria-pressed="true"><img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/gemini-character-sheet-v1/wallpaper.png" alt="星语 · 星幕夜话"><div class="wp-meta"><div class="wp-name">星语 · 星幕夜话</div><div class="wp-pack">星语夜曲包</div></div></button>
+                  <button type="button" class="wp-card" data-wallpaper-id="stella-halloween" aria-pressed="false"><img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/stella-halloween/wallpaper.jpg" alt="星语 · 万圣星夜"><div class="wp-meta"><div class="wp-name">星语 · 万圣星夜</div><div class="wp-pack">星语夜曲包</div></div></button>
+                  <button type="button" class="wp-card" data-wallpaper-id="aica-clouds" aria-pressed="false"><img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/aica-clouds/wallpaper.png" alt="霓音 · 云端来信"><div class="wp-meta"><div class="wp-name">霓音 · 云端来信</div><div class="wp-pack">Aica 漫游包</div></div></button>
+                  <button type="button" class="wp-card" data-wallpaper-id="aica-starship" aria-pressed="false"><img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/aica-starship/wallpaper.jpg" alt="霓音 · 星舱漫游"><div class="wp-meta"><div class="wp-name">霓音 · 星舱漫游</div><div class="wp-pack">Aica 漫游包</div></div></button>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="wp-autoplay">定时轮换明信片</label></div>
+                  <div class="row-control"><input id="wp-autoplay" class="cs-switch" type="checkbox" switch data-bind-key="packAutoPlay" data-label="壁纸自动轮播"></div>
+                </div>
+                <div class="setting-row is-stacked">
+                  <div style="display:flex; justify-content:space-between; align-items:center;"><label class="row-title" for="wp-interval">换图节拍尺</label><output class="val-badge" for="wp-interval" data-bind-text="slideshowIntervalMin">15 分钟</output></div>
+                  <div class="cs-range-wrap">
+                    <input id="wp-interval" class="cs-range" type="range" min="1" max="60" step="0.5" data-bind-key="slideshowIntervalMin" data-magnetic="interval" data-label="轮播间隔">
+                    <div class="ruler-ticks" aria-hidden="true">
+                      <span data-ruler-stop="1" style="--stop-pct: 0%">1m</span>
+                      <span data-ruler-stop="5" style="--stop-pct: 6.78%">5m</span>
+                      <span data-ruler-stop="10" style="--stop-pct: 15.25%">10m</span>
+                      <span data-ruler-stop="15" style="--stop-pct: 23.73%">15m</span>
+                      <span data-ruler-stop="30" style="--stop-pct: 49.15%">30m</span>
+                      <span data-ruler-stop="45" style="--stop-pct: 74.58%">45m</span>
+                      <span data-ruler-stop="60" style="--stop-pct: 100%">1h</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="panel-wp-theme" role="tabpanel" aria-labelledby="tab-wp-theme" class="section-stack" hidden>
+              <div class="note-card">
+                <div class="card-head"><span>色卡墨水样本</span></div>
+                <div class="theme-swatch-grid">
+                  <button type="button" class="swatch-btn is-selected" data-theme-preset="violet" aria-pressed="true"><span class="swatch-color" style="background: linear-gradient(135deg, #8b68e0, #24193c);"></span><span class="swatch-name">星轨紫</span></button>
+                  <button type="button" class="swatch-btn" data-theme-preset="pink" aria-pressed="false"><span class="swatch-color" style="background: linear-gradient(135deg, #f59cc6, #3b1830);"></span><span class="swatch-name">梦幻粉</span></button>
+                  <button type="button" class="swatch-btn" data-theme-preset="ocean" aria-pressed="false"><span class="swatch-color" style="background: linear-gradient(135deg, #5da9f6, #0f1d35);"></span><span class="swatch-name">深海蓝</span></button>
+                  <button type="button" class="swatch-btn" data-theme-preset="onyx" aria-pressed="false"><span class="swatch-color" style="background: linear-gradient(135deg, #666c82, #121318);"></span><span class="swatch-name">曜石黑</span></button>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="wp-opacity">明信片画面浓度</label></div>
+                  <div class="row-control"><div class="range-pair"><input id="wp-opacity" class="cs-range" type="range" min="0.05" max="0.85" step="0.02" data-bind-key="bgOpacity" data-label="壁纸画面浓度"><output class="val-badge" for="wp-opacity" data-bind-text="bgOpacity">28%</output></div></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="wp-scrim">深色蒙版护眼遮罩</label></div>
+                  <div class="row-control"><div class="range-pair"><input id="wp-scrim" class="cs-range" type="range" min="0.05" max="0.8" step="0.02" data-bind-key="bgScrim" data-label="深色遮罩"><output class="val-badge" for="wp-scrim" data-bind-text="bgScrim">34%</output></div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 4: Quota & BYOK -->
+          <section class="settings-page" data-page="quota" hidden>
+            <header class="page-head"><div><h2 class="page-title">额度手账与网关记录</h2><p class="page-subtitle">双源配额记账条 + 本地节点轻量化切换。</p></div></header>
+            <div class="cs-tablist" role="tablist" aria-label="用量与网关子视图" style="margin-bottom: 12px;">
+              <button type="button" class="cs-tab" role="tab" id="tab-q-cards" aria-controls="panel-q-cards" aria-selected="true">双源额度账本</button>
+              <button type="button" class="cs-tab" role="tab" id="tab-q-byok" aria-controls="panel-q-byok" aria-selected="false">BYOK 模型通道</button>
+            </div>
+            <div id="panel-q-cards" role="tabpanel" aria-labelledby="tab-q-cards" class="section-stack">
+              <div class="quota-dual-grid">
+                <div class="quota-card">
+                  <div class="quota-card-head"><strong style="font-size:13px;">🪐 AGY · Gemini 3.8 Flash</strong><span class="byok-pill" data-state="on">手账在记</span></div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px;"><span>5 小时窗口</span><strong class="tabular" data-quota="agy-5h-text">剩余 96%</strong></div>
+                  <div class="quota-track"><div class="quota-fill" data-quota="agy-5h-bar" style="width:96%"></div></div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px;"><span>每周上限</span><strong class="tabular" data-quota="agy-1w-text">剩余 95%</strong></div>
+                  <div class="quota-track"><div class="quota-fill" data-quota="agy-1w-bar" style="width:95%"></div></div>
+                </div>
+                <div class="quota-card">
+                  <div class="quota-card-head"><strong style="font-size:13px;">🌐 Gemini 网页伴侣</strong><span class="byok-pill" data-state="on">联机抄录</span></div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px;"><span>5 小时网页额度</span><strong class="tabular" data-quota="web-5h-text">剩余 72%</strong></div>
+                  <div class="quota-track"><div class="quota-fill is-web" data-quota="web-5h-bar" style="width:72%"></div></div>
+                  <div style="font-size:11.5px; color:#584874; margin-top:8px;">Claude Sonnet 5.5 剩余 75%</div>
+                </div>
+              </div>
+              <div class="note-card">
+                <div class="card-head"><span>记账口径与手动修正</span></div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="q-display-mode">数字记账习惯</label></div>
+                  <div class="row-control"><select id="q-display-mode" class="cs-select" data-bind-key="quotaDisplayMode" data-label="额度显示口径"><option value="remaining">显示剩余额度</option><option value="used">显示已用百分比</option></select></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="q-sync-web">同步网页端 5h 额度</label></div>
+                  <div class="row-control"><input id="q-sync-web" class="cs-switch" type="checkbox" switch data-bind-key="syncWebUsage" data-label="同步网页额度"></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="q-manual-5h">5 小时剩余校准 (%)</label></div>
+                  <div class="row-control"><input id="q-manual-5h" class="cs-input cs-number-input" type="number" min="0" max="100" data-bind-key="manualFiveHourLeft" data-label="5h 手动校准"></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="q-manual-1w">每周剩余校准 (%)</label></div>
+                  <div class="row-control"><input id="q-manual-1w" class="cs-input cs-number-input" type="number" min="0" max="100" data-bind-key="manualWeeklyLeft" data-label="每周手动校准"></div>
+                </div>
+              </div>
+            </div>
+            <div id="panel-q-byok" role="tabpanel" aria-labelledby="tab-q-byok" class="section-stack" hidden>
+              <div class="note-card">
+                <div class="card-head"><span>本地模型贴条（增量刷新）</span></div>
+                <div class="byok-list" data-byok-list></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 5: Interaction -->
+          <section class="settings-page" data-page="interact" hidden>
+            <header class="page-head"><div><h2 class="page-title">悄悄话札与日常称呼</h2><p class="page-subtitle">记录怎么喊你，以及什么时候安静收好台词纸条。</p></div></header>
+            <div class="section-stack">
+              <div class="note-card">
+                <div class="card-head"><span>互动便签</span></div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="int-honorific">称呼你的方式</label></div>
+                  <div class="row-control"><select id="int-honorific" class="cs-select" data-bind-key="honorificMode" data-label="称呼模式"><option value="zayu">杂鱼君</option><option value="human">人类</option><option value="custom">自定义…</option></select></div>
+                </div>
+                <div class="setting-row" data-cond="honorific-custom" hidden>
+                  <div class="row-copy"><label class="row-title" for="int-custom-name">自定义称呼</label></div>
+                  <div class="row-control"><input id="int-custom-name" class="cs-input" type="text" maxlength="12" data-bind-key="honorificCustom" data-label="自定义称呼"></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="int-pat-action">手账打卡：摸摸猫猫头</label><div class="row-desc">累计 <strong data-bind-text="headPatTotal">1954 次</strong>，今日 <strong data-bind-text="headPatToday">18 次</strong></div></div>
+                  <div class="row-control"><button id="int-pat-action" type="button" class="cs-btn primary" data-action="pat-cat">✋ 盖章摸头 +1</button></div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy"><label class="row-title" for="int-bubble-hide">纸条收起秒数</label></div>
+                  <div class="row-control"><div class="range-pair"><input id="int-bubble-hide" class="cs-range" type="range" min="0" max="30" step="1" data-bind-key="bubbleAutoHideSec" data-label="自动收起秒数"><output class="val-badge" for="int-bubble-hide" data-bind-text="bubbleAutoHideSec">12s</output></div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 6: About & Reset -->
+          <section class="settings-page" data-page="about" hidden>
+            <header class="page-head"><div><h2 class="page-title">扉页说明与手账归零</h2><p class="page-subtitle">用纯 CSS 虚线与暖纸色表达个性，不靠昂贵滤镜拖垮性能。</p></div></header>
+            <div class="section-stack">
+              <div class="note-card">
+                <div class="card-head"><span>偏手账方向的取舍说明</span></div>
+                <div class="setting-row is-stacked" style="font-size:12.5px; color:#463462; line-height:1.6;">
+                  <strong>1. 个性十足却不花哨难读：</strong> 故意把“手账感”限定在点阵底纹、分切色页签、拍立得小胶带和盖章动画；所有字号、数值和描述依然采用高对比无衬线体，绝对不用花体字折磨眼睛。<br>
+                  <strong>2. 信息密度略低、更情绪向：</strong> 由于需要保留纸面呼吸感和拍立得装饰空间，同屏容纳的条目数略少于「清爽紧凑」，更适合放在独立设置窗或纪念活动版。
+                </div>
+              </div>
+              <div class="note-card">
+                <div class="card-head"><span>撕掉草稿重来</span></div>
+                <div class="setting-row">
+                  <div class="row-copy"><div class="row-title">重置本手账实验配置</div></div>
+                  <div class="row-control"><button type="button" class="cs-btn danger" data-action="reset-confirm-open">恢复默认…</button></div>
+                </div>
+                <div style="padding: 0 14px 12px;">
+                  <div class="reset-confirm-box" data-reset-confirm-box hidden role="alertdialog" aria-label="确认恢复默认设置">
+                    <span>确定把这一本手账改回出厂默认吗？</span>
+                    <div style="display:flex; gap:8px;">
+                      <button type="button" class="cs-btn" data-action="reset-cancel">先留着</button>
+                      <button type="button" class="cs-btn danger" data-action="reset-apply">确认重置</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <aside class="preview-dock" id="live-preview-dock" data-preview-dock aria-label="手账贴纸预览台">
+          <div class="preview-card">
+            <div class="preview-card-head">
+              <span>🐾 桌宠立绘剪贴区</span>
+              <span class="card-tag" data-preview="pet-state-badge">置顶显示中</span>
+            </div>
+            <div class="pet-stage" data-preview="pet-shell">
+              <div class="pet-bubble-mini" data-preview="pet-line">Token 可以省，给本喵顺毛的夸夸可不能省喵～</div>
+              <div class="pet-sprite-frame">
+                <img class="pet-preview-sprite" data-preview="pet-img" src="../../../Antigravity-Cat-Widget/assets/character-packs/gemini-star-v1/frames/idle.png" alt="星语 · Stella">
+              </div>
+              <div class="pet-stage-foot">
+                <strong data-preview="pet-name">星语 · Stella</strong>
+                <span>缩放 <strong class="tabular" data-bind-text="petSize">92%</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-card">
+            <div class="preview-card-head">
+              <span>🎨 明信片效果预览</span>
+              <span class="card-tag">Atelier</span>
+            </div>
+            <div class="atelier-stage" data-preview="atelier-stage">
+              <img class="atelier-bg-img" src="../../../Antigravity-Dream-Skin/assets/wallpapers/gemini-character-sheet-v1/wallpaper.png" alt="星语 · 星幕夜话">
+              <div class="atelier-scrim"></div>
+              <div class="atelier-chrome"><span data-atelier-theme-name>星轨紫 · 星语 · 星幕夜话</span><span>Atelier 演示预览</span></div>
+              <div class="atelier-messages">
+                <div class="atelier-bubble-user">今天的手账风看起来像实体小本本耶！</div>
+                <div class="atelier-bubble-ai">嘿嘿，本喵还加了纸胶带和盖章反馈哦 ✦</div>
+              </div>
+              <div class="atelier-input-bar"><span>输入给 Gemini 3.8 Flash…</span><span>↵</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const stampEl = document.getElementById('journal-stamp-badge');
+      let stampTimer = null;
+      window.CatstellaStudy.mountSettingsApp({
+        variantId: 'journal',
+        variantLabel: '偏手账 · 0模糊',
+        rootEl: document.getElementById('settings-app-root'),
+        hudMount: document.getElementById('perf-hud-mount'),
+        onSavedFeedback(kind) {
+          if (!stampEl) return;
+          stampEl.textContent = kind === 'saved' ? '✦ 已盖章归档 ✓' : '✦ 手账已实时同步';
+          stampEl.classList.add('is-pulsed');
+          clearTimeout(stampTimer);
+          stampTimer = setTimeout(() => stampEl.classList.remove('is-pulsed'), 480);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

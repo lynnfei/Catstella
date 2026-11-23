@@ -240,6 +240,10 @@ node browser-check/bridge-browser.cjs --out=target/bridge-run
 
 **08:57 实测结果**：离线 release 编译成功；新二进制运行 `--probe-txn` 返回 0，`txn_pass=true`。包括 `widget_old_field_kept`、`widget_concurrent_fields_kept_mem_and_disk`、失败/拒绝后的内存与磁盘整表不变、`other_cfg_write_replaces` 全部为 true。证据独立保存在 [txn-widget-merge-0857/txn-report.txt](../evidence/tauri-window-spike-2026-11-09/txn-widget-merge-0857/txn-report.txt)，未覆盖上一轮报告。窄探针已退出，隔离配置目录由探针清理；未启动 WebView2 窗口，也未执行全量 30 轮。
 
+## 与生产 MouseRouting 的交叉印证（2026-11-10）
+
+Codex 在生产 Electron 落地的输入迟滞修复（`docs/MOUSE_INPUT_2026-11-10.md`：关闭 `forward:true` 全局 WH_MOUSE_LL 钩子、改用局部光标位置 + 异步 DOM 命中恢复）与本文档 spike 验证的分区穿透方案**同构**。spike 的量化证据可直接支撑该方案的有效性边界：整窗穿透事件延迟 229.7ms→15.6ms 的 A/B 同数量级、分区命中/拖动捕获/松手恢复/宿主跟随 30 轮零失败、空闲 SetWindowPos 0 调用。两个实现独立得出同一结论：**按物理坐标切换穿透 + 轮询/事件驱动恢复，可在不依赖全局鼠标钩子的前提下保持桌宠交互手感**。
+
 ## 接续说明（2026-11-09 凌晨批次结束）
 
 本夜完成窗口门槛全部本机可测项与数据门槛（第一～五轮，连续全绿，证据在 `evidence/tauri-window-spike-2026-11-09/`）。下一批建议顺序：

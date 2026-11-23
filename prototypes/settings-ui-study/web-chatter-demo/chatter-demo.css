@@ -1,0 +1,435 @@
+/* ==========================================================================
+   Catstella Web Companion Branch Demo:
+   Auto Speech-Only Bubble vs Manual Full Panel + Preemption State Machine
+   ========================================================================== */
+
+body.theme-web-demo {
+  background: #f1eef9;
+  color: var(--ink);
+}
+
+.study-topbar {
+  max-width: 1180px;
+  margin: 12px auto 12px;
+  padding: 0 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.study-nav-cluster { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.study-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.study-link.is-current {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+  color: #ffffff;
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  cursor: pointer;
+}
+.inline-check input { width: 15px; height: 15px; accent-color: var(--accent); }
+
+.demo-workspace {
+  max-width: 1180px;
+  margin: 0 auto 28px;
+  padding: 0 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* Simulated Gemini Web Page */
+.gemini-browser-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 676px;
+  border-radius: 16px;
+  border: 1px solid #d5c7ef;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(42, 24, 86, 0.08);
+  overflow: hidden;
+}
+
+.browser-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #faf8fe;
+  border-bottom: 1px solid var(--line);
+}
+
+.url-bar {
+  flex: 1 1 auto;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #f1ecfb;
+  border: 1px solid #dfd3f4;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.mode-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #f1ecfb;
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+.mode-badge[data-mode="speech-only"] { background: #fef3c7; color: #8b3b09; }
+.mode-badge[data-mode="full-panel"] { background: #dcfce7; color: #166534; }
+
+.gemini-chat-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px 22px 18px;
+  background:
+    radial-gradient(640px 260px at 85% 95%, rgba(235, 224, 255, 0.55), transparent 65%),
+    #ffffff;
+}
+
+.chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.chat-msg {
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.chat-msg.user {
+  align-self: flex-end;
+  background: #f2ecfc;
+  color: #261938;
+  border: 1px solid #dfd3f5;
+}
+.chat-msg.model {
+  align-self: flex-start;
+  background: #faf9fd;
+  border: 1px solid #e7dff7;
+  color: #241935;
+}
+
+.gemini-composer {
+  margin-top: 18px;
+  max-width: 440px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1.5px solid #d5c7ef;
+  background: #ffffff;
+}
+
+.gemini-composer input {
+  flex: 1 1 auto;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: transparent;
+}
+
+/* Floating Catstella Web Widget Overlay inside Gemini Stage */
+.web-widget-anchor {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: calc(100% - 36px);
+}
+
+/* 1. SPEECH-ONLY BUBBLE (Minimal quote pill, no quota/panel clutter) */
+.speech-only-bubble {
+  width: min(286px, calc(100vw - 64px));
+  padding: 10px 13px 8px;
+  border-radius: 16px 16px 4px 16px;
+  background: #ffffff;
+  border: 1.5px solid #cab6ee;
+  box-shadow: 0 8px 22px rgba(64, 38, 128, 0.14);
+  cursor: pointer;
+}
+
+.speech-only-bubble.is-paused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(105, 62, 209, 0.18), 0 8px 22px rgba(64, 38, 128, 0.16);
+}
+
+.speech-eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-strong);
+  margin-bottom: 4px;
+}
+
+.speech-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.speech-foot {
+  margin-top: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+.retract-bar-track {
+  margin-top: 5px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: #ede6fa;
+  overflow: hidden;
+}
+
+.retract-bar-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7a52db, #e68cb5);
+  transform-origin: left center;
+}
+
+/* 2. FULL MANUAL PANEL (Complete quota/tabs/controls, NO auto-retract) */
+.web-full-panel {
+  width: min(332px, calc(100vw - 54px));
+  max-height: calc(100% - 88px);
+  overflow-y: auto;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1.5px solid #bfa8ec;
+  box-shadow: 0 14px 32px rgba(48, 28, 96, 0.18);
+}
+
+.full-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  background: linear-gradient(135deg, #f5effe, #fdf2f8);
+  border-bottom: 1px solid #e3d6f6;
+}
+
+.full-panel-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.full-panel-body {
+  padding: 11px 12px 12px;
+  font-size: 12px;
+}
+
+.mini-quota-box {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: #faf8fe;
+  border: 1px solid #e7dff7;
+  margin-bottom: 9px;
+}
+
+.mini-quota-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: #ebe3fa;
+  overflow: hidden;
+  margin: 4px 0 8px;
+}
+.mini-quota-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7a52db, #b18ef3);
+}
+
+.panel-dialogue-pill {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f5effe;
+  border: 1px solid #dfd2f6;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+/* Floating Cat Mascot Trigger Button */
+.cat-wake-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 999px;
+  border: 1.5px solid #cab6ee;
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(56, 35, 112, 0.14);
+  cursor: pointer;
+  font: inherit;
+}
+
+.cat-wake-btn:hover {
+  border-color: var(--accent);
+  background: #fbf8ff;
+}
+
+.cat-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: #f3ecfe;
+  object-fit: contain;
+}
+
+.cat-wake-label {
+  text-align: left;
+  padding-right: 4px;
+}
+.cat-wake-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.cat-wake-sub {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+/* Right TestBench Column */
+.testbench-card {
+  background: #ffffff;
+  border: 1px solid #d5c7ef;
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: 0 6px 20px rgba(42, 24, 86, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tb-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.tb-btn-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.tb-scenario-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: #faf8fe;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tb-scenario-btn:hover {
+  border-color: var(--accent);
+  background: #f2ebfe;
+}
+.tb-scenario-btn strong { font-size: 12.5px; color: var(--accent-strong); }
+.tb-scenario-btn span { font-size: 11px; color: var(--ink-muted); }
+
+.state-readout {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #21192f;
+  color: #efe9fd;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.event-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 190px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fcfaff;
+}
+
+.event-log li {
+  padding: 6px 10px;
+  border-bottom: 1px solid #eee7fa;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+.event-log li:last-child { border-bottom: 0; }
+.event-log li[data-kind="preempt"] { background: #eefaf2; color: #156235; font-weight: 700; }
+.event-log li[data-kind="yield"] { background: #fef6e4; color: #8b3b09; font-weight: 700; }
+
+@media (max-width: 920px) {
+  .demo-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gemini-browser-card {
+    min-height: 580px;
+  }
+  .gemini-chat-viewport {
+    padding-bottom: 92px;
+  }
+}

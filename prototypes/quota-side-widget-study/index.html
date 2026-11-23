@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catstella · 用量独立挂件设计工坊 (Stamina Gauge Study)</title>
+  <link rel="stylesheet" href="widget-study.css">
+  <script src="widget-study.js" defer></script>
+</head>
+<body data-theme="violet">
+  <div class="study-app">
+    <header class="study-header">
+      <div class="study-brand">
+        <span class="study-brand__gem" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="22" height="22">
+            <path d="M16 2.5 19.6 12.4 29.5 16 19.6 19.6 16 29.5 12.4 19.6 2.5 16 12.4 12.4Z" fill="url(#brand-star-grad)" stroke="#c99c42" stroke-width="1.5" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="brand-star-grad" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#fff6cf"/>
+                <stop offset="48%" stop-color="#a5d8ff"/>
+                <stop offset="100%" stop-color="#eba7f4"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </span>
+        <div>
+          <h1 class="study-brand__title">Catstella · 用量独立挂件对照工坊</h1>
+          <p class="study-brand__sub">耐力计式轻伴随交互 · 圆环 / 竖条 / 类原神弧形 三版对照</p>
+        </div>
+      </div>
+
+      <div class="study-header__actions" role="tablist" aria-label="挂件主视觉方案切换">
+        <button type="button" class="variant-tab is-active" role="tab" aria-selected="true" data-variant="arc">
+          <span class="variant-tab__tag">主推默认</span>
+          <span>星轨弦月弧 (弧形)</span>
+        </button>
+        <button type="button" class="variant-tab" role="tab" aria-selected="false" data-variant="ring">
+          <span class="variant-tab__tag">怀表星盘</span>
+          <span>星晶双环 (圆环)</span>
+        </button>
+        <button type="button" class="variant-tab" role="tab" aria-selected="false" data-variant="bar">
+          <span class="variant-tab__tag">窄屏首选</span>
+          <span>星辉能量柱 (竖条)</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="study-workspace">
+      <!-- Left: Interactive Desktop Stage & 3-Way Comparison -->
+      <section class="stage-column" aria-label="交互预览与对照舞台">
+        <div class="stage-toolbar">
+          <div class="stage-toolbar__group">
+            <span class="toolbar-label">舞台背景</span>
+            <div class="pill-group" id="backdrop-group" role="group" aria-label="舞台背景">
+              <button type="button" class="pill-btn is-active" data-backdrop="ide">暗色 IDE</button>
+              <button type="button" class="pill-btn" data-backdrop="starry">星海桌布</button>
+              <button type="button" class="pill-btn" data-backdrop="daylight">浅色桌面</button>
+              <button type="button" class="pill-btn" data-backdrop="narrow">窄屏 380px</button>
+            </div>
+          </div>
+
+          <div class="stage-toolbar__group">
+            <span class="toolbar-label">快速位置</span>
+            <div class="pill-group" role="group" aria-label="快速停靠位置">
+              <button type="button" class="pill-btn" id="btn-snap-left">贴左</button>
+              <button type="button" class="pill-btn" id="btn-snap-center">居中</button>
+              <button type="button" class="pill-btn" id="btn-snap-right">贴右</button>
+              <button type="button" class="pill-btn" id="btn-snap-top">贴顶角</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Simulated Desktop / Host Stage -->
+        <div class="stage-viewport-shell">
+          <div class="stage-viewport" id="stage-viewport" data-backdrop="ide">
+            <!-- Simulated background scenery (non-interactive) -->
+            <div class="stage-scenery" aria-hidden="true">
+              <div class="ide-chrome">
+                <div class="ide-sidebar">
+                  <span class="ide-dot"></span><span class="ide-dot"></span><span class="ide-dot"></span>
+                  <div class="ide-tree-line w70"></div>
+                  <div class="ide-tree-line w50"></div>
+                  <div class="ide-tree-line w85"></div>
+                  <div class="ide-tree-line w60"></div>
+                </div>
+                <div class="ide-editor">
+                  <div class="ide-code-line w65"></div>
+                  <div class="ide-code-line w45"></div>
+                  <div class="ide-code-line w80 accent"></div>
+                  <div class="ide-code-line w55"></div>
+                  <div class="ide-code-line w72"></div>
+                  <div class="ide-code-line w38"></div>
+                </div>
+              </div>
+              <button type="button" class="stage-bg-click-target" id="bg-click-probe" tabindex="-1" aria-hidden="true">
+                背景穿透测试区 (点这里验证不被挂件拦截)
+              </button>
+            </div>
+
+            <!-- Interactive Pet + Bubble Unit (mirrors Antigravity-Cat-Widget DOM structure) -->
+            <div class="pet-stage-anchor" id="pet-anchor">
+              <div class="agy-art" id="mascot" data-state="idle" data-art-ready="false" data-facing="left" data-reduced-motion="false">
+                <!-- Full Bubble (matches widget.css & index.html) -->
+                <section class="agy-bubble interactive" id="bubble" role="status" aria-live="polite" hidden data-open="false">
+                  <div class="agy-bubble__title">
+                    <span id="bubble-title">Gemini Models</span>
+                    <button type="button" id="bubble-close" aria-label="收起气泡">×</button>
+                  </div>
+                  <div id="bubble-body" class="agy-bubble__body" tabindex="0" role="region" aria-label="气泡内容">
+                    <div id="bubble-quota-view" class="agy-quota">
+                      <div id="bubble-model-tag" class="agy-model-tag">
+                        <span id="bubble-model-name">Gemini 3.8 Flash</span>
+                        <span class="thinking-badge" id="bubble-thinking">思考: High</span>
+                      </div>
+                      <div class="quota-label"><span id="bubble-label-5h">5 小时剩余</span><strong id="bubble-percent-5h">84%</strong></div>
+                      <div class="quota-reset" id="bubble-reset-5h">2小时15分钟后重置</div>
+                      <div class="agy-quota__track" id="bubble-track-5h" role="progressbar" aria-label="五小时剩余额度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="84">
+                        <span class="agy-quota__fill" id="bubble-fill-5h"></span>
+                      </div>
+                      <div class="quota-label"><span id="bubble-label-1w">1 周剩余</span><strong id="bubble-percent-1w">72%</strong></div>
+                      <div class="quota-reset" id="bubble-reset-1w">4天3小时后重置</div>
+                      <div class="agy-quota__track" id="bubble-track-1w" role="progressbar" aria-label="一周剩余额度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="72">
+                        <span class="agy-quota__fill" id="bubble-fill-1w"></span>
+                      </div>
+                      <div id="bubble-caption" class="agy-quota__caption">演示 · 模拟剩余额度</div>
+                    </div>
+                    <div id="bubble-talk-view" class="agy-phrase" hidden></div>
+                    <div id="bubble-notice-view" hidden>
+                      <div class="agy-bubble__value" id="bubble-notice-value">1,420 tokens</div>
+                      <div id="bubble-notice-detail">输入 880 · 输出 540</div>
+                      <div class="agy-bubble__meta" id="bubble-notice-meta">模拟步骤记录 · 非真实计费</div>
+                    </div>
+                  </div>
+                  <nav class="bubble-nav" aria-label="气泡分页">
+                    <button type="button" id="bubble-prev" aria-label="上一页">‹</button>
+                    <span id="bubble-page-num">1 / 2</span>
+                    <button type="button" id="bubble-next" aria-label="下一页">›</button>
+                  </nav>
+                </section>
+
+                <!-- Hover tools (preserved from Catstella widget.css to verify zero overlap) -->
+                <div class="widget-tools interactive">
+                  <button type="button" id="tool-toggle" aria-label="显示或收起气泡" title="切换气泡">•••</button>
+                  <button type="button" id="tool-chatter" aria-label="触发碎碎念测试" title="碎碎念">✦</button>
+                </div>
+
+                <!-- Pet Body -->
+                <div class="agy-sleep-shell" id="sleep-shell">
+                  <div class="agy-motion interactive" id="motion" tabindex="0" role="button" aria-label="猫娘，点击唤醒或收起气泡，拖拽移动位置">
+                    <div class="agy-face">
+                      <img class="agy-frame agy-frame--idle" alt="Catstella 桌宠" draggable="false">
+                      <img class="agy-frame agy-frame--blink" alt="" draggable="false">
+                      <img class="agy-expression agy-expression--proud" alt="" draggable="false">
+                      <img class="agy-expression agy-expression--shy" alt="" draggable="false">
+                      <img class="agy-expression agy-expression--angry" alt="" draggable="false">
+                      <img class="agy-effect agy-effect--thinking" src="../../Antigravity-Cat-Widget/assets/ui/effects/thinking-dots.svg" alt="">
+                      <img class="agy-effect agy-effect--sparkle" src="../../Antigravity-Cat-Widget/assets/ui/effects/sparkle.svg" alt="">
+                      <img class="agy-effect agy-effect--tear" src="../../Antigravity-Cat-Widget/assets/ui/effects/teardrop.svg" alt="">
+                      <img class="agy-effect agy-effect--heart" src="../../Antigravity-Cat-Widget/assets/ui/effects/heart.svg" alt="">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- INDEPENDENT SIDE QUOTA WIDGET -->
+            <div class="side-widget-slot" id="side-widget-slot" data-variant="arc" data-side="left" data-layout-mode="side-normal" data-suppressed="false" data-dragging="false">
+              <div class="side-widget-shell" id="side-widget-shell">
+                <button
+                  type="button"
+                  class="side-widget-trigger interactive"
+                  id="side-widget-trigger"
+                  aria-describedby="side-widget-tooltip"
+                  aria-label="模型剩余额度挂件"
+                >
+                  <span class="side-widget-visual" id="side-widget-visual"></span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Hover / Focus Position-Aware Tooltip (WCAG 1.4.13 compliant) -->
+            <div
+              class="quota-tooltip"
+              id="side-widget-tooltip"
+              role="tooltip"
+              data-open="false"
+              data-tip-side="left"
+              hidden
+            >
+              <div class="quota-tooltip__head">
+                <span class="quota-tooltip__model" id="tip-model">Gemini 3.8 Flash</span>
+                <span class="quota-tooltip__badge" id="tip-badge">演示 · 剩余</span>
+              </div>
+              <div class="quota-tooltip__rows">
+                <div class="quota-tooltip__row" id="tip-row-5h">
+                  <div class="quota-tooltip__row-top">
+                    <span class="quota-tooltip__window" id="tip-window-5h">5 小时剩余</span>
+                    <strong class="quota-tooltip__pct" id="tip-pct-5h">84%</strong>
+                  </div>
+                  <div class="quota-tooltip__bar"><span class="quota-tooltip__fill" id="tip-fill-5h"></span></div>
+                  <div class="quota-tooltip__reset" id="tip-reset-5h">2小时15分钟后重置</div>
+                </div>
+                <div class="quota-tooltip__row" id="tip-row-1w">
+                  <div class="quota-tooltip__row-top">
+                    <span class="quota-tooltip__window" id="tip-window-1w">1 周剩余</span>
+                    <strong class="quota-tooltip__pct" id="tip-pct-1w">72%</strong>
+                  </div>
+                  <div class="quota-tooltip__bar"><span class="quota-tooltip__fill" id="tip-fill-1w"></span></div>
+                  <div class="quota-tooltip__reset" id="tip-reset-1w">4天3小时后重置</div>
+                </div>
+              </div>
+              <div class="quota-tooltip__foot" id="tip-foot">悬停或聚焦查看详情 · Esc 关闭</div>
+            </div>
+          </div>
+
+          <!-- Live Placement Telemetry Strip cleanly below stage -->
+          <div class="stage-telemetry" id="stage-telemetry" aria-live="off">
+            <span class="tele-pill" id="tele-meter">计量: 剩余 (AGY)</span>
+            <span class="tele-pill" id="tele-facing">朝向: 面向左</span>
+            <span class="tele-pill" id="tele-side">挂件侧: 左</span>
+            <span class="tele-pill" id="tele-mode">模式: 正常贴侧</span>
+            <span class="tele-pill" id="tele-rooms">左余 0px · 右余 0px</span>
+            <span class="tele-pill" id="tele-state">挂件: 显露</span>
+          </div>
+        </div>
+
+        <!-- 3-Way Synchronized Side-by-Side Comparison Gallery -->
+        <section class="compare-section" aria-label="三版同屏对照画廊">
+          <div class="compare-section__head">
+            <div>
+              <h2>三版同屏对照 · 画面与空间占比一眼对比</h2>
+              <p>同步当前角色、主题色与额度档位，点击任意卡片即可切入上方主舞台精调交互。</p>
+            </div>
+            <span class="compare-hint">提示：可用 Tab 键依次聚焦三张小卡片上的挂件，体验无障碍浮层与对比度</span>
+          </div>
+
+          <div class="compare-grid" id="compare-grid">
+            <article class="compare-card" data-variant="ring">
+              <header class="compare-card__head">
+                <div>
+                  <span class="compare-card__badge">方案 A · 圆环</span>
+                  <h3>星晶双环</h3>
+                </div>
+                <span class="compare-card__footprint">约 58 × 58 px</span>
+              </header>
+              <div class="compare-card__preview" data-compare-stage="ring">
+                <img class="compare-pet-img" alt="星语对照图 A" draggable="false">
+                <div class="compare-gauge-mount" id="compare-mount-ring"></div>
+              </div>
+              <p class="compare-card__note">最像塞尔达经典双圈耐力轮：外环 5h、内环 1w、中心四芒星晶。双周期最直观，但横向占位相对较大。</p>
+              <button type="button" class="compare-card__cta" data-promote="ring">切到主舞台试手感</button>
+            </article>
+
+            <article class="compare-card" data-variant="bar">
+              <header class="compare-card__head">
+                <div>
+                  <span class="compare-card__badge">方案 B · 竖条</span>
+                  <h3>星辉能量柱</h3>
+                </div>
+                <span class="compare-card__footprint">约 24 × 78 px</span>
+              </header>
+              <div class="compare-card__preview" data-compare-stage="bar">
+                <img class="compare-pet-img" alt="星语对照图 B" draggable="false">
+                <div class="compare-gauge-mount" id="compare-mount-bar"></div>
+              </div>
+              <p class="compare-card__note">横向仅 ~24px 的极窄水晶柱，顶端冠以星晶，5h 主柱与 1w 伴随细条并排。极限窄屏与大缩放下完全不挤。</p>
+              <button type="button" class="compare-card__cta" data-promote="bar">切到主舞台试手感</button>
+            </article>
+
+            <article class="compare-card is-selected" data-variant="arc">
+              <header class="compare-card__head">
+                <div>
+                  <span class="compare-card__badge is-pick">方案 C · 弧形 · 推荐默认</span>
+                  <h3>星轨弦月弧</h3>
+                </div>
+                <span class="compare-card__footprint">约 34 × 92 px</span>
+              </header>
+              <div class="compare-card__preview" data-compare-stage="arc">
+                <img class="compare-pet-img" alt="星语对照图 C" draggable="false">
+                <div class="compare-gauge-mount" id="compare-mount-arc"></div>
+              </div>
+              <p class="compare-card__note">受原神耐力条启发：依左右侧自动镜像贴合猫猫头部曲线，像角色自带星轨光环；兼顾双周期与纤薄横向占位。</p>
+              <button type="button" class="compare-card__cta" data-promote="arc">切到主舞台试手感</button>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <!-- Right: Interactive Control Workbench & Evaluation Notes -->
+      <aside class="controls-column" aria-label="调试面板与验证台">
+        <div class="panel-card">
+          <h2 class="panel-card__title">额度档位与消耗模拟</h2>
+          <div class="field-row field-row--mode">
+            <span class="field-label">计量模式</span>
+            <div class="pill-group" id="quota-mode-group" role="group" aria-label="额度计量模式">
+              <button type="button" class="pill-btn is-active" data-quota-mode="remaining">剩余 (AGY)</button>
+              <button type="button" class="pill-btn" data-quota-mode="used">已用 (Web 正向)</button>
+            </div>
+          </div>
+
+          <div class="preset-grid" id="quota-presets" role="group" aria-label="额度档位预设">
+            <button type="button" class="preset-btn is-active" data-preset="abundant">充沛 84%</button>
+            <button type="button" class="preset-btn" data-preset="steady">稳健 52%</button>
+            <button type="button" class="preset-btn" data-preset="low">偏低 24%</button>
+            <button type="button" class="preset-btn" data-preset="critical">告急 8%</button>
+            <button type="button" class="preset-btn" data-preset="weekly-tight">周限紧 76/9%</button>
+            <button type="button" class="preset-btn" data-preset="empty">耗尽 0%</button>
+            <button type="button" class="preset-btn" data-preset="unknown">未读取 —</button>
+          </div>
+
+          <div class="slider-group">
+            <label class="slider-row">
+              <span><em id="lbl-title-5h" style="font-style: normal;">5h 剩余</em> <strong id="lbl-5h">84%</strong></span>
+              <input type="range" id="range-5h" min="0" max="100" value="84">
+            </label>
+            <label class="slider-row">
+              <span><em id="lbl-title-1w" style="font-style: normal;">1w 剩余</em> <strong id="lbl-1w">72%</strong></span>
+              <input type="range" id="range-1w" min="0" max="100" value="72">
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button type="button" class="btn-primary" id="btn-consume-step">模拟对话消耗 -10%</button>
+            <button type="button" class="btn-ghost" id="btn-refill">恢复满额</button>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <h2 class="panel-card__title">角色、缩放与外观令牌</h2>
+          <div class="field-row">
+            <span class="field-label">角色素材</span>
+            <div class="pill-group" id="pack-group">
+              <button type="button" class="pill-btn is-active" data-pack="gemini-star-v1">星语</button>
+              <button type="button" class="pill-btn" data-pack="lin-cat">霓音</button>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">App 主题</span>
+            <div class="pill-group" id="theme-group">
+              <button type="button" class="pill-btn is-active" data-theme-pick="violet">星轨紫</button>
+              <button type="button" class="pill-btn" data-theme-pick="pink">梦幻粉</button>
+              <button type="button" class="pill-btn" data-theme-pick="ocean">深海蓝</button>
+              <button type="button" class="pill-btn" data-theme-pick="onyx">曜石黑</button>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">桌宠缩放</span>
+            <div class="pill-group" id="scale-group">
+              <button type="button" class="pill-btn" data-scale="140">140</button>
+              <button type="button" class="pill-btn" data-scale="180">180</button>
+              <button type="button" class="pill-btn is-active" data-scale="220">220</button>
+              <button type="button" class="pill-btn" data-scale="260">260</button>
+              <button type="button" class="pill-btn" data-scale="300">300</button>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">挂件距离</span>
+            <div class="pill-group" id="distance-group" role="group" aria-label="挂件距离微调">
+              <button type="button" class="pill-btn" data-distance="compact">紧凑</button>
+              <button type="button" class="pill-btn is-active" data-distance="normal">普通</button>
+              <button type="button" class="pill-btn" data-distance="relaxed">松弛</button>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">挂件大小</span>
+            <div class="pill-group" id="size-group" role="group" aria-label="挂件大小微调">
+              <button type="button" class="pill-btn" data-size="sm">小</button>
+              <button type="button" class="pill-btn is-active" data-size="md">中</button>
+              <button type="button" class="pill-btn" data-size="lg">大</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <h2 class="panel-card__title">交互衔接与极限验证</h2>
+          <div class="action-grid">
+            <button type="button" class="btn-soft" id="btn-toggle-bubble">唤醒 / 收起气泡</button>
+            <button type="button" class="btn-soft" id="btn-trigger-chatter">模拟自动碎碎念</button>
+            <button type="button" class="btn-soft" id="btn-trigger-turncost">模拟步骤提示卡</button>
+            <button type="button" class="btn-soft" id="btn-rapid-stress">快速来回切压力测</button>
+          </div>
+
+          <div class="toggle-list">
+            <label class="toggle-item">
+              <input type="checkbox" id="chk-reduced-motion">
+              <span>尊重减少动态效果 (reducedMotion)</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="chk-click-through">
+              <span>模拟鼠标穿透 (clickThrough)</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="chk-hitbox">
+              <span>显示热区与避让边界 (Hit-Box Inspector)</span>
+            </label>
+          </div>
+
+          <p class="stress-log" id="stress-log" aria-live="polite">状态日志：就绪。可拖拽猫猫、点击气泡或悬停/Tab 聚焦挂件。</p>
+        </div>
+
+        <div class="panel-card panel-card--decision">
+          <h2 class="panel-card__title">选型结论备忘（供生产接入）</h2>
+          <ul class="decision-list">
+            <li><strong>默认推荐 · 星轨弦月弧 (`arc`)</strong>：随左右侧自动镜像贴合猫猫耳侧，星晶锚点与 App/角色一体感最强，同时保留 5h+1w 双弧与拖尾泄能手感，仅占 ~34px 宽度。</li>
+            <li><strong>空间紧张 · 星辉能量柱 (`bar`)</strong>：横向仅 ~24px，在 380px 窄分屏或 300px 大缩放贴边时可平滑退避而不遮脸；若空间极端不足，可自动降级为竖条模式。</li>
+            <li><strong>经典备选 · 星晶双环 (`ring`)</strong>：同心双环最易一眼分辨 5h 与 1w，但 ~58px 宽更挑留白，适合偏好正圆仪表盘的桌面大屏用户。</li>
+          </ul>
+        </div>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>

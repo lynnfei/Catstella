@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catstella 设置 UI 原型 · 方案一：清爽紧凑</title>
+  <link rel="stylesheet" href="../shared/settings-controls.css">
+  <link rel="stylesheet" href="compact.css">
+  <script src="../shared/store.js" defer></script>
+  <script src="../shared/perf-meter.js" defer></script>
+  <script src="../shared/settings-core.js" defer></script>
+</head>
+<body class="theme-compact">
+  <a class="skip-link" href="#main-content">跳到主设置区</a>
+
+  <header class="study-topbar" aria-label="设计探索切换栏">
+    <div class="study-nav-cluster">
+      <a class="study-link" href="../index.html">← 对比总览</a>
+      <a class="study-link is-current" href="index.html">✦ 清爽紧凑（主推）</a>
+      <a class="study-link" href="../frosted/index.html">轻毛玻璃</a>
+      <a class="study-link" href="../journal/index.html">偏手账</a>
+      <a class="study-link" href="../web-chatter-demo/index.html">Web 碎碎念分支</a>
+    </div>
+    <div class="study-toggles" id="study-sim-bar">
+      <label class="inline-check">
+        <input type="checkbox" data-sim="reduced-motion"> 模拟减弱动效
+      </label>
+      <label class="inline-check">
+        <input type="checkbox" data-sim="narrow-frame"> 模拟窄窗 (460px)
+      </label>
+      <label class="inline-check" title="模拟 IPC 写入被拒绝，用于测试保存失败提示、草稿保留与回退">
+        <input type="checkbox" data-sim="save-failure"> 模拟保存失败
+      </label>
+    </div>
+  </header>
+
+  <div class="telemetry-bar-wrap">
+    <div id="perf-hud-mount"></div>
+  </div>
+
+  <div class="app-stage" id="settings-app-root">
+    <div class="compact-shell">
+      <div class="window-header">
+        <div class="window-brand">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <div>
+            <h1 class="window-title">Catstella · 设置中心</h1>
+          </div>
+          <span class="variant-chip">方案一 · 清爽紧凑</span>
+        </div>
+
+        <div class="save-cluster">
+          <label class="inline-check" title="关闭自动保存后可体验草稿与批量保存反馈">
+            <input type="checkbox" data-bind-key="autoSave" data-label="即时自动保存"> 即时保存
+          </label>
+          <span class="dirty-pill" data-role="dirty-badge">已自动同步生效 ✓</span>
+          <button type="button" class="cs-btn" data-action="undo" disabled>撤销</button>
+          <button type="button" class="cs-btn ghost" data-action="discard-draft" hidden>放弃改动</button>
+          <button type="button" class="cs-btn primary" data-action="save-now" hidden>立即保存</button>
+          <button type="button" class="cs-btn preview-mobile-toggle" data-action="toggle-preview-dock" aria-expanded="false" aria-controls="live-preview-dock">
+            实时预览
+          </button>
+        </div>
+      </div>
+
+      <div class="status-strip">
+        <span class="status-live-msg" data-role="save-status" role="status" aria-live="polite">
+          当前采用精准字段订阅 + 0 实时模糊层策略：拖动滑块仅局部更新，绝不触发整页重绘。
+        </span>
+        <span class="card-tag">键盘提示：Tab 切换控件 · ↑↓ 切换分类 · ←→ 切换子标签</span>
+      </div>
+
+      <div class="shell-body">
+        <nav class="side-nav" aria-label="设置分类">
+          <button type="button" class="nav-item active" data-target="overview" aria-current="page">
+            <span aria-hidden="true">🏠</span><span>总览与联动</span><span class="nav-star" aria-hidden="true">✦</span>
+          </button>
+          <button type="button" class="nav-item" data-target="character" aria-current="false">
+            <span aria-hidden="true">🐱</span><span>形象与桌宠</span><span class="nav-star" aria-hidden="true">✦</span>
+          </button>
+          <button type="button" class="nav-item" data-target="wallpaper" aria-current="false">
+            <span aria-hidden="true">🖼️</span><span>壁纸与主题</span><span class="nav-star" aria-hidden="true">✦</span>
+          </button>
+          <button type="button" class="nav-item" data-target="quota" aria-current="false">
+            <span aria-hidden="true">📊</span><span>用量与网关</span><span class="nav-star" aria-hidden="true">✦</span>
+          </button>
+          <button type="button" class="nav-item" data-target="interact" aria-current="false">
+            <span aria-hidden="true">💬</span><span>互动与称呼</span><span class="nav-star" aria-hidden="true">✦</span>
+          </button>
+          <button type="button" class="nav-item" data-target="about" aria-current="false">
+            <span aria-hidden="true">✨</span><span>关于与重置</span><span class="nav-star" aria-hidden="true">✦</span>
+          </button>
+
+          <div class="nav-footer-note">
+            v2.8 · Starlight Precision<br>
+            0 runtime blur · 精准 DOM 增量更新
+          </div>
+        </nav>
+
+        <main class="content-scroll" id="main-content" tabindex="-1">
+          <!-- Page 1: Overview -->
+          <section class="settings-page" data-page="overview">
+            <header class="page-head">
+              <div>
+                <h2 class="page-title">总览与双端联动</h2>
+                <p class="page-subtitle">桌面桌宠、Antigravity 梦幻皮肤与 Chrome Web 伴侣一体化状态面板。</p>
+              </div>
+            </header>
+
+            <div class="section-stack">
+              <div class="kpi-grid">
+                <div class="kpi-tile">
+                  <span class="kpi-label">AGY 5 小时剩余</span>
+                  <span class="kpi-value" data-bind-text="manualFiveHourLeft">96%</span>
+                  <span class="kpi-foot">Gemini 3.8 Flash · 高频可用</span>
+                </div>
+                <div class="kpi-tile">
+                  <span class="kpi-label">桌面与 Web 桥接</span>
+                  <span class="kpi-value">已联机</span>
+                  <span class="kpi-foot">桌面活跃时 Web 自动让位</span>
+                </div>
+                <div class="kpi-tile">
+                  <span class="kpi-label">今日摸头计数</span>
+                  <span class="kpi-value" data-bind-text="headPatToday">18 次</span>
+                  <span class="kpi-foot">累计 <span data-bind-text="headPatTotal">1954 次</span></span>
+                </div>
+              </div>
+
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>快速跳转</span>
+                  <span class="card-tag">直达高频修改项</span>
+                </div>
+                <div class="quick-actions-grid">
+                  <button type="button" class="quick-jump-btn" data-jump-page="character">
+                    <span>🐱 切换角色形象与大小</span><span aria-hidden="true">→</span>
+                  </button>
+                  <button type="button" class="quick-jump-btn" data-jump-page="wallpaper">
+                    <span>🖼️ 选择壁纸与宿主主题色</span><span aria-hidden="true">→</span>
+                  </button>
+                  <button type="button" class="quick-jump-btn" data-jump-page="quota">
+                    <span>📊 校准 5h / 周限额与网关</span><span aria-hidden="true">→</span>
+                  </button>
+                  <button type="button" class="quick-jump-btn" data-jump-page="interact">
+                    <span>💬 调整称呼与碎碎念频率</span><span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>核心开关摘要</span>
+                  <span class="card-tag">无需切换分类直接微调</span>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="ov-pet-visible">显示桌面猫猫桌宠</label>
+                    <div class="row-desc">在右侧或桌宠区实时切换显示/隐身状态</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="ov-pet-visible" class="cs-switch" type="checkbox" switch data-bind-key="petVisible" data-label="显示桌面桌宠">
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="ov-wp-enabled">启用 Antigravity 宿主壁纸</label>
+                    <div class="row-desc">为聊天界面注入低对比暗紫护眼壁纸与配色皮肤</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="ov-wp-enabled" class="cs-switch" type="checkbox" switch data-bind-key="wallpaperEnabled" data-label="启用宿主壁纸">
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="ov-chatter">空闲自动碎碎念</label>
+                    <div class="row-desc">长时间未操作时在台词气泡轻声冒泡（Web 侧仅出句式不挡屏幕）</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="ov-chatter" class="cs-switch" type="checkbox" switch data-bind-key="ambientChatter" data-label="空闲碎碎念">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 2: Character & Pet -->
+          <section class="settings-page" data-page="character" hidden>
+            <header class="page-head">
+              <div>
+                <h2 class="page-title">形象与桌宠控制</h2>
+                <p class="page-subtitle">选择看板猫并微调体型、透明度与语音互动反馈，右侧实时预览同步响应。</p>
+              </div>
+            </header>
+
+            <div class="section-stack">
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>形象角色包</span>
+                  <span class="card-tag">支持桌宠与 Web 双端同步</span>
+                </div>
+                <div class="char-grid">
+                  <button type="button" class="char-card is-selected" data-char-id="gemini-star-v1" aria-pressed="true">
+                    <img class="char-thumb" src="../../../Antigravity-Cat-Widget/assets/character-packs/gemini-star-v1/frames/idle.png" alt="星语 · Stella">
+                    <div>
+                      <div class="char-card-title">星语 · Stella</div>
+                      <div class="char-card-sub">星空魔女 · 紫发异色瞳</div>
+                    </div>
+                  </button>
+                  <button type="button" class="char-card" data-char-id="lin-cat" aria-pressed="false">
+                    <img class="char-thumb" src="../../../Antigravity-Cat-Widget/assets/character-packs/lin-cat/frames/idle.png" alt="霓音 · LinCat">
+                    <div>
+                      <div class="char-card-title">霓音 · LinCat</div>
+                      <div class="char-card-sub">粉色双马尾 · 全息航行服</div>
+                    </div>
+                  </button>
+                </div>
+
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <div class="row-title">试看实时表情</div>
+                    <div class="row-desc">点击在右侧舞台直接触发差分与专属台词</div>
+                  </div>
+                  <div class="expr-strip" role="group" aria-label="试看表情差分">
+                    <button type="button" class="chip-btn is-selected" data-expr-id="idle" aria-pressed="true">待机</button>
+                    <button type="button" class="chip-btn" data-expr-id="proud" aria-pressed="false">得意</button>
+                    <button type="button" class="chip-btn" data-expr-id="shy" aria-pressed="false">害羞</button>
+                    <button type="button" class="chip-btn" data-expr-id="angry" aria-pressed="false">炸毛</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>体型与窗口层级</span>
+                  <span class="card-tag">仅改变单个 CSS 变换属性</span>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="pet-size">桌宠缩放比例</label>
+                    <div class="row-desc">拖动时仅重绘预览立绘 <code>transform: scale()</code>，不重构 DOM</div>
+                  </div>
+                  <div class="row-control">
+                    <div class="range-pair">
+                      <input id="pet-size" class="cs-range" type="range" min="0.6" max="1.35" step="0.02" data-bind-key="petSize" data-label="桌宠缩放比例">
+                      <output class="val-badge" for="pet-size" data-bind-text="petSize">92%</output>
+                    </div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="pet-opacity">桌宠不透明度</label>
+                    <div class="row-desc">写代码专注时可适当调淡，降低视觉打扰</div>
+                  </div>
+                  <div class="row-control">
+                    <div class="range-pair">
+                      <input id="pet-opacity" class="cs-range" type="range" min="0.35" max="1" step="0.02" data-bind-key="petOpacity" data-label="桌宠不透明度">
+                      <output class="val-badge" for="pet-opacity" data-bind-text="petOpacity">96%</output>
+                    </div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="pet-topmost">窗口永远置顶 (Always on Top)</label>
+                    <div class="row-desc">保持猫猫停留在 IDE 与浏览器窗口前方</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="pet-topmost" class="cs-switch" type="checkbox" switch data-bind-key="petTopmost" data-label="窗口置顶">
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="pet-sync-web">角色形象同步到 Chrome 扩展</label>
+                    <div class="row-desc">切换星语 / 霓音后自动联动 Gemini 网页伴侣</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="pet-sync-web" class="cs-switch" type="checkbox" switch data-bind-key="syncWebCharacter" data-label="同步角色到网页">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 3: Wallpaper & Theme (with WAI-ARIA Tablist sub-views) -->
+          <section class="settings-page" data-page="wallpaper" hidden>
+            <header class="page-head">
+              <div>
+                <h2 class="page-title">壁纸与宿主皮肤</h2>
+                <p class="page-subtitle">内置 1 分钟–1 小时磁吸标尺与宿主聊天气泡即时预览。</p>
+              </div>
+            </header>
+
+            <div class="cs-tablist" role="tablist" aria-label="壁纸与主题子视图" style="margin-bottom: 12px;">
+              <button type="button" class="cs-tab" role="tab" id="tab-wp-gallery" aria-controls="panel-wp-gallery" aria-selected="true">壁纸画廊与轮播</button>
+              <button type="button" class="cs-tab" role="tab" id="tab-wp-theme" aria-controls="panel-wp-theme" aria-selected="false">主题配色与文字透明度</button>
+            </div>
+
+            <div id="panel-wp-gallery" role="tabpanel" aria-labelledby="tab-wp-gallery" class="section-stack">
+              <div class="compact-card">
+                <div class="gallery-toolbar">
+                  <div>
+                    <strong style="font-size:12.5px;" data-preview="wp-name">星语 · 星幕夜话</strong>
+                    <span class="card-tag" style="margin-left:8px;" data-preview="wp-meta">星语夜曲包 · 1672 × 941</span>
+                  </div>
+                  <div class="view-seg" role="group" aria-label="画廊排列模式">
+                    <button type="button" class="is-active" data-wp-view="carousel" aria-pressed="true">横滑</button>
+                    <button type="button" data-wp-view="grid" aria-pressed="false">网格</button>
+                  </div>
+                </div>
+
+                <div class="gallery-list is-carousel" data-gallery-list>
+                  <button type="button" class="wp-card is-selected" data-wallpaper-id="gemini-character-sheet-v1" aria-pressed="true">
+                    <img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/gemini-character-sheet-v1/wallpaper.png" alt="星语 · 星幕夜话">
+                    <div class="wp-meta"><div class="wp-name">星语 · 星幕夜话</div><div class="wp-pack">星语夜曲包</div></div>
+                  </button>
+                  <button type="button" class="wp-card" data-wallpaper-id="stella-halloween" aria-pressed="false">
+                    <img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/stella-halloween/wallpaper.jpg" alt="星语 · 万圣星夜">
+                    <div class="wp-meta"><div class="wp-name">星语 · 万圣星夜</div><div class="wp-pack">星语夜曲包</div></div>
+                  </button>
+                  <button type="button" class="wp-card" data-wallpaper-id="aica-clouds" aria-pressed="false">
+                    <img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/aica-clouds/wallpaper.png" alt="霓音 · 云端来信">
+                    <div class="wp-meta"><div class="wp-name">霓音 · 云端来信</div><div class="wp-pack">Aica 漫游包</div></div>
+                  </button>
+                  <button type="button" class="wp-card" data-wallpaper-id="aica-starship" aria-pressed="false">
+                    <img class="wp-thumb" src="../../../Antigravity-Dream-Skin/assets/wallpapers/aica-starship/wallpaper.jpg" alt="霓音 · 星舱漫游">
+                    <div class="wp-meta"><div class="wp-name">霓音 · 星舱漫游</div><div class="wp-pack">Aica 漫游包</div></div>
+                  </button>
+                </div>
+
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="wp-autoplay">启用壁纸包定时轮播</label>
+                    <div class="row-desc">按下方磁吸标尺节奏自动切换图组</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="wp-autoplay" class="cs-switch" type="checkbox" switch data-bind-key="packAutoPlay" data-label="壁纸自动轮播">
+                  </div>
+                </div>
+
+                <div class="setting-row is-stacked">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <label class="row-title" for="wp-interval">轮播间隔标尺（磁吸吸附常用刻度）</label>
+                    <output class="val-badge" for="wp-interval" data-bind-text="slideshowIntervalMin">15 分钟</output>
+                  </div>
+                  <div class="cs-range-wrap">
+                    <input id="wp-interval" class="cs-range" type="range" min="1" max="60" step="0.5" data-bind-key="slideshowIntervalMin" data-magnetic="interval" data-label="轮播间隔">
+                    <div class="ruler-ticks" aria-hidden="true">
+                      <span data-ruler-stop="1" style="--stop-pct: 0%">1m</span>
+                      <span data-ruler-stop="5" style="--stop-pct: 6.78%">5m</span>
+                      <span data-ruler-stop="10" style="--stop-pct: 15.25%">10m</span>
+                      <span data-ruler-stop="15" style="--stop-pct: 23.73%">15m</span>
+                      <span data-ruler-stop="30" style="--stop-pct: 49.15%">30m</span>
+                      <span data-ruler-stop="45" style="--stop-pct: 74.58%">45m</span>
+                      <span data-ruler-stop="60" style="--stop-pct: 100%">1h</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="panel-wp-theme" role="tabpanel" aria-labelledby="tab-wp-theme" class="section-stack" hidden>
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>宿主主题预设</span>
+                  <span class="card-tag">点击即时渲染右侧聊天气泡预览</span>
+                </div>
+                <div class="theme-swatch-grid">
+                  <button type="button" class="swatch-btn is-selected" data-theme-preset="violet" aria-pressed="true">
+                    <span class="swatch-color" style="background: linear-gradient(135deg, #8b68e0, #24193c);"></span>
+                    <span class="swatch-name">星轨紫</span>
+                  </button>
+                  <button type="button" class="swatch-btn" data-theme-preset="pink" aria-pressed="false">
+                    <span class="swatch-color" style="background: linear-gradient(135deg, #f59cc6, #3b1830);"></span>
+                    <span class="swatch-name">梦幻粉</span>
+                  </button>
+                  <button type="button" class="swatch-btn" data-theme-preset="ocean" aria-pressed="false">
+                    <span class="swatch-color" style="background: linear-gradient(135deg, #5da9f6, #0f1d35);"></span>
+                    <span class="swatch-name">深海蓝</span>
+                  </button>
+                  <button type="button" class="swatch-btn" data-theme-preset="onyx" aria-pressed="false">
+                    <span class="swatch-color" style="background: linear-gradient(135deg, #666c82, #121318);"></span>
+                    <span class="swatch-name">曜石黑</span>
+                  </button>
+                </div>
+
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="wp-opacity">壁纸画面浓度</label>
+                    <div class="row-desc">推荐 20%–35%，保护代码阅读对比度</div>
+                  </div>
+                  <div class="row-control">
+                    <div class="range-pair">
+                      <input id="wp-opacity" class="cs-range" type="range" min="0.05" max="0.85" step="0.02" data-bind-key="bgOpacity" data-label="壁纸画面浓度">
+                      <output class="val-badge" for="wp-opacity" data-bind-text="bgOpacity">28%</output>
+                    </div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="wp-scrim">深色遮罩 (Scrim 对比保护)</label>
+                    <div class="row-desc">遮罩越深文字越清晰（确保 ≥ 4.5:1 可读性）</div>
+                  </div>
+                  <div class="row-control">
+                    <div class="range-pair">
+                      <input id="wp-scrim" class="cs-range" type="range" min="0.05" max="0.8" step="0.02" data-bind-key="bgScrim" data-label="深色遮罩">
+                      <output class="val-badge" for="wp-scrim" data-bind-text="bgScrim">34%</output>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 4: Quota & BYOK -->
+          <section class="settings-page" data-page="quota" hidden>
+            <header class="page-head">
+              <div>
+                <h2 class="page-title">用量审计与本地网关</h2>
+                <p class="page-subtitle">Antigravity 本地配额与 Gemini Web 实时同步视图；BYOK 列表使用键值差分更新。</p>
+              </div>
+            </header>
+
+            <div class="cs-tablist" role="tablist" aria-label="用量与网关子视图" style="margin-bottom: 12px;">
+              <button type="button" class="cs-tab" role="tab" id="tab-q-cards" aria-controls="panel-q-cards" aria-selected="true">双源额度与手动校准</button>
+              <button type="button" class="cs-tab" role="tab" id="tab-q-byok" aria-controls="panel-q-byok" aria-selected="false">本地 BYOK 模型网关</button>
+            </div>
+
+            <div id="panel-q-cards" role="tabpanel" aria-labelledby="tab-q-cards" class="section-stack">
+              <div class="quota-dual-grid">
+                <div class="quota-card">
+                  <div class="quota-card-head">
+                    <strong style="font-size:13px;">🪐 Antigravity · Gemini 3.8 Flash</strong>
+                    <span class="byok-pill" data-state="on">本地直连</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px;">
+                    <span>5 小时窗口</span><strong class="tabular" data-quota="agy-5h-text">剩余 96%</strong>
+                  </div>
+                  <div class="quota-track"><div class="quota-fill" data-quota="agy-5h-bar" style="width:96%"></div></div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px;">
+                    <span>每周上限</span><strong class="tabular" data-quota="agy-1w-text">剩余 95%</strong>
+                  </div>
+                  <div class="quota-track"><div class="quota-fill" data-quota="agy-1w-bar" style="width:95%"></div></div>
+                </div>
+
+                <div class="quota-card">
+                  <div class="quota-card-head">
+                    <strong style="font-size:13px;">🌐 Gemini 网页伴侣同步</strong>
+                    <span class="byok-pill" data-state="on">Chrome 桥接</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px;">
+                    <span>5 小时网页额度</span><strong class="tabular" data-quota="web-5h-text">剩余 72%</strong>
+                  </div>
+                  <div class="quota-track"><div class="quota-fill is-web" data-quota="web-5h-bar" style="width:72%"></div></div>
+                  <div style="font-size:11.5px; color:var(--ink-muted); margin-top:8px;">
+                    重置参考：5h 约 3h54m 后 · Claude Sonnet 5.5 剩余 75%
+                  </div>
+                </div>
+              </div>
+
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>显示口径与手动兜底校准</span>
+                  <span class="card-tag">改数字直接驱动上方进度条</span>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="q-display-mode">百分比展示口径</label>
+                    <div class="row-desc">切换「显示剩余 %」或「显示已消耗 %」</div>
+                  </div>
+                  <div class="row-control">
+                    <select id="q-display-mode" class="cs-select" data-bind-key="quotaDisplayMode" data-label="额度显示口径">
+                      <option value="remaining">显示剩余额度</option>
+                      <option value="used">显示已用百分比</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="q-sync-web">同步显示 Chrome Web 额度</label>
+                    <div class="row-desc">开启后桌面气泡会附带 Web 5h 剩余摘要</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="q-sync-web" class="cs-switch" type="checkbox" switch data-bind-key="syncWebUsage" data-label="同步网页额度">
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="q-manual-5h">5 小时剩余校准 (%)</label>
+                    <div class="row-desc">接口限流时可手动覆盖参考值（0–100）</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="q-manual-5h" class="cs-input cs-number-input" type="number" min="0" max="100" data-bind-key="manualFiveHourLeft" data-label="5h 手动校准">
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="q-manual-1w">每周剩余校准 (%)</label>
+                    <div class="row-desc">手动微调周限额预警基线</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="q-manual-1w" class="cs-input cs-number-input" type="number" min="0" max="100" data-bind-key="manualWeeklyLeft" data-label="每周手动校准">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="panel-q-byok" role="tabpanel" aria-labelledby="tab-q-byok" class="section-stack" hidden>
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>本地模型节点（键值增量 Patch）</span>
+                  <span class="card-tag">增量更新目标行，零整表重建</span>
+                </div>
+                <div class="byok-list" data-byok-list></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 5: Interaction & Chatter -->
+          <section class="settings-page" data-page="interact" hidden>
+            <header class="page-head">
+              <div>
+                <h2 class="page-title">互动礼仪与自动碎碎念</h2>
+                <p class="page-subtitle">调节对用户的称呼习惯，以及网页/桌面双端的轻量碎碎念气泡触发策略。</p>
+              </div>
+            </header>
+
+            <div class="section-stack">
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>称呼与摸头交互</span>
+                  <span class="card-tag">右侧台词即时改变称呼</span>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="int-honorific">猫猫称呼你的方式</label>
+                    <div class="row-desc">台词里的 <code>{user}</code> 占位符会替换为选定称呼</div>
+                  </div>
+                  <div class="row-control">
+                    <select id="int-honorific" class="cs-select" data-bind-key="honorificMode" data-label="称呼模式">
+                      <option value="zayu">杂鱼君（经典欢喜冤家）</option>
+                      <option value="human">人类（标准猫系口吻）</option>
+                      <option value="custom">自定义称呼…</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="setting-row" data-cond="honorific-custom" hidden>
+                  <div class="row-copy">
+                    <label class="row-title" for="int-custom-name">自定义称呼文本</label>
+                    <div class="row-desc">建议 2–6 个字，避免台词换行溢出</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="int-custom-name" class="cs-input" type="text" maxlength="12" data-bind-key="honorificCustom" data-label="自定义称呼">
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="int-pat-action">互动测试：摸摸猫猫头</label>
+                    <div class="row-desc">累计已摸 <strong data-bind-text="headPatTotal">1954 次</strong>，今日 <strong data-bind-text="headPatToday">18 次</strong></div>
+                  </div>
+                  <div class="row-control">
+                    <button id="int-pat-action" type="button" class="cs-btn primary" data-action="pat-cat">✋ 摸头 +1</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>碎碎念与让位策略</span>
+                  <span class="card-tag">详情可打开顶部 Web 碎碎念分支 Demo</span>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="int-bubble-hide">气泡自动收起秒数</label>
+                    <div class="row-desc">碎碎念结束后自然收起，悬停或聚焦时会自动暂停倒计时</div>
+                  </div>
+                  <div class="row-control">
+                    <div class="range-pair">
+                      <input id="int-bubble-hide" class="cs-range" type="range" min="0" max="30" step="1" data-bind-key="bubbleAutoHideSec" data-label="自动收起秒数">
+                      <output class="val-badge" for="int-bubble-hide" data-bind-text="bubbleAutoHideSec">12s</output>
+                    </div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <label class="row-title" for="int-desktop-prio">桌面端活跃时 Web 自动让位</label>
+                    <div class="row-desc">桌面桌宠在前台时隐藏网页右下角角标，避免双猫撞车</div>
+                  </div>
+                  <div class="row-control">
+                    <input id="int-desktop-prio" class="cs-switch" type="checkbox" switch data-bind-key="desktopPriority" data-label="桌面端优先">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Page 6: About & Reset -->
+          <section class="settings-page" data-page="about" hidden>
+            <header class="page-head">
+              <div>
+                <h2 class="page-title">关于、可访问性与安全重置</h2>
+                <p class="page-subtitle">零阻塞确认条 + WCAG AA 对比度 + Reduced Motion 完整护航。</p>
+              </div>
+            </header>
+
+            <div class="section-stack">
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>Starlight Precision 设计要点</span>
+                  <span class="card-tag">桌面主推方案</span>
+                </div>
+                <div class="setting-row is-stacked">
+                  <div style="font-size:12.5px; color:var(--ink-secondary); line-height:1.6;">
+                    <strong>1. 彻底移除实时模糊链：</strong> 主壳体与卡片使用纯实色阶梯（<code>#f8f6fd</code> / <code>#ffffff</code>）与 <code>1px</code> 星紫边框区分层次，<code>backdrop-filter</code> 严格为 0 层，旧核显笔记本上也能稳定满帧滚动。<br>
+                    <strong>2. 精准局部订阅更新：</strong> 通过 <code>subscribeKey</code> 仅改动单个 <code>&lt;output&gt;</code>、<code>img.src</code> 或 CSS 变量，完全剔除旧版每次 <code>save()</code> 触发全页 <code>render()</code> 与 <code>innerHTML = ""</code> 重建的问题。
+                  </div>
+                </div>
+              </div>
+
+              <div class="compact-card">
+                <div class="card-head">
+                  <span>恢复默认配置</span>
+                  <span class="card-tag">采用非阻塞行内二次确认</span>
+                </div>
+                <div class="setting-row">
+                  <div class="row-copy">
+                    <div class="row-title">重置本原型全部实验配置</div>
+                    <div class="row-desc">会记录到撤销栈，若误点还可立即按上方「撤销」挽回</div>
+                  </div>
+                  <div class="row-control">
+                    <button type="button" class="cs-btn danger" data-action="reset-confirm-open">恢复默认…</button>
+                  </div>
+                </div>
+                <div style="padding: 0 14px 12px;">
+                  <div class="reset-confirm-box" data-reset-confirm-box hidden role="alertdialog" aria-label="确认恢复默认设置">
+                    <span>确定将形象、壁纸与校准值重置为默认状态吗？</span>
+                    <div style="display:flex; gap:8px;">
+                      <button type="button" class="cs-btn" data-action="reset-cancel">取消</button>
+                      <button type="button" class="cs-btn danger" data-action="reset-apply">确认重置</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <!-- Right Docked Live Preview Column -->
+        <aside class="preview-dock" id="live-preview-dock" data-preview-dock aria-label="实时预览舞台">
+          <div class="preview-card">
+            <div class="preview-card-head">
+              <span>🐾 桌宠实时舞台</span>
+              <span class="card-tag" data-preview="pet-state-badge">置顶显示中</span>
+            </div>
+            <div class="pet-stage" data-preview="pet-shell">
+              <div class="pet-bubble-mini" data-preview="pet-line">Token 可以省，给本喵顺毛的夸夸可不能省喵～</div>
+              <div class="pet-sprite-frame">
+                <img class="pet-preview-sprite" data-preview="pet-img" src="../../../Antigravity-Cat-Widget/assets/character-packs/gemini-star-v1/frames/idle.png" alt="星语 · Stella · idle">
+              </div>
+              <div class="pet-stage-foot">
+                <strong data-preview="pet-name">星语 · Stella</strong>
+                <span>缩放 <strong class="tabular" data-bind-text="petSize">92%</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-card">
+            <div class="preview-card-head">
+              <span>🎨 宿主聊天微缩效果</span>
+              <span class="card-tag">Atelier 实时联动</span>
+            </div>
+            <div class="atelier-stage" data-preview="atelier-stage">
+              <img class="atelier-bg-img" src="../../../Antigravity-Dream-Skin/assets/wallpapers/gemini-character-sheet-v1/wallpaper.png" alt="星语 · 星幕夜话">
+              <div class="atelier-scrim"></div>
+              <div class="atelier-chrome">
+                <span data-atelier-theme-name>星轨紫 · 星语 · 星幕夜话</span>
+                <span>Atelier 演示预览</span>
+              </div>
+              <div class="atelier-messages">
+                <div class="atelier-bubble-user">帮我检查下配置对比度喵～</div>
+                <div class="atelier-bubble-ai">对比度 &gt; 7:1！当前遮罩和字体都很耐看哦 ✦</div>
+              </div>
+              <div class="atelier-input-bar">
+                <span>输入给 Gemini 3.8 Flash…</span>
+                <span>↵</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      window.CatstellaStudy.mountSettingsApp({
+        variantId: 'compact',
+        variantLabel: '清爽紧凑 · 0模糊',
+        rootEl: document.getElementById('settings-app-root'),
+        hudMount: document.getElementById('perf-hud-mount')
+      });
+    });
+  </script>
+</body>
+</html>

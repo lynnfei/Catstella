@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catstella Web 分支演示 · 自动碎碎念与手动唤醒让位</title>
+  <link rel="stylesheet" href="../shared/settings-controls.css">
+  <link rel="stylesheet" href="chatter-demo.css">
+  <script src="chatter-demo.js" defer></script>
+</head>
+<body class="theme-web-demo">
+  <a class="skip-link" href="#demo-main">跳到交互演示区</a>
+
+  <header class="study-topbar" aria-label="设计探索切换栏">
+    <div class="study-nav-cluster">
+      <a class="study-link" href="../index.html">← 对比总览</a>
+      <a class="study-link" href="../compact/index.html">清爽紧凑</a>
+      <a class="study-link" href="../frosted/index.html">轻毛玻璃</a>
+      <a class="study-link" href="../journal/index.html">偏手账</a>
+      <a class="study-link is-current" href="index.html">✦ Web 碎碎念分支</a>
+    </div>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <label class="inline-check">角色：
+        <select id="demo-character-select" class="cs-select" style="min-height:28px; padding:2px 8px;">
+          <option value="gemini-star-v1">星语 · Stella</option>
+          <option value="lin-cat">霓音 · LinCat</option>
+        </select>
+      </label>
+      <label class="inline-check">
+        <input type="checkbox" id="demo-reduced-motion"> 模拟减弱动效
+      </label>
+    </div>
+  </header>
+
+  <main class="demo-workspace" id="demo-main" tabindex="-1">
+    <!-- Left: Simulated Gemini Web Stage -->
+    <section class="gemini-browser-card" aria-label="模拟 Gemini 网页页面">
+      <div class="browser-chrome">
+        <span class="url-bar">https://gemini.google.com/app · Catstella Web 伴侣沙盒</span>
+        <span class="mode-badge" id="web-mode-badge" data-mode="idle-collapsed">空闲收起 (仅挂件)</span>
+      </div>
+
+      <div class="gemini-chat-viewport">
+        <div class="chat-stream">
+          <div class="chat-msg user">
+            帮我设计网页伴侣的两段式打扰保护：自动碎碎念别弹出整张额度设置卡片，结束后自己收起来；如果我自己点开，就完整显示且别跟我抢！
+          </div>
+          <div class="chat-msg model">
+            <strong>Gemini 3.8 Flash · 状态机仲裁方案</strong><br>
+            已拆分为两种互斥表面模式：<br>
+            1. <code>speech-only</code>（仅台词气泡）：自动碎碎念时隐去额度与设置栏，播放 3.2 秒后自然退场；悬停或聚焦时暂停倒计时。<br>
+            2. <code>full-panel</code>（手动完整面板）：用户点开后立即清零并取消自动收起定时器；当完整面板激活或用户正在输入框打字时，后台碎碎念自动让位，绝不抢夺或覆盖页面。
+          </div>
+        </div>
+
+        <div class="gemini-composer">
+          <label for="sim-gemini-prompt" class="sr-only">模拟输入对话内容</label>
+          <input id="sim-gemini-prompt" type="text" placeholder="聚焦这里输入文字可模拟打字避让（自动碎碎念会暂停弹出）">
+        </div>
+
+        <!-- Floating Catstella Web Widget -->
+        <div class="web-widget-anchor">
+          <!-- Mode A: Speech-Only Ambient Bubble -->
+          <div
+            id="speech-only-bubble"
+            class="speech-only-bubble"
+            role="button"
+            tabindex="0"
+            aria-label="自动碎碎念台词气泡，点击展开完整面板"
+            hidden
+          >
+            <div class="speech-eyebrow">
+              <span>✦ 喵言喵语 · 自动碎碎念</span>
+              <span id="speech-countdown-text" class="tabular">3.2s 后自然收起</span>
+            </div>
+            <p class="speech-text" id="speech-only-text" aria-live="polite">已经安静看文档好久啦，记得眨眨眼喝口水喵～</p>
+            <div class="retract-bar-track" aria-hidden="true">
+              <div class="retract-bar-fill" id="retract-bar-fill"></div>
+            </div>
+            <div class="speech-foot">
+              <span>鼠标悬停可暂停收起</span>
+              <strong>点我展开完整面板 →</strong>
+            </div>
+          </div>
+
+          <!-- Mode B: Full User-Woken Panel -->
+          <section
+            id="web-full-panel"
+            class="web-full-panel"
+            aria-label="手动唤醒完整面板"
+            hidden
+          >
+            <div class="full-panel-head">
+              <span class="full-panel-title">✨ Stella · 完整伴侣面板</span>
+              <button type="button" class="cs-btn" id="btn-close-web-panel" style="min-height:26px; padding:2px 9px; font-size:11.5px;">✕ 收起</button>
+            </div>
+            <div class="full-panel-body">
+              <div class="panel-dialogue-pill" id="panel-dialogue-line">
+                完整面板由用户主动唤醒，已锁定不自动收起喵～
+              </div>
+
+              <div class="cs-tablist" role="tablist" aria-label="网页伴侣标签页" style="margin-bottom:8px;">
+                <button type="button" class="cs-tab" role="tab" id="wtab-quota" aria-controls="wpanel-quota" aria-selected="true" style="min-height:30px; font-size:12px;">额度审计</button>
+                <button type="button" class="cs-tab" role="tab" id="wtab-cfg" aria-controls="wpanel-cfg" aria-selected="false" style="min-height:30px; font-size:12px;">伴侣开关</button>
+              </div>
+
+              <div id="wpanel-quota" role="tabpanel" aria-labelledby="wtab-quota">
+                <div class="mini-quota-box">
+                  <div style="display:flex; justify-content:space-between;"><span>Gemini 网页 · 5 小时</span><strong class="tabular">剩余 72%</strong></div>
+                  <div class="mini-quota-bar"><div class="mini-quota-fill" style="width:72%"></div></div>
+                  <div style="display:flex; justify-content:space-between;"><span>🪐 AGY · Gemini 3.8 Flash</span><strong class="tabular">剩余 96%</strong></div>
+                  <div class="mini-quota-bar" style="margin-bottom:0;"><div class="mini-quota-fill" style="width:96%"></div></div>
+                </div>
+                <div style="font-size:11px; color:var(--ink-muted);">状态：手动模式锁定 · 后台碎碎念已主动让位</div>
+              </div>
+
+              <div id="wpanel-cfg" role="tabpanel" aria-labelledby="wtab-cfg" hidden>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <label style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>空闲自动碎碎念</span>
+                    <input class="cs-switch" type="checkbox" switch checked>
+                  </label>
+                  <label style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>桌面活跃时自动让位</span>
+                    <input class="cs-switch" type="checkbox" switch checked>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Floating Mascot Trigger -->
+          <button
+            type="button"
+            class="cat-wake-btn"
+            id="web-cat-wake-btn"
+            aria-expanded="false"
+            aria-controls="web-full-panel"
+          >
+            <img id="web-cat-avatar" class="cat-avatar" src="../../../Antigravity-Cat-Widget/assets/character-packs/gemini-star-v1/frames/idle.png" alt="Catstella 网页伴侣挂件">
+            <div class="cat-wake-label">
+              <div class="cat-wake-name">Catstella Web</div>
+              <div class="cat-wake-sub" id="web-cat-sub">点我手动唤醒</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Preemption & Conflict TestBench -->
+    <aside class="testbench-card" aria-label="让位冲突试验台">
+      <div>
+        <h1 class="tb-title">⚖️ 碎碎念与唤醒让位试验台</h1>
+        <p style="margin:4px 0 0; font-size:12px; color:var(--ink-muted);">
+          点击下列场景按钮，实测自动台词气泡、手动唤醒面板以及两者碰撞时的优先级仲裁。
+        </p>
+      </div>
+
+      <div class="tb-btn-grid">
+        <button type="button" class="tb-scenario-btn" id="btn-sim-ambient">
+          <strong>▶ 1. 触发自动碎碎念 (3.2s 后自然收起)</strong>
+          <span>验证：只出现简洁台词气泡与进度条，不展开完整额度面板</span>
+        </button>
+        <button type="button" class="tb-scenario-btn" id="btn-sim-manual">
+          <strong>🖐️ 2. 手动唤醒 / 收起完整面板</strong>
+          <span>验证：显示额度审计与设置页，不会自己定时关闭</span>
+        </button>
+        <button type="button" class="tb-scenario-btn" id="btn-sim-collision-a">
+          <strong>⚡ 3. 碰撞 A：碎碎念播放中途用户点击唤醒</strong>
+          <span>验证：立即清除自动收起计时，丝滑升级为完整面板（不闪退）</span>
+        </button>
+        <button type="button" class="tb-scenario-btn" id="btn-sim-collision-b">
+          <strong>🛡️ 4. 碰撞 B：完整面板开启中，后台碎碎念触发</strong>
+          <span>验证：后台碎碎念自动抑制让位，绝不降级或覆盖当前操作</span>
+        </button>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; padding-top:4px;">
+        <label class="inline-check">
+          <input type="checkbox" id="typing-guard-check"> 模拟“输入框打字避让中”
+        </label>
+        <button type="button" class="cs-btn" id="btn-sim-reset" style="min-height:30px; font-size:12px;">🔄 重置状态机</button>
+      </div>
+
+      <div>
+        <div style="font-size:11.5px; font-weight:700; color:var(--ink-secondary); margin-bottom:4px;">实时状态机快照</div>
+        <pre class="state-readout" id="state-readout-json"></pre>
+      </div>
+
+      <div>
+        <div style="font-size:11.5px; font-weight:700; color:var(--ink-secondary); margin-bottom:4px;">仲裁与让位事件日志</div>
+        <ul class="event-log" id="arbitration-log" aria-live="polite"></ul>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>

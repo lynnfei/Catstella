@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Catstella 设置中心 UI/UX 与 Web 碎碎念分支设计探索</title>
+  <link rel="stylesheet" href="shared/settings-controls.css">
+  <link rel="stylesheet" href="hub.css">
+</head>
+<body class="theme-hub">
+  <a class="skip-link" href="#hub-main">跳到方案入口</a>
+
+  <main class="hub-wrap" id="hub-main" tabindex="-1">
+    <header class="hero-banner">
+      <div class="hero-copy">
+        <div class="hero-eyebrow">✦ CATSTELLA DESIGN EXPLORATION · PROTOTYPE SANDBOX</div>
+        <h1 class="hero-title">Catstella 设置页三方向探索 &amp; Web 碎碎念让位分支</h1>
+        <p class="hero-desc">
+          所有原型均严格限定在 <code>prototypes/settings-ui-study/</code> 内运行，完整覆盖分类切换、双源额度、角色立绘/壁纸磁吸标尺、即时预览、保存失败回退与撤销反馈，并支持窄窗 (460px)、全键盘导航、WCAG AA+ 对比度与减弱动效验证。<br>
+          <span style="display:inline-block; margin-top:6px; font-size:12px; color:var(--ink-secondary);">
+            📘 交接与迁移文档：<a href="README.md" style="color:var(--accent-strong); font-weight:700;">README.md（配置键保留、桥接协议、实测对比与 Web 接入方案）</a>
+          </span>
+        </p>
+      </div>
+      <div class="hero-mascots" aria-hidden="true">
+        <div class="mascot-badge">
+          <img src="../../Antigravity-Cat-Widget/assets/character-packs/gemini-star-v1/frames/idle.png" alt="">
+          <div>
+            <strong style="font-size:12.5px;">星语 · Stella</strong>
+            <div style="font-size:11px; color:var(--ink-muted);">星空魔女看板猫</div>
+          </div>
+        </div>
+        <div class="mascot-badge">
+          <img src="../../Antigravity-Cat-Widget/assets/character-packs/lin-cat/frames/idle.png" alt="">
+          <div>
+            <strong style="font-size:12.5px;">霓音 · LinCat</strong>
+            <div style="font-size:11px; color:var(--ink-muted);">全息双马尾形态</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section aria-label="四个可运行实验入口" class="cards-grid">
+      <!-- Card 1: Flagship Compact -->
+      <article class="demo-card is-featured">
+        <div>
+          <div class="demo-card-head">
+            <h2>1. 清爽紧凑 · Starlight Precision</h2>
+            <span class="badge-tag best">✦ 主推最佳方案</span>
+          </div>
+          <p class="demo-summary" style="margin-top:8px;">
+            最契合高频日常微调的桌面设置工坊：纯阶梯实色底板 + 1px 星紫边框 + 左侧精简导航 + 右侧实时双舞台，彻底告别透明/模糊叠加拖垮核显的问题。
+          </p>
+        </div>
+        <div class="spec-pills">
+          <span class="spec-pill">模糊层：0 层</span>
+          <span class="spec-pill">局部订阅：零整页重绘</span>
+          <span class="spec-pill">3 列 -&gt; 窄窗顶栏自适应</span>
+        </div>
+        <div class="tradeoff-box">
+          <strong>取舍判断：</strong>信息密度最高、滚屏与拖动滑块帧率最稳；为了把性能与可读性做到极致，主动舍弃了窗口透视虚化氛围。
+        </div>
+        <div class="demo-foot">
+          <span style="font-size:11.5px; color:var(--ink-muted);">目录：<code>compact/index.html</code></span>
+          <a class="launch-link" href="compact/index.html">打开清爽紧凑版 →</a>
+        </div>
+      </article>
+
+      <!-- Card 2: Budgeted Frosted Glass -->
+      <article class="demo-card">
+        <div>
+          <div class="demo-card-head">
+            <h2>2. 轻毛玻璃 · Astral Mist</h2>
+            <span class="badge-tag frost">1 层模糊预算</span>
+          </div>
+          <p class="demo-summary" style="margin-top:8px;">
+            采用「顶部浮空琉璃顶栏 + 水平胶囊导航」架构：严格将 <code>backdrop-filter</code> 限制在唯一 1 层顶栏，内部滚动卡片改用高透光阶梯底色（0.88 白底）与高光描边。
+          </p>
+        </div>
+        <div class="spec-pills">
+          <span class="spec-pill">模糊层：严格 1 层</span>
+          <span class="spec-pill">顶栏胶囊导航</span>
+          <span class="spec-pill">文字对比 ≥ 7:1</span>
+        </div>
+        <div class="tradeoff-box">
+          <strong>取舍判断：</strong>保留了通透梦幻感，同时躲开了多层实时毛玻璃滚动掉帧坑；但顶部占用了稍多纵向空间，长表单时信息密度略低于方案一。
+        </div>
+        <div class="demo-foot">
+          <span style="font-size:11.5px; color:var(--ink-muted);">目录：<code>frosted/index.html</code></span>
+          <a class="launch-link secondary" href="frosted/index.html">打开轻毛玻璃版 →</a>
+        </div>
+      </article>
+
+      <!-- Card 3: Star-Cat Journal -->
+      <article class="demo-card">
+        <div>
+          <div class="demo-card-head">
+            <h2>3. 偏手账 · 猫星手札 (Scrapbook)</h2>
+            <span class="badge-tag journal">情感收藏感</span>
+          </div>
+          <p class="demo-summary" style="margin-top:8px;">
+            暖杏紫点阵本纸面 + 笔记本分切色页签 + 和风胶带拍立得立绘卡片 + 盖章保存反馈。在保持无衬线正文高可读性的前提下注入手账陪伴温度。
+          </p>
+        </div>
+        <div class="spec-pills">
+          <span class="spec-pill">模糊层：0 层</span>
+          <span class="spec-pill">减动效自动摆正倾角</span>
+          <span class="spec-pill">盖章归档反馈</span>
+        </div>
+        <div class="tradeoff-box">
+          <strong>取舍判断：</strong>角色魅力和 Aica 世界观辨识度最高，情感连接强；但由于虚线框、贴纸留白更舒展，同屏能直达的条目数少于方案一。
+        </div>
+        <div class="demo-foot">
+          <span style="font-size:11.5px; color:var(--ink-muted);">目录：<code>journal/index.html</code></span>
+          <a class="launch-link secondary" href="journal/index.html">打开偏手账版 →</a>
+        </div>
+      </article>
+
+      <!-- Card 4: Web Chatter Branch Demo -->
+      <article class="demo-card">
+        <div>
+          <div class="demo-card-head">
+            <h2>4. Web 分支：自动碎碎念与手动让位</h2>
+            <span class="badge-tag web">状态机冲突实测</span>
+          </div>
+          <p class="demo-summary" style="margin-top:8px;">
+            验证 Chrome 伴侣两套独立表面状态：自动碎碎念仅出现简洁台词气泡并于倒计时后自然收起；用户点击唤醒完整面板时立刻清除收起计时并反抑制后台碎碎念。
+          </p>
+        </div>
+        <div class="spec-pills">
+          <span class="spec-pill">Speech-Only 气泡</span>
+          <span class="spec-pill">Full-Panel 锁定</span>
+          <span class="spec-pill">悬停防消失 + 碰撞A/B测试</span>
+        </div>
+        <div class="tradeoff-box">
+          <strong>重点验证：</strong>内置一键模拟「碎碎念中途用户点击唤醒」与「完整面板开启时后台碎碎念到点」两种冲突场景及实时状态机日志。
+        </div>
+        <div class="demo-foot">
+          <span style="font-size:11.5px; color:var(--ink-muted);">目录：<code>web-chatter-demo/index.html</code></span>
+          <a class="launch-link" href="web-chatter-demo/index.html">打开 Web 碎碎念分支 →</a>
+        </div>
+      </article>
+    </section>
+
+    <section class="matrix-card" aria-label="现有卡顿根因与三方向横向对比">
+      <h2>🛠️ 针对现有桌面设置页“略卡”的根因改造 &amp; 方案横评</h2>
+      <div class="perf-fix-grid" style="margin-bottom:14px;">
+        <div class="fix-note">
+          <strong>旧版卡顿根因 1：操作即全页重绘 (<code>queueRender() -&gt; render()</code> &amp; <code>innerHTML = ""</code>)</strong><br>
+          本探索版在 <code>shared/store.js</code> 与 <code>shared/settings-core.js</code> 改为精细键订阅（<code>subscribeKey</code>）+ BYOK 列表增量复用，拖滑块仅改写单个 <code>&lt;output&gt;</code> 与 1 个 CSS 变量（全页重建 0 次）。
+        </div>
+        <div class="fix-note">
+          <strong>旧版卡顿根因 2：弹窗模糊、过渡 <code>transition: all</code> 与缺少 Containment 隔离</strong><br>
+          新原型为每个页面与预览舞台启用 <code>content-visibility: auto</code>，明确限定仅变换 <code>opacity / transform</code>，并提供右上角实时遥测 HUD 验证 DOM 变动节点数、模糊层数与交互耗时。
+        </div>
+      </div>
+
+      <div class="matrix-scroll">
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th scope="col">对比维度</th>
+              <th scope="col">1. 清爽紧凑 (主推)</th>
+              <th scope="col">2. 轻毛玻璃</th>
+              <th scope="col">3. 偏手账</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">视觉气质</th>
+              <td>星紫精研工作台，干净锐利、焦点集中在控件</td>
+              <td>浮空星雾琉璃顶栏 + 高透卡片，轻盈飘逸</td>
+              <td>点阵手账纸 + 纸胶带拍立得 + 盖章反馈</td>
+            </tr>
+            <tr>
+              <th scope="row">导航构型</th>
+              <td>168px 紧凑左栏（窄窗转顶栏单行）</td>
+              <td>无左栏，顶部琉璃药丸分类条 + 更宽主画布</td>
+              <td>左侧实体本分切彩签（窄窗转圆角顶签）</td>
+            </tr>
+            <tr>
+              <th scope="row">实时模糊预算</th>
+              <td><strong>0 层</strong>（最省电、核显 0 负担）</td>
+              <td><strong>1 层</strong>（仅粘性顶栏，滚区卡片 0 模糊）</td>
+              <td><strong>0 层</strong>（纯 CSS 点阵与斜纹）</td>
+            </tr>
+            <tr>
+              <th scope="row">最适合采用定位</th>
+              <td>日常主用桌面设置窗</td>
+              <td>高分屏独立浮窗 / 强调梦幻通透皮肤时</td>
+              <td>Aica 联名主题活动 / 桌面相册收集版</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
