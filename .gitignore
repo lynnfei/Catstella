@@ -4,6 +4,7 @@ dist/
 tools/vendor/
 evidence/
 tools/local-integration/
+scratch/
 *.exe
 *.lnk
 *.log
