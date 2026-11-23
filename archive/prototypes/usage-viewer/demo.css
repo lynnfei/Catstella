@@ -25,7 +25,7 @@ input:focus-visible,select:focus-visible { outline:2px solid var(--accent); outl
   background:
     linear-gradient(90deg,#171321ef 0%,#20182e8a 58%,#1a142966 100%),
     linear-gradient(0deg,#211831b5,transparent 55%),
-    #2a2043 url('../../Gemini-Web-Companion/assets/wallpapers/aica-starship.jpg') center 48% / cover no-repeat;
+    #2a2043 url('../../../Gemini-Web-Companion/assets/wallpapers/aica-starship.jpg') center 48% / cover no-repeat;
 }
 .intro { width:min(100%,790px); padding:44px 0 20px; margin:0 auto }
 h1 { margin:0; font-size:clamp(30px,5vw,42px); line-height:1.2; font-weight:680; letter-spacing:-.04em }
