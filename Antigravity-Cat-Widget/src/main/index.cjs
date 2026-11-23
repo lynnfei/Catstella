@@ -6,6 +6,7 @@ const {ForegroundMonitor,hostPlacement,characterPlacement,widgetLayout,placeDrag
 // BYOK is sealed in archive/legacy-byok and must not be loaded by normal or release runs.
 const devGateway=null;
 const {CompanionBridgeServer}=require("../../../shared/companion-bridge.cjs");
+const {diagnoseHost,configureHostShortcuts,launchHostWithDebug}=require("../../../shared/host.cjs");
 const {createOnlineActions}=require("./online.cjs");
 const {selectWallpaper}=require("../../../Antigravity-Dream-Skin/src/domain/wallpaper-selection.cjs");
 const {CompanionVisibility}=require("../domain/companion-visibility.cjs");
@@ -126,8 +127,24 @@ else{
   const next=result.status==="available"?result:null;
   if(next?.latest!==availableUpdate?.latest){availableUpdate=next;updateMenu();}
  }});
- const skinController=new HostController(skinManager,()=>{publish();updateMenu();},{owner:"starsuite-desktop-host",...noHost});
+ const skinController=new HostController(skinManager,status=>{const key=JSON.stringify([status?.connected,status?.applied,status?.reason]);if(key!==lastSkinStateKey){lastSkinStateKey=key;void refreshHostDiagnostic(true);}publish();updateMenu();},{owner:"starsuite-desktop-host",...noHost});
  const localization=new LocalizationController(()=>{publish();},{dict:localizationDict,...noHost});
+ let hostDiagnostic={state:"unknown",connected:false,running:false,cdpAvailable:false,shortcutsSupported:process.platform==="win32",shortcutsConfigured:false,installPath:null};
+ let hostDiagnosticInflight=null,lastSkinStateKey="",lastQuotaStatus="";
+ async function refreshHostDiagnostic(publishOnChange=false){
+  if(isolatedDev)return hostDiagnostic;
+  if(hostDiagnosticInflight)return hostDiagnosticInflight;
+  hostDiagnosticInflight=(async()=>{
+   try{
+    const next=await diagnoseHost({bypassCache:true});
+    const changed=JSON.stringify(next)!==JSON.stringify(hostDiagnostic);
+    hostDiagnostic=next;
+    if(changed){updateMenu();if(publishOnChange)publish();}
+   }catch{}
+   return hostDiagnostic;
+  })().finally(()=>{hostDiagnosticInflight=null;});
+  return hostDiagnosticInflight;
+ }
  const WALLPAPER_TITLES={"01_chibi_star_16_9.jpg":"星语星空 · Q版 Stella","02_halloween_duo_16_9.jpg":"万圣双子 · 萌宠同框","03_catgirl_witch_16_9.jpg":"星空大魔女 · 骑行法杖"};
  let availableUpdate=null;
  let cachedCharacterPacks=null,cachedWallpapers=null,lastPackScan=0,lastWallScan=0;
@@ -297,7 +314,7 @@ else{
  const byokPortal=null;
 
  const displayState=()=>["pressed","release"].includes(sm.currentState)?sm.persistentState:sm.currentState;
- const snapshot=()=>{ledger.quotaRemainingPercent=settings.get("manualQuota")===true?settings.get("manualPercent"):null;return{artShift,artShiftY,dockSide,modelActivity:running.snapshot(),quotaWindows:quotaAdapter.snapshot,webCompanion:companionBridge.getWebSnapshot(),byok:byokGateway?.getSnapshot()??{available:false,gatewayOnline:false},facing,state:displayState(),persistentState:sm.persistentState,dialogue:dialogue.lines,dialogueTags:dialogue.expressionTags,settings:settings.getAll(),dreamSkin:skinSettings.getAll(),skinStatus:skinController.status,characterPacks:getCharacterPacks(),wallpapers:getWallpapers(),artVersion:getArtVersion(),displayScale:displayScale||settings.get("scale"),visibility:{visible:win?.isVisible()===true,supported:process.platform==="win32",foreground:foreground.state.kind,nativeAttached:foreground.state.attached===true,withinHost:!!hostArea},ledger:ledger.getSnapshot(),source,presets:audio.getPresetList()};};
+ const snapshot=()=>{ledger.quotaRemainingPercent=settings.get("manualQuota")===true?settings.get("manualPercent"):null;return{artShift,artShiftY,dockSide,modelActivity:running.snapshot(),quotaWindows:quotaAdapter.snapshot,webCompanion:companionBridge.getWebSnapshot(),byok:byokGateway?.getSnapshot()??{available:false,gatewayOnline:false},facing,state:displayState(),persistentState:sm.persistentState,dialogue:dialogue.lines,dialogueTags:dialogue.expressionTags,settings:settings.getAll(),dreamSkin:skinSettings.getAll(),skinStatus:skinController.status,localizationStatus:localization.status,hostDiagnostic,characterPacks:getCharacterPacks(),wallpapers:getWallpapers(),artVersion:getArtVersion(),displayScale:displayScale||settings.get("scale"),visibility:{visible:win?.isVisible()===true,supported:process.platform==="win32",foreground:foreground.state.kind,nativeAttached:foreground.state.attached===true,withinHost:!!hostArea},ledger:ledger.getSnapshot(),source,presets:audio.getPresetList()};};
  const send=(channel,data)=>{for(const w of [win,panel])if(w&&!w.isDestroyed())w.webContents.send(channel,data);};
  const syncByokPortal=()=>{if(byokPortal)byokPortal.setFromSnapshot(byokGateway.getSnapshot(),{port:companionBridge.boundPort,portalNonce:companionBridge.portalNonce}).catch(()=>{});};
  const publish=()=>{const snap=snapshot();send("widget:snapshot",snap);syncByokPortal();};
@@ -536,7 +553,11 @@ else{
    }
    byokItems.push({label:"🔌 BYOK 模型网关",submenu:sub});
   }
+  const hostConnected=skinController.status.connected||quotaAdapter.snapshot.online||hostDiagnostic.connected;
+  const hostCdpDisabled=!hostConnected&&(skinController.status.reason==="cdp-disabled"||quotaAdapter.snapshot.status==="cdp-disabled"||hostDiagnostic.state==="running-no-cdp");
+  const hostTrayLabel=hostConnected?"🟢 Antigravity 已连接":hostCdpDisabled?"⚠️ Antigravity 需开启调试通道并重启":"⚪ Antigravity 等待连接";
   tray.setContextMenu(Menu.buildFromTemplate([{label:"Catstella",enabled:false},{label:"显示 / 唤回挂件",click:recall},{label:"重启套件",click:()=>{app.relaunch();quit("tray-restart");}},{label:"统一设置中心",click:()=>openSettings()},...byokItems,...(availableUpdate?[{label:"有新版 "+availableUpdate.latest+" · 查看发行页",click:()=>void online.handle("release")}]:[]),{type:"separator"},
+  {label:hostTrayLabel,enabled:false},
   {label:"应用到 Antigravity（皮肤）",type:"checkbox",checked:skinSettings.get("enabled")===true,click:()=>{skinSettings.update({enabled:skinSettings.get("enabled")!==true});skinController.update(skinSettings.getAll());publish();}},
   {label:"切换下一张壁纸",click:rotateWallpaper},{type:"separator"},
   {label:"仅在 Antigravity 窗口内显示",type:"checkbox",checked:settings.get("hostWindowOnly"),click:()=>apply({hostWindowOnly:!settings.get("hostWindowOnly")})},
@@ -598,6 +619,27 @@ else{
   return true;
  });
  ipcMain.handle("widget:online",(e,action,value)=>panel&&!panel.isDestroyed()&&e.sender===panel.webContents?online.handle(action,value):null);
+ ipcMain.handle("widget:host",async(e,action)=>{
+  if(!settingsSender(e))return null;
+  if(action==="diagnose"){
+   if(isolatedDev)return{ok:true,diagnostic:hostDiagnostic};
+   await refreshHostDiagnostic(true);
+   return{ok:true,diagnostic:hostDiagnostic};
+  }
+  if(action==="configure-shortcuts"||action==="restore-shortcuts"){
+   const enable=action==="configure-shortcuts";
+   const res=await configureHostShortcuts({enable});
+   await refreshHostDiagnostic(false);
+   publish();
+   return{...res,diagnostic:hostDiagnostic};
+  }
+  if(action==="launch-debug"){
+   const res=await launchHostWithDebug();
+   if(res?.ok)setTimeout(()=>void refreshHostDiagnostic(true),1500);
+   return res;
+  }
+  return{ok:false,error:"unsupported-action"};
+ });
  ipcMain.handle("widget:can-chatter",e=>Boolean(win&&!win.isDestroyed()&&e.sender===win.webContents&&win.isVisible()&&!panel?.isVisible()&&!companionBridge.getWebSnapshot().active&&settings.get("ambientChatter")&&settings.get("bubbleOn")&&["idle","offline"].includes(sm.currentState)&&powerMonitor.getSystemIdleState(300)==="active"));
  ipcMain.handle("widget:get",e=>trusted(e)?snapshot():null);
  ipcMain.handle("widget:settings",(e,v)=>trusted(e)?apply(v):null);
@@ -712,7 +754,14 @@ else{
  });
  ipcMain.on("widget:hit",(e,interactive)=>{if(trusted(e)&&e.sender===win?.webContents&&!dragPlacement)mouseRouting.setIgnored(settings.get("clickThrough")||interactive!==true);});
  ipcMain.handle("widget:audio",(e,type)=>trusted(e)&&["press","release"].includes(type)?audio.getAudioFile(type):null);
- quotaAdapter.on("change",()=>{syncQuotaState();publish();});
+ quotaAdapter.on("change",snap=>{
+  const nextStatus=snap?.status||"";
+  if(nextStatus!==lastQuotaStatus){
+   lastQuotaStatus=nextStatus;
+   if(nextStatus==="cdp-disabled"||nextStatus==="ready"||nextStatus==="waiting-host")void refreshHostDiagnostic(true);
+  }
+  syncQuotaState();publish();
+ });
  byokGateway?.on("change",()=>{publish();updateMenu();});
  let byokBusy=false,byokIdleTimer=null;
  byokGateway?.on("activity",ev=>{
@@ -795,6 +844,7 @@ else{
   if(!isolatedDev)skinController.start(skinSettings.getAll());
   if(byokPortal){syncByokPortal();byokPortal.start();}
   if(!isolatedDev)localization.start();
+  if(!isolatedDev)void refreshHostDiagnostic(true);
   mouseRouting.start();
   scheduleSlideshow();
   if(!isolatedDev){

@@ -105,6 +105,17 @@ html, body {
 }
 .sync-pill.online { background: #e6f9ef; border-color: #a3e4c1; color: #147448; }
 .sync-pill.cached { background: #f3effc; border-color: #d6c8f2; color: #6440c2; }
+.sync-pill.warn { background: #fff5e5; border-color: #f3c87a; color: #9a5b00; }
+.host-alert-banner:not([hidden]) {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: linear-gradient(135deg, #fff8eb, #fdf2ff); border-color: #ebc27a;
+  padding: 12px 16px;
+}
+#agy-host-card h3 { flex-wrap: wrap; justify-content: space-between; }
+#agy-host-card code {
+  font-family: Consolas, monospace; font-size: 11px; padding: 1px 5px;
+  border-radius: 5px; background: var(--accent-bg); color: var(--accent);
+}
 .wide-select { max-width: 280px; }
 
 .dual-quota-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }

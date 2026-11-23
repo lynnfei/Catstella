@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("widgetApi",{
  byok:(action,data)=>ipcRenderer.invoke("widget:byok",{action,data}),
 /* @byok-dev-end */
  online:(action,value)=>ipcRenderer.invoke("widget:online",action,value),
+ host:action=>ipcRenderer.invoke("widget:host",action),
  releaseNotes:()=>ipcRenderer.invoke("widget:release-notes"),
  markReleaseNotesSeen:version=>ipcRenderer.invoke("widget:release-notes-seen",version),
  canChatter:()=>ipcRenderer.invoke("widget:can-chatter"),

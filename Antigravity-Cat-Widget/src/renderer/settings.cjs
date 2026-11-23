@@ -401,6 +401,54 @@
   }
 
   // 5.5 双端联动看板与状态胶囊渲染
+  function renderHostConnection() {
+    const diag = data?.hostDiagnostic || null;
+    const skin = data?.skinStatus || null;
+    const l10n = data?.localizationStatus || null;
+    const q = data?.quotaWindows || null;
+    const connected = Boolean(skin?.connected || diag?.connected || q?.online);
+    const cdpDisabled = !connected && (skin?.reason === "cdp-disabled" || diag?.state === "running-no-cdp" || q?.status === "cdp-disabled");
+
+    const banner = $("overview-host-banner");
+    if (banner) banner.hidden = !cdpDisabled;
+
+    const pill = $("agy-host-pill");
+    const msgEl = $("agy-host-msg");
+    const actionsEl = $("agy-host-actions");
+    if (pill) {
+      pill.className = "sync-pill " + (connected ? "online" : cdpDisabled ? "warn" : "offline");
+      pill.textContent = connected
+        ? (diag?.port ? `🟢 已连接 (${diag.port})` : "🟢 已连接 Antigravity")
+        : cdpDisabled
+          ? "⚠️ 已运行但未开启调试通道"
+          : (diag?.state === "not-running" ? "⚪ Antigravity 未启动" : "⚪ 等待连接 Antigravity");
+    }
+    if (msgEl) {
+      const parts = [];
+      if (skin?.message) parts.push("皮肤：" + skin.message);
+      if (l10n?.message && data?.dreamSkin?.uiLanguage === "zh-CN") parts.push("汉化：" + l10n.message);
+      if (diag?.shortcutsSupported) {
+        parts.push(diag.shortcutsConfigured ? "快捷方式：已配置兼容参数" : "快捷方式：尚未配置");
+      }
+      if (!parts.length) {
+        parts.push(connected ? "本地调试通道已就绪" : "请确保 Antigravity 使用兼容调试参数启动");
+      }
+      msgEl.textContent = parts.join(" · ");
+    }
+    const hasHostApi = typeof api.host === "function";
+    if (actionsEl) actionsEl.hidden = !hasHostApi;
+    if ($("agy-configure-shortcuts")) {
+      $("agy-configure-shortcuts").hidden = Boolean(diag && !diag.shortcutsSupported);
+      $("agy-configure-shortcuts").textContent = diag?.shortcutsConfigured ? "✓ 已配置兼容快捷方式（点此重检）" : "🔧 配置快捷方式（开启调试通道）";
+    }
+    if ($("agy-restore-shortcuts")) {
+      $("agy-restore-shortcuts").hidden = Boolean(!diag?.shortcutsSupported || !diag?.shortcutsConfigured);
+    }
+    if ($("agy-launch-debug")) {
+      $("agy-launch-debug").disabled = Boolean(connected);
+    }
+  }
+
   function renderDualCompanionStatus() {
     const wc = data?.webCompanion || {};
     const wq = wc.quota || null;
@@ -1347,6 +1395,7 @@
       renderAtelier();
     }
 
+    renderHostConnection();
     renderDualCompanionStatus();
     renderCharacterGallery();
     renderWallpaperGallery();
@@ -1593,6 +1642,30 @@
   $("reset").onclick = () => api.command("reset");
   $("quota-refresh").onclick = () => api.command("quota-refresh");
   $("refresh").onclick = () => api.command("refresh");
+  if ($("overview-host-fix")) $("overview-host-fix").onclick = () => showPage("agy");
+
+  const runHostAction = async (action, busyText, okMsg) => {
+    if (typeof api.host !== "function") return;
+    if (busyText) $("saved").textContent = busyText;
+    try {
+      const res = await api.host(action);
+      if (res?.diagnostic) {
+        data = { ...data, hostDiagnostic: res.diagnostic };
+        renderHostConnection();
+      }
+      if (res?.ok === false) {
+        $("saved").textContent = res.message || "操作未完成，请先关闭正在运行的 Antigravity 后重试";
+      } else {
+        $("saved").textContent = okMsg || res?.message || "已完成";
+      }
+    } catch (err) {
+      $("saved").textContent = err?.message || "主机通信失败";
+    }
+  };
+  if ($("agy-configure-shortcuts")) $("agy-configure-shortcuts").onclick = () => runHostAction("configure-shortcuts", "正在配置 Antigravity 快捷方式…", "已写入兼容调试参数，请完全退出并重开 Antigravity 生效");
+  if ($("agy-launch-debug")) $("agy-launch-debug").onclick = () => runHostAction("launch-debug", "正在以兼容模式启动 Antigravity…");
+  if ($("agy-restore-shortcuts")) $("agy-restore-shortcuts").onclick = () => runHostAction("restore-shortcuts", "正在还原 Antigravity 快捷方式…", "已从快捷方式移除调试参数");
+  if ($("agy-redetect-host")) $("agy-redetect-host").onclick = () => runHostAction("diagnose", "正在重新检测 Antigravity 连接状态…", "已完成连接状态检测");
 
   $("audition").onclick = async () => {
     stop();
@@ -1627,6 +1700,9 @@
     keys.map(key=>state.settings[key]),state.settings.customHonorific,
     state.dreamSkin,state.byok,state.source?.online,state.source?.files,
     state.quotaWindows,state.ledger?.todaySteps,
+    state.skinStatus?.connected,state.skinStatus?.applied,state.skinStatus?.reason,state.skinStatus?.message,
+    state.localizationStatus?.applied,state.localizationStatus?.reason,state.localizationStatus?.message,
+    state.hostDiagnostic?.state,state.hostDiagnostic?.port,state.hostDiagnostic?.shortcutsConfigured,state.hostDiagnostic?.shortcutsSupported,
     state.webCompanion?.online,state.webCompanion?.active,state.webCompanion?.port,state.webCompanion?.quota,
     state.artVersion
   ]);

@@ -189,3 +189,26 @@ test("themePreset persists, validates known presets, and flows to payload",()=>{
  assert.equal(s.get("themePreset"),"violet");
  assert.equal(loader.payload({themePreset:"neon-invalid"}).themePreset,"violet");
 });
+
+test("HostController reports cdp-disabled when Antigravity is running without CDP and host-offline when closed", async () => {
+ let running = true;
+ const controller = new HostController(
+  { payload: settings => ({ ...settings, image: "data:image/png;base64,fixture" }) },
+  () => {},
+  {
+   discover: async () => null,
+   isHostProcessRunning: async () => running,
+   createClient: () => { throw new Error("should not connect"); }
+  }
+ );
+ await controller.update({ enabled: true });
+ assert.equal(controller.status.connected, false);
+ assert.equal(controller.status.applied, false);
+ assert.equal(controller.status.reason, "cdp-disabled");
+ assert.match(controller.status.message, /未开启本地调试通道/);
+
+ running = false;
+ await controller.tick();
+ assert.equal(controller.status.reason, "host-offline");
+ await controller.stop();
+});

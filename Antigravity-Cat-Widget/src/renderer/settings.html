@@ -53,6 +53,14 @@
               <button id="refresh" class="btn" type="button">🔄 刷新状态</button>
             </div>
 
+            <div class="card host-alert-banner" id="overview-host-banner" hidden>
+              <div class="row-text">
+                <b id="overview-host-banner-title">⚠️ Antigravity 调试通道未开启</b>
+                <small id="overview-host-banner-desc">v2.33+ 默认关闭本地调试端口，导致皮肤、汉化与实时额度暂未接入。</small>
+              </div>
+              <button id="overview-host-fix" class="btn small" type="button">去配置</button>
+            </div>
+
             <div class="card">
               <h3>常用设置</h3>
               <label class="row"><span class="row-text"><b>应用到 Antigravity</b><small>开启后壁纸与毛玻璃主题会应用到反重力窗口</small></span><input id="dream-enabled" type="checkbox"></label>
@@ -203,6 +211,17 @@
           <!-- 反重力 -->
           <section class="page" data-page="agy">
             <h2 class="page-title">反重力</h2>
+            <div class="card" id="agy-host-card">
+              <h3>Antigravity 连接状态与 v2.33+ 兼容启动 <span class="sync-pill offline" id="agy-host-pill">⚪ 检测中</span></h3>
+              <p class="hint" id="agy-host-msg" style="margin-top:0">正在检测 Antigravity 客户端连接状态…</p>
+              <div class="btn-row" id="agy-host-actions">
+                <button id="agy-configure-shortcuts" class="btn small" type="button">🔧 配置快捷方式（开启调试通道）</button>
+                <button id="agy-launch-debug" class="btn small" type="button">🚀 以兼容模式启动 Antigravity</button>
+                <button id="agy-restore-shortcuts" class="btn small" type="button">↶ 还原快捷方式</button>
+                <button id="agy-redetect-host" class="btn small" type="button">🔄 重新检测</button>
+              </div>
+              <p class="hint" id="agy-host-hint">Antigravity v2.33+ 默认关闭本地调试端口。为快捷方式追加 <code>--remote-debugging-port=0 --remote-debugging-address=127.0.0.1</code> 不修改安装文件、可随时还原；配置后请完全退出并重开 Antigravity，即可恢复皮肤、汉化与实时额度。</p>
+            </div>
             <div class="card">
               <h3>界面语言</h3>
               <label class="row"><span class="row-text"><b>Antigravity 界面语言</b><small>经本机调试通道注入字典翻译；输入框、代码与终端绝不触碰。切回 English 即完整还原。</small></span>

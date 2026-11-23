@@ -171,3 +171,40 @@ test('MouseRouting notifies onIgnored when cursor exits bounds/hit-zone and onEn
   routing.stop();
   assert.deepEqual(events, [['set', true], ['ignored']]);
 });
+
+test('resolveSideQuotaMetrics reads HostQuotaAdapter fiveHourReset/weeklyReset, argon reset and thinking fields', () => {
+  const agySnap = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'agy' },
+    quotaWindows: {
+      online: true,
+      fiveHour: 88,
+      weekly: 92,
+      fiveHourReset: '2小时5分钟后重置',
+      weeklyReset: '4天后重置',
+      modelInfo: { modelName: 'Gemini 4 Pro', thinking: 'High' }
+    }
+  });
+  assert.equal(agySnap.source, 'agy');
+  assert.equal(agySnap.fiveHour, 88);
+  assert.equal(agySnap.weekly, 92);
+  assert.equal(agySnap.fiveHourReset, '2小时5分钟后重置');
+  assert.equal(agySnap.weeklyReset, '4天后重置');
+  assert.equal(agySnap.modelLabel, 'Gemini 4 Pro · High');
+
+  const argonSnap = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'agy' },
+    quotaWindows: {
+      online: true,
+      fiveHour: 85,
+      weekly: 70,
+      fiveHourReset: '1小时后重置',
+      argon: { weekly: 12, weeklyReset: '6天20小时后重置' },
+      modelInfo: { modelName: 'Gemini 4 Argon', thinking: '默认' }
+    }
+  });
+  assert.equal(argonSnap.fiveHour, 85);
+  assert.equal(argonSnap.weekly, 12);
+  assert.equal(argonSnap.fiveHourReset, '1小时后重置');
+  assert.equal(argonSnap.weeklyReset, '6天20小时后重置');
+  assert.equal(argonSnap.modelLabel, 'Gemini 4 Argon');
+});

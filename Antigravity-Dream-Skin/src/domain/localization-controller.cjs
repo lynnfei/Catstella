@@ -1,5 +1,5 @@
 // 界面汉化控制器：极速感知宿主启动（fs.watch + 浏览器 Target 事件推流）+ Page.addScriptToEvaluateOnNewDocument 首帧前预注入 + 多窗口/plugin iframe 同步覆盖；关闭语言时完整 destroy 且移除预注入脚本，绝不残留。
-const {discover,Cdp,watchHostPort}=require("../../../shared/host.cjs");
+const {discover,Cdp,watchHostPort,isHostProcessRunning}=require("../../../shared/host.cjs");
 const {installLocalization}=require("../host/localize.cjs");
 
 class LocalizationController{
@@ -8,12 +8,15 @@ class LocalizationController{
   this.onStatus=typeof onStatus==="function"?onStatus:()=>{};
   this.hasCustomDiscover=typeof options.discover==="function";
   this.discover=options.discover||(opts=>discover({includeSubTargets:true,...opts}));
+  this.isHostProcessRunning=typeof options.isHostProcessRunning==="function"
+   ? options.isHostProcessRunning
+   : (this.hasCustomDiscover?null:isHostProcessRunning);
   this.createClient=options.createClient||(url=>new Cdp(url));
   this.watchPort=options.watchPort||(this.hasCustomDiscover?null:watchHostPort);
   const rawDict=options.dict&&typeof options.dict==="object"?options.dict:{};
   this.dict=Object.fromEntries(Object.entries(rawDict).filter(([k])=>!k.startsWith("$")));
   this.settings={uiLanguage:"zh-CN"};
-  this.status={applied:false,message:"翻译层未启用"};
+  this.status={applied:false,reason:null,message:"翻译层未启用"};
   this.signature=null;
   this.client=null;
   this.primaryUrl=null;
@@ -192,7 +195,7 @@ class LocalizationController{
     if(this.client){try{await this.destroyInHost(this.client);}catch{}this.client.close();this.client=null;this.primaryUrl=null;}
     for(const[url,entry]of this.extraClients.entries()){try{await this.destroyInHost(entry.client);}catch{}entry.client?.close();}
     this.extraClients.clear();
-    if(this.signature!==null){this.signature=null;this.report({applied:false,message:"翻译层未启用"});}
+    if(this.signature!==null){this.signature=null;this.report({applied:false,reason:null,message:"翻译层未启用"});}
     return;
    }
    let foundTargets=null;
@@ -200,8 +203,14 @@ class LocalizationController{
     const found=await this.discover({includeSubTargets:true,browserFallback:!this.hasCustomDiscover});
     if(found?.browserWsUrl)void this.ensureBrowserWatcher(found.browserWsUrl);
     if(!found||!found.target){
-     if(this.signature!=="waiting")this.report({applied:false,message:"等待 Antigravity 连接后注入翻译层"});
-     this.signature="waiting";
+     const running=this.isHostProcessRunning?await this.isHostProcessRunning().catch(()=>false):false;
+     const sig=running?"cdp-disabled":"waiting";
+     if(this.signature!==sig){
+      this.report(running
+       ?{applied:false,reason:"cdp-disabled",message:"Antigravity 未开启本地调试通道，配置快捷方式并重启后自动注入汉化"}
+       :{applied:false,reason:"host-offline",message:"等待 Antigravity 连接后注入翻译层"});
+     }
+     this.signature=sig;
      return;
     }
     this.primaryUrl=found.target.webSocketDebuggerUrl;
@@ -210,14 +219,14 @@ class LocalizationController{
     foundTargets=found.targets;
    }
    const current=await this.client.evaluate("({ready:document.readyState,installed:!!window.__agyZhV1,owner:window.__agyZhV1&&window.__agyZhV1.owner})");
-   if(current.installed&&current.owner!==this.owner){this.report({applied:false,message:"翻译层由另一个运行实例管理"});return;}
+   if(current.installed&&current.owner!==this.owner){this.report({applied:false,reason:null,message:"翻译层由另一个运行实例管理"});return;}
    const signature=JSON.stringify([this.settings.uiLanguage,this.dict]);
    const expr=this.buildInstallExpression();
    if(!current.installed||signature!==this.signature){
     await this.installPreloadScript(this.client,expr);
     const result=await this.client.evaluate(expr);
     this.signature=signature;
-    this.report({applied:true,message:result&&result.applied?"汉化已注入 · 字典 "+Object.keys(this.dict).length+" 条":"宿主未就绪，稍后重试"});
+    this.report({applied:true,reason:null,message:result&&result.applied?"汉化已注入 · 字典 "+Object.keys(this.dict).length+" 条":"宿主未就绪，稍后重试"});
    }
    if(!foundTargets){
     try{
@@ -230,7 +239,7 @@ class LocalizationController{
   }catch(error){
    if(this.client){try{this.client.close();}catch{}this.client=null;this.primaryUrl=null;}
    this.signature=null;
-   this.report({applied:false,message:"翻译层未接入："+error.message});
+   this.report({applied:false,reason:"connect-error",message:"翻译层未接入："+error.message});
   }
  }
 

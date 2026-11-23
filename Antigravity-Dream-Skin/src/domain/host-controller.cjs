@@ -1,4 +1,4 @@
-const { discover, Cdp } = require("../../../shared/host.cjs");
+const { discover, Cdp, isHostProcessRunning } = require("../../../shared/host.cjs");
 const { installTheme } = require("../host/theme.cjs");
 const { appearancePayload } = require("./theme-loader.cjs");
 const appearanceKeys=new Set(['chatTint','chatOpacity','replyOpacity','opacity','outputMode']);
@@ -12,13 +12,17 @@ class HostController {
     this.owner = options.owner || require("node:crypto").randomUUID();
     this.loader = loader;
     this.onStatus = onStatus;
+    this.hasCustomDiscover = typeof options.discover === "function";
     this.discover = options.discover || discover;
+    this.isHostProcessRunning = typeof options.isHostProcessRunning === "function"
+      ? options.isHostProcessRunning
+      : (this.hasCustomDiscover ? null : isHostProcessRunning);
     this.createClient = options.createClient || (url => new Cdp(url));
     this.client = null;
     this.primaryUrl = null;
     this.extraClients = new Map();
     this.settings = { enabled: false };
-    this.status = { connected: false, applied: false, message: "等待连接 Antigravity" };
+    this.status = { connected: false, applied: false, reason: null, message: "等待连接 Antigravity" };
     this.signature = null;
     this.revision = 0;
   }
@@ -105,7 +109,10 @@ class HostController {
       if (!this.client || this.client.closed) {
         const found = await this.discover();
         if (!found) {
-          this.report({ connected: false, applied: false, message: "请先打开 Antigravity，检测到后自动连接" });
+          const running = this.isHostProcessRunning ? await this.isHostProcessRunning().catch(() => false) : false;
+          this.report(running
+            ? { connected: false, applied: false, reason: "cdp-disabled", message: "Antigravity 已运行但未开启本地调试通道（v2.33+ 默认关闭），请配置快捷方式后重启 Antigravity" }
+            : { connected: false, applied: false, reason: "host-offline", message: "请先打开 Antigravity，检测到后自动连接" });
           return;
         }
         this.primaryUrl = found.target.webSocketDebuggerUrl;
@@ -129,7 +136,7 @@ class HostController {
         this.signature = null;
         if (foundTargets) await this.syncSecondaryTargets(foundTargets, settings, null, revision);
         this.report({
-          connected: true, applied: false,
+          connected: true, applied: false, reason: null,
           message: current.themed && current.owner !== this.owner
             ? "已连接 · 当前实例未启用，另一个皮肤实例正在运行"
             : "已连接 · 皮肤已关闭，宿主恢复原样"
@@ -137,7 +144,7 @@ class HostController {
         return;
       }
       if (current.themed && current.owner !== this.owner) {
-        this.report({ connected: true, applied: false, message: "已连接 · 皮肤由另一个运行实例管理" });
+        this.report({ connected: true, applied: false, reason: null, message: "已连接 · 皮肤由另一个运行实例管理" });
         return;
       }
       const signature = JSON.stringify(settings);
@@ -145,7 +152,7 @@ class HostController {
         const result = await this.applyTheme(this.client,current,settings,this.signature);
         this.signature = signature;
         this.report({
-          connected: true, ...result,
+          connected: true, reason: null, ...result,
           message: result.applied ? "已应用到真实 Antigravity · 可随时关闭" : "宿主布局已变化，等待重新应用"
         });
       }
@@ -155,7 +162,7 @@ class HostController {
       this.client = null;
       this.primaryUrl = null;
       this.signature = null;
-      this.report({ connected: false, applied: false, message: "暂未接入：" + error.message });
+      this.report({ connected: false, applied: false, reason: "connect-error", message: "暂未接入：" + error.message });
     }
   }
   start(settings) {

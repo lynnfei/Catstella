@@ -130,3 +130,42 @@ test('Gemini 4 Argon independent metering channel extracts WTU weekly bucket and
  assert.equal(queryRes.argon.weekly,9);
  assert.equal(queryRes.argon.weeklyReset,'6天20小时后重置');
 });
+
+test('HostQuotaAdapter reports cdp-disabled when host process runs without CDP and parses 2.33 fallback group/model selectors', async () => {
+ const vm = require('node:vm');
+ const { readHostQuota, queryHostQuota, extractModelInfo } = require('../src/adapters/host-quota.cjs');
+ const a = new HostQuotaAdapter({
+  discover: async () => null,
+  isHostProcessRunning: async () => true,
+  setTimer: () => 1,
+  clearTimer: () => {}
+ });
+ a.active = true;
+ await a.tick();
+ assert.equal(a.snapshot.status, 'cdp-disabled');
+ assert.equal(a.snapshot.online, false);
+ a.stop();
+
+ const groups = [
+  { displayName: 'Gemini 4 Models', buckets: [{ bucketId: 'gemini-5h', remaining: { case: 'remainingFraction', value: .64 }, description: 'Resets in 1 hour.' }, { bucketId: 'gemini-weekly', remaining: { case: 'remainingFraction', value: .9 } }] },
+  { displayName: 'Claude & GPT', buckets: [{ bucketId: '3p-5h', remaining: { case: 'remainingFraction', value: .5 } }] }
+ ];
+ const cached = vm.runInNewContext('(' + readHostQuota.toString() + ')()', { nY: groups, mFb: 3000 });
+ assert.equal(cached.fiveHour, 64);
+ assert.equal(cached.weekly, 90);
+ assert.equal(cached.fiveHourReset, '1小时后重置');
+
+ const el = { __reactFiber$test: { memoizedProps: { value: { core: { cloudCodeService: { retrieveUserQuotaSummary: async () => ({ response: { groups } }) } } } } } };
+ const queried = await vm.runInNewContext('(' + queryHostQuota.toString() + ')(()=>{throw Error("fallback")})', { document: { querySelectorAll: () => [el] } });
+ assert.equal(queried.fiveHour, 64);
+ assert.equal(queried.weekly, 90);
+
+ const mockDoc = {
+  querySelector: sel => sel.includes('aria-label*="current:"')
+   ? { getAttribute: () => '选择模型，当前：Gemini 4 Pro Minimal', innerText: 'Gemini 4 Pro Minimal' }
+   : null
+ };
+ const model = extractModelInfo(mockDoc);
+ assert.equal(model.modelName, 'Gemini 4 Pro');
+ assert.equal(model.thinking, 'Minimal');
+});

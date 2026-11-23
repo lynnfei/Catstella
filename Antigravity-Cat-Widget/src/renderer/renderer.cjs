@@ -189,7 +189,9 @@
    }
    const wc=snapshot.webCompanion;
    const webBrief=wc?.quota?(typeof wc.quota.fiveHourUsedPct==="number"?(" · Web 5h 剩余 "+Math.max(0,100-wc.quota.fiveHourUsedPct)+"%"):(wc.quota.dailyTotal?(" · Web 今日 "+wc.quota.dailyTotal+" 次"):"")):"";
-   let extraHint="";if(isArgon&&typeof gData?.weekly==="number"){extraHint=" · 通用周额度余 "+Math.round(gData.weekly)+"%";}else if(!isArgon&&hasArgonQuota){extraHint=" · 🪐 Argon 余 "+Math.round(q.argon.weekly)+"%";}$("caption").textContent=(s.manualQuota?"手动记录":q?.stale?"上次读取 · 待更新":q?.cached?"上次读取":"")+extraHint+webBrief;
+   let extraHint="";if(isArgon&&typeof gData?.weekly==="number"){extraHint=" · 通用周额度余 "+Math.round(gData.weekly)+"%";}else if(!isArgon&&hasArgonQuota){extraHint=" · 🪐 Argon 余 "+Math.round(q.argon.weekly)+"%";}
+   const mainCaption=s.manualQuota?"手动记录":q?.status==="cdp-disabled"?"未开启 AGY 调试通道 · 请在设置配置后重启 AGY":q?.stale?"上次读取 · 待更新":q?.cached?"上次读取":"";
+   $("caption").textContent=mainCaption+extraHint+webBrief;
    $("meta").textContent="";
   }else if(selected==="webQuota"){
    const wc=snapshot.webCompanion||{},wq=wc.quota||{};

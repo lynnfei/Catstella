@@ -91,8 +91,8 @@
       ? finitePct(s.manualWeeklyPercent)
       : finitePct(isArgon ? (q.argon?.weekly ?? gData?.weekly ?? q.weekly) : (gData?.weekly ?? q.weekly));
 
-    const agyResets = isArgon ? (q.argon?.resetsAt ?? q.resetsAt) : q.resetsAt;
-    const agyWeekResets = isArgon ? (q.argon?.weeklyResetsAt ?? q.weeklyResetsAt) : q.weeklyResetsAt;
+    const agyResets = isArgon ? (q.argon?.fiveHourReset || gData?.fiveHourReset || q.fiveHourReset || q.argon?.resetsAt || q.resetsAt) : (gData?.fiveHourReset || q.fiveHourReset || q.resetsAt);
+    const agyWeekResets = isArgon ? (q.argon?.weeklyReset || q.argon?.weeklyResetsAt || gData?.weeklyReset || q.weeklyReset || q.weeklyResetsAt) : (gData?.weeklyReset || q.weeklyReset || q.weeklyResetsAt);
 
     const wc = snapshot.webCompanion || {};
     const wq = wc.quota || null;
@@ -135,7 +135,8 @@
     }
 
     const agyModel = q.modelInfo?.modelName || (manual ? "手动记录" : "Antigravity");
-    const thinking = q.modelInfo?.thinkingLevel ? ` · ${q.modelInfo.thinkingLevel}` : "";
+    const thinkingRaw = q.modelInfo?.thinkingLevel || q.modelInfo?.thinking;
+    const thinking = thinkingRaw && thinkingRaw !== "默认" ? ` · ${thinkingRaw}` : "";
     return {
       source: "agy",
       sourceBadge: manual
