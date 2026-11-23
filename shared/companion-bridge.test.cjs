@@ -125,4 +125,15 @@ test("CompanionBridgeServer syncs dual-end quota, serves desktop wallpaper bytes
   // 6. Sanitize clamps invalid values safely
   assert.equal(sanitizeWebQuota({ dailyTotal: -5, fiveHourRemainingPct: 999 }).dailyTotal, 0);
   assert.equal(sanitizeWebQuota({ fiveHourRemainingPct: 999 }).fiveHourRemainingPct, 100);
+
+  // 7. Dispatches /api/memory/* routes to Memosyne bridge adapter when present
+  const memStateRes = await fetch(`http://127.0.0.1:${port}/api/memory/status`, {
+    headers: { Origin: "chrome-extension://abcdefghijklmnop" }
+  });
+  if (fs.existsSync("D:\\Projects\\Memosyne\\src\\catstella-bridge-adapter.cjs")) {
+    assert.equal(memStateRes.status, 200);
+    const memStateJson = await memStateRes.json();
+    assert.equal(memStateJson.ok, true);
+    assert(typeof memStateJson.counts.memories === "number");
+  }
 });

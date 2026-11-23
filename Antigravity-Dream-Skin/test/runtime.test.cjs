@@ -50,7 +50,7 @@ test("wallpaperId and extension fields survive sanitize, reload and known-field 
 const {HostController}=require("../src/domain/host-controller.cjs");
 function fixture(){
  let state={themed:false},blockSnapshot=null,blockApply=null;
- const applied=[],writes=[];
+ const applied=[],writes=[],appearance=[];
  const client={
   closed:false,
   async evaluate(expression){
@@ -62,7 +62,11 @@ function fixture(){
     const payload=JSON.parse(expression.slice(expression.lastIndexOf(")({")+2,-1));
     applied.push(payload);
     if(blockApply){const gate=blockApply;blockApply=null;await gate;}
-    state={themed:true,owner:payload.owner};
+    state={themed:true,owner:payload.owner,appearance:true};
+    return {applied:true};
+   }
+   if(expression.startsWith('window.__agyDreamSkinV2.updateAppearance(')){
+    appearance.push(JSON.parse(expression.slice(expression.indexOf('(')+1,-1)));
     return {applied:true};
    }
    if(expression.includes("destroy()")){
@@ -78,9 +82,22 @@ function fixture(){
   ()=>{},
   {discover:async()=>({target:{webSocketDebuggerUrl:"ws://127.0.0.1:1/test"}}),createClient:()=>client}
  );
- return {controller,applied,writes,setState:v=>state=v,holdSnapshot:p=>blockSnapshot=p,holdApply:p=>blockApply=p};
+ return {controller,applied,writes,appearance,setState:v=>state=v,holdSnapshot:p=>blockSnapshot=p,holdApply:p=>blockApply=p};
 }
 const nextTask=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('appearance edits do not reload wallpaper bytes, but wallpaper or missing-host changes require a full apply',async()=>{
+ const f=fixture();let settings={enabled:true,wallpaperId:'first',scrim:12,opacity:55,replyOpacity:22};
+ await f.controller.update(settings);
+ for(let i=0;i<10;i++){settings={...settings,replyOpacity:10+i,opacity:30+i};await f.controller.update(settings);}
+ assert.equal(f.applied.length,1,'alpha-only commits must not rebuild the wallpaper payload');
+ assert.equal(f.appearance.length,10);assert.equal(f.appearance.at(-1).opacity,.39);
+ assert.equal(f.appearance.at(-1).replyOpacity,19);assert.equal('image' in f.appearance[0],false);
+ settings={...settings,wallpaperId:'second'};await f.controller.update(settings);assert.equal(f.applied.length,2);
+ settings={...settings,scrim:20};await f.controller.update(settings);assert.equal(f.applied.length,3);
+ f.setState({themed:false});await f.controller.update({...settings,chatOpacity:40});assert.equal(f.applied.length,4);
+ await f.controller.stop();
+});
 
 test("latest disabled setting drains an in-flight connection before update resolves",async()=>{
  const f=fixture();let release;f.holdSnapshot(new Promise(resolve=>release=resolve));

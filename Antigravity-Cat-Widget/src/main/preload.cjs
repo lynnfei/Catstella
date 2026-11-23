@@ -17,5 +17,8 @@ contextBridge.exposeInMainWorld("widgetApi",{
  onStep:callback=>{const h=(_e,data)=>callback(data);ipcRenderer.on("widget:step",h);return()=>ipcRenderer.removeListener("widget:step",h);},
  onReaction:callback=>{const h=(_e,data)=>callback(data);ipcRenderer.on("widget:reaction",h);return()=>ipcRenderer.removeListener("widget:reaction",h);},
  onNavigate:callback=>{const h=(_e,page)=>callback(page);ipcRenderer.on("widget:navigate",h);return()=>ipcRenderer.removeListener("widget:navigate",h);},
- onRefresh:callback=>{const h=()=>callback();ipcRenderer.on("cat:refresh",h);return()=>ipcRenderer.removeListener("cat:refresh",h);}
+ onRefresh:callback=>{const h=()=>callback();ipcRenderer.on("cat:refresh",h);return()=>ipcRenderer.removeListener("cat:refresh",h);},
+ onForceRepaint:callback=>{const h=()=>callback();ipcRenderer.on("widget:force-repaint",h);return()=>ipcRenderer.removeListener("widget:force-repaint",h);},
+ onMouseLeft:callback=>{const h=()=>callback();ipcRenderer.on("widget:mouse-left",h);return()=>ipcRenderer.removeListener("widget:mouse-left",h);},
+ onMouseEntered:callback=>{const h=(_e,coords)=>callback(coords);ipcRenderer.on("widget:mouse-entered",h);return()=>ipcRenderer.removeListener("widget:mouse-entered",h);}
 });

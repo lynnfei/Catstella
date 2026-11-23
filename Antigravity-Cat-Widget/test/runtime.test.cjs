@@ -114,4 +114,13 @@ test("dual-end sync settings, display modes, webQuota page, and unknown extensio
  restored.update({petDisplayMode:"bogus-mode"});
  assert.equal(restored.get("petDisplayMode"),"both");
 });
-test("custom themes sanitize to preset palettes with dedup and bounds",()=>{const file=path.join(tmp(),"settings.json"),s=new SettingsManager(file);s.update({customThemes:[{id:"local-violet-1",name:"  轻透  ",palette:"ocean",opacity:120,updatedAt:"2026-11-09"},{id:"bad id!",name:"x",palette:"nope",opacity:50},{id:"local-violet-1",name:"dup",palette:"pink",opacity:30},"junk",{name:"no-id",palette:"violet",opacity:10}]});assert.deepEqual(new SettingsManager(file).get("customThemes"),[{id:"local-violet-1",name:"轻透",palette:"ocean",opacity:100,bubbleTint:null,bubbleOpacity:null,updatedAt:"2026-11-09"}]);});
+test("custom themes sanitize to preset palettes with dedup and bounds",()=>{const file=path.join(tmp(),"settings.json"),s=new SettingsManager(file);s.update({customThemes:[{id:"local-violet-1",name:"  轻透  ",palette:"ocean",opacity:120,updatedAt:"2026-11-09"},{id:"bad id!",name:"x",palette:"nope",opacity:50},{id:"local-violet-1",name:"dup",palette:"pink",opacity:30},"junk",{name:"no-id",palette:"violet",opacity:10}]});assert.deepEqual(new SettingsManager(file).get("customThemes"),[{id:"local-violet-1",name:"轻透",palette:"ocean",opacity:100,bubbleTint:null,bubbleOpacity:null,chatTint:null,chatOpacity:null,replyOpacity:null,updatedAt:"2026-11-09"}]);});
+test('preview rescans reuse unchanged images, invalidate changed files and bound the cache',()=>{
+ const {PreviewCache}=require('../src/domain/preview-cache.cjs');
+ let decodes=0,revision=1;
+ const cache=new PreviewCache({createFromPath:file=>({resize:({width})=>({toDataURL:()=>file+':'+width+':'+(++decodes)})})},{stat:()=>({size:10,mtimeMs:revision}),limit:2});
+ const first=cache.get('a',600);assert.equal(cache.get('a',600),first);assert.equal(decodes,1);
+ revision++;assert.notEqual(cache.get('a',600),first);assert.equal(decodes,2);
+ cache.get('a',384);cache.get('b',600);assert.equal(cache.entries.size,2);
+ cache.clear();assert.equal(cache.entries.size,0);
+});

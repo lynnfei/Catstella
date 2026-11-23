@@ -43,7 +43,7 @@
     });
     pages.forEach(p => p.classList.toggle("active", p.dataset.page === name));
     const scroller = $("content-scroll");
-    if (scroller) scroller.scrollTop = 0;
+    if (scroller) scroller.scrollTo({top:0,behavior:"instant"});
     try { localStorage.setItem("cat_settings_page", name); } catch {}
   }
 
@@ -110,15 +110,45 @@
     "characterPack", "hostWindowOnly", "standaloneDesktopMode", "easterEggs", "scale", "alwaysOnTop",
     "reducedMotion", "clickThrough", "bubbleOn", "turnCostOn", "ambientChatter", "autoUpdateCheck",
     "turnCostDurationMs", "sound", "soundSet", "volume", "manualQuota",
-    "manualPercent", "manualWeeklyPercent", "clickCatAction",
+    "manualPercent", "manualWeeklyPercent", "clickCatAction", "sideQuotaEnabled", "sideQuotaVariant", "sideQuotaDistance", "sideQuotaSize", "sideQuotaMode", "sideQuotaSource",
     "syncCharacter", "syncWallpaper", "syncInteraction", "petDisplayMode",
-    "userHonorificMode"
+    "userHonorificMode", "customThemes", "bubbleTint", "bubbleOpacity"
   ];
   const original = Object.fromEntries(keys.map(key => [key, data.settings[key]]));
   const originalDreamSkin = data.dreamSkin ? { ...data.dreamSkin } : null;
   const appearanceKeys = ["syncCharacter", "syncWallpaper"];
   const savingAppearance = new Map();
   let pending = Promise.resolve();
+  const settingDrafts = new Map();
+  let renderFrame = 0;
+  function queueRender() {
+    if (!renderFrame) renderFrame = requestAnimationFrame(() => { renderFrame = 0; render(); });
+  }
+  const dreamDrafts = new Map();
+  const dreamValue = (key, fallback) => dreamDrafts.get(key)?.value ?? data.dreamSkin?.[key] ?? fallback;
+  function setControlValue(id, value) {
+    if ($(id).value !== String(value)) $(id).value = value;
+  }
+  function bindDreamAdjustment(id, key, paint, message = "已保存", read = Number) {
+    const el = $(id);
+    const preview = () => {
+      const entry = {value:read(el.value), queued:false};
+      dreamDrafts.set(key, entry);
+      paint(entry.value);
+    };
+    const commit = () => {
+      const entry = dreamDrafts.get(key);
+      if (!entry || entry.queued) return;
+      if (entry.value === data.dreamSkin?.[key]) { dreamDrafts.delete(key); return; }
+      entry.queued = true;
+      save({dreamSkin:{[key]:entry.value}}, message).then(() => {
+        if (dreamDrafts.get(key) === entry) { dreamDrafts.delete(key); render(); }
+      });
+    };
+    el.addEventListener("input", preview);
+    el.addEventListener("change", () => { if (!dreamDrafts.has(key)) preview(); commit(); });
+    el.addEventListener("blur", commit);
+  }
 
   function save(partial, message = "已保存") {
     const intent = {};
@@ -127,14 +157,16 @@
     }
     pending = pending.then(async () => {
       try {
-        data = await api.save(partial);
+        data = await api.save(typeof partial === "function" ? partial() : partial);
         stop();
         $("saved").textContent = message;
+        return true;
       } catch {
         $("saved").textContent = "保存失败，请重试";
+        return false;
       } finally {
         for (const key of appearanceKeys) if (savingAppearance.get(key)?.intent === intent) savingAppearance.delete(key);
-        render();
+        queueRender();
       }
     });
     return pending;
@@ -250,6 +282,10 @@
     $("wallpaper-count").textContent = walls.length + " 张";
     const selected = selectedWallpaper(walls);
     describeAppearance("wallpaper", selected?.title, "syncWallpaper", data.dreamSkin?.enabled === true);
+    const previous = gallerySnapshots.get(gallery);
+    const fields = ["id", "title", "fileName", "filePath", "preview"];
+    if (previous && previous.active === selected?.id && previous.items.length === walls.length &&
+        previous.items.every((wall,i) => fields.every(key => wall[key] === walls[i][key]) && wall.packKey === JSON.stringify(walls[i].pack))) return;
     const groups = window.CatstellaWallpaperPacks.groups(walls);
     const membership = new Map(groups.filter(group => group.name).flatMap(group => group.items.map(wall => [wall.id,group])));
     const drawn = new Set();
@@ -285,8 +321,8 @@
   function selectedWallpaper(walls = data.wallpapers || []) {
     const normalizePath = value => (value || "").replace(/\\/g, "/").toLowerCase();
     const current = normalizePath(data.dreamSkin?.wallpaperFile);
-    return (current && walls.find(wall => normalizePath(wall.filePath) === current)) ||
-      walls.find(wall => wall.id === data.dreamSkin?.wallpaperId) || walls[0];
+    return walls.find(wall => wall.id === data.dreamSkin?.wallpaperId) ||
+      (current && walls.find(wall => normalizePath(wall.filePath) === current)) || walls[0];
   }
 
   const storeCategories = { theme: "主题", wallpaper: "壁纸", character: "桌宠" };
@@ -337,14 +373,14 @@
         if (item.kind === "theme") {
           const known = {"violet-default":"violet","midnight-blue":"ocean"}[item.id];
           const active = known ? known === data.dreamSkin.themePreset : data.dreamSkin.onlineThemeId === item.id;
-          return {installed:active,active};
+          return {installed:active,active,revision:data.dreamSkin.onlineThemeId === item.id ? data.dreamSkin.onlineThemeRevision || "" : ""};
         }
         const asset = installedAsset(item);
         return {installed:!!asset,active:!!asset && (item.kind === "character" ? data.settings.characterPack === asset.id :
           selectedWallpaper()?.id === asset.id),revision:asset?.revision || "",
           preview:(asset?.filePath ? ("file:///" + asset.filePath.replace(/\\/g, "/")) : asset?.frames?.idle || asset?.preview)};
       },
-      currentTheme: () => ({preset:data.dreamSkin.themePreset,onlineThemeId:data.dreamSkin.onlineThemeId || ""}),
+      currentTheme: () => ({preset:data.dreamSkin.themePreset,opacity:data.dreamSkin.opacity}),
       use: async item => {
         if (item.kind === "theme") {
           const result = await api.online("install",item.id);
@@ -1256,13 +1292,13 @@
         el.checked = savingAppearance.get(key)?.value ?? data.settings[key] !== false;
         continue;
       }
-      if (el && document.activeElement !== el) {
+      if (el && (document.activeElement !== el || el.type === "range" && !settingDrafts.has(key))) {
         if (el.type === "checkbox") el.checked = data.settings[key];
-        else el.value = key === "volume" ? Math.round(data.settings.volume * 100) : data.settings[key];
+        else el.value = settingDrafts.get(key)?.value ?? (key === "volume" ? Math.round(data.settings.volume * 100) : data.settings[key]);
       }
     }
-    $("scale-value").textContent = data.settings.scale + " px";
-    $("volume-value").textContent = Math.round(data.settings.volume * 100) + "%";
+    $("scale-value").textContent = (settingDrafts.get("scale")?.value ?? data.settings.scale) + " px";
+    $("volume-value").textContent = (settingDrafts.get("volume")?.value ?? Math.round(data.settings.volume * 100)) + "%";
     $("source").textContent = (data.source.online ? "已找到 " + data.source.files + " 份日志" : "未检测到会话日志") + " · 本机只读";
     $("audio-note").textContent = data.settings.sound ? "已启用" : "已静音";
 
@@ -1288,9 +1324,9 @@
       } else {
         syncIntervalSliderVisual(Number($("slideshow-interval").value) || savedMinutes, savedMinutes);
       }
-      if (document.activeElement !== $("dream-opacity")) $("dream-opacity").value = ds.opacity ?? 22;
+      setControlValue("dream-opacity", dreamValue("opacity",22));
       $("dream-opacity-value").textContent = $("dream-opacity").value + "%";
-      if (document.activeElement !== $("dream-scrim")) $("dream-scrim").value = ds.scrim ?? 25;
+      setControlValue("dream-scrim", dreamValue("scrim",25));
       $("dream-scrim-value").textContent = $("dream-scrim").value + "%";
       if (document.activeElement !== $("dream-output-mode")) $("dream-output-mode").checked = ds.outputMode === "glass";
       if (document.activeElement !== $("uiLanguage")) $("uiLanguage").value = ds.uiLanguage || "en";
@@ -1298,12 +1334,15 @@
       if ($("dream-transition") && document.activeElement !== $("dream-transition")) $("dream-transition").value = ds.transition === "none" ? "none" : "fade";
       const currentTheme = ds.themePreset || "violet";
       document.querySelectorAll(".theme-card[data-theme]").forEach(card => card.classList.toggle("active", card.dataset.theme === currentTheme));
-      if (document.activeElement !== $("atelier-opacity")) $("atelier-opacity").value = Math.round(ds.opacity ?? 88);
-      if (document.activeElement !== $("atelier-bubble-tint")) {
-        atelierBubbleTint = /^#[0-9a-f]{6}$/i.test(data.settings?.bubbleTint || "") ? data.settings.bubbleTint : "#eee6ff";
-        $("atelier-bubble-tint").value = atelierBubbleTint;
+      if (!atelierDirty) {
+        atelierPalette = currentTheme;
+        setControlValue("atelier-opacity", Math.round(dreamValue("opacity",88)));
       }
-      if (document.activeElement !== $("atelier-bubble-opacity")) $("atelier-bubble-opacity").value = Math.round(typeof data.settings?.bubbleOpacity === "number" ? data.settings.bubbleOpacity : 98);
+      const tint = dreamValue("chatTint", "");
+      atelierChatTint = /^#[0-9a-f]{6}$/i.test(tint) ? tint : "#181224";
+      setControlValue("atelier-chat-tint",atelierChatTint);
+      setControlValue("atelier-chat-opacity",Math.round(dreamValue("chatOpacity",100)));
+      setControlValue("atelier-reply-opacity",Math.round(dreamValue("replyOpacity",ds.outputMode === "glass" ? 22 : 0)));
       atelierPaint();
       renderAtelier();
     }
@@ -1323,7 +1362,26 @@
   for (const key of keys) {
     const el = $(key);
     if (el) {
-      el.addEventListener(el.type === "range" ? "input" : "change", () => {
+      if (el.type === "range") {
+        const preview = () => {
+          settingDrafts.set(key,{value:Number(el.value),queued:false});
+          const label = $(key + "-value");
+          if (label) label.textContent = el.value + (key === "scale" ? " px" : key === "volume" ? "%" : "");
+        };
+        const commit = () => {
+          const entry = settingDrafts.get(key);
+          if (!entry || entry.queued) return;
+          entry.queued = true;
+          save({[key]:key === "volume" ? entry.value/100 : entry.value}).then(() => {
+            if (settingDrafts.get(key) === entry) { settingDrafts.delete(key); queueRender(); }
+          });
+        };
+        el.addEventListener("input",preview);
+        el.addEventListener("change",() => { if (!settingDrafts.has(key)) preview(); commit(); });
+        el.addEventListener("blur",commit);
+        continue;
+      }
+      el.addEventListener("change", () => {
         const v = el.type === "checkbox" ? el.checked : (el.type === "range" || el.type === "number" || key === "turnCostDurationMs") ? (el.value === "" ? null : Number(el.value)) : el.value;
         if (key === "userHonorificMode" && $("customHonorific")) {
           const isCustom = v === "custom";
@@ -1396,17 +1454,8 @@
     };
   });
 
-  $("dream-opacity").oninput = () => {
-    const val = Number($("dream-opacity").value);
-    $("dream-opacity-value").textContent = val + "%";
-    save({ dreamSkin: { opacity: val } });
-  };
-
-  $("dream-scrim").oninput = () => {
-    const val = Number($("dream-scrim").value);
-    $("dream-scrim-value").textContent = val + "%";
-    save({ dreamSkin: { scrim: val } });
-  };
+  bindDreamAdjustment("dream-opacity","opacity",value => { $("dream-opacity-value").textContent=value+"%"; });
+  bindDreamAdjustment("dream-scrim","scrim",value => { $("dream-scrim-value").textContent=value+"%"; });
 
   $("dream-output-mode").onchange = () => {
     save({ dreamSkin: { outputMode: $("dream-output-mode").checked ? "glass" : "transparent" } });
@@ -1442,7 +1491,8 @@
   const atelierSwatchStyles = {violet:"linear-gradient(135deg,#8b68e0,#24193c)",pink:"linear-gradient(135deg,#f59cc6,#3b1830)",
     ocean:"linear-gradient(135deg,#5da9f6,#0f1d35)",onyx:"linear-gradient(135deg,#666c82,#121318)"};
   let atelierPalette = data.dreamSkin?.themePreset || "violet";
-  let atelierBubbleTint = /^#[0-9a-f]{6}$/i.test(data.settings?.bubbleTint || "") ? data.settings.bubbleTint : "#eee6ff";
+  let atelierDirty = false, atelierGridKey = "", atelierSequence = 0;
+  let atelierChatTint = /^#[0-9a-f]{6}$/i.test(data.dreamSkin?.chatTint || "") ? data.dreamSkin.chatTint : "#181224";
   function atelierPaint() {
     const atelierOpacity = $("atelier-opacity");
     if (!atelierOpacity) return;
@@ -1453,21 +1503,31 @@
     preview.style.setProperty("--at-opacity", String(value / 100));
     $("atelier-hint").textContent = (atelierLabels[atelierPalette] || atelierPalette) + " · 壁纸不透明度 " + value + "%";
     document.querySelectorAll(".atelier-swatch").forEach(swatch => swatch.classList.toggle("active", swatch.dataset.palette === atelierPalette));
-    // 气泡预览与真实挂件走同一组 CSS 变量。
-    const bubbleAlpha = Number($("atelier-bubble-opacity").value);
-    preview.style.setProperty("--bubble-tint", atelierBubbleTint);
-    preview.style.setProperty("--bubble-alpha", String(bubbleAlpha / 100));
-    $("atelier-bubble-opacity-value").textContent = bubbleAlpha + "%";
+    // User and assistant preview backgrounds have independent alpha.
+    const bubbleAlpha = Number($("atelier-chat-opacity").value);
+    preview.style.setProperty("--at-chat-rgb", [1,3,5].map(i => parseInt(atelierChatTint.slice(i,i+2),16)).join(","));
+    preview.style.setProperty("--at-chat-alpha", String(bubbleAlpha / 100));
+    $("atelier-chat-opacity-value").textContent = bubbleAlpha + "%";
+    preview.style.setProperty("--at-reply-alpha",String(Number($("atelier-reply-opacity").value)/100));
+    $("atelier-reply-opacity-value").textContent = $("atelier-reply-opacity").value + "%";
   }
   function renderAtelier() {
     const grid = $("atelier-grid");
     if (!grid) return;
-    const themes = Array.isArray(data.customThemes) ? data.customThemes : [];
+    const themes = Array.isArray(data.settings.customThemes) ? data.settings.customThemes : [];
+    const key = JSON.stringify([themes,data.dreamSkin?.themePreset,data.dreamSkin?.opacity,data.dreamSkin.chatTint,data.dreamSkin.chatOpacity,data.dreamSkin.replyOpacity]);
+    if (key === atelierGridKey) return;
+    atelierGridKey = key;
     grid.replaceChildren(...themes.map(theme => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "atelier-card";
       const card = document.createElement("button");
       card.type = "button"; card.className = "theme-card";
       const active = (data.dreamSkin?.themePreset || "violet") === theme.palette &&
-        Math.round(data.dreamSkin?.opacity ?? -1) === Math.round(theme.opacity);
+        Math.round(data.dreamSkin?.opacity ?? -1) === Math.round(theme.opacity) &&
+        (typeof theme.replyOpacity !== "number" || data.dreamSkin.replyOpacity === theme.replyOpacity) &&
+        (typeof theme.chatOpacity !== "number" ||
+          data.dreamSkin.chatOpacity === theme.chatOpacity && (data.dreamSkin.chatTint || "") === (theme.chatTint || ""));
       if (active) card.classList.add("active");
       const swatch = document.createElement("i");
       swatch.style.background = atelierSwatchStyles[theme.palette] || "";
@@ -1476,12 +1536,14 @@
       meta.textContent = (atelierLabels[theme.palette] || theme.palette) + " · 不透明度 " + Math.round(theme.opacity) + "%" + (active ? " · 使用中" : "");
       card.append(swatch,name,meta);
       card.onclick = () => {
+        atelierDirty = false;
         const patch = { dreamSkin: { themePreset: theme.palette, opacity: Math.round(theme.opacity) } };
         // 旧主题没有气泡参数时不覆盖当前气泡外观。
-        if (typeof theme.bubbleOpacity === "number") {
-          patch.bubbleTint = theme.bubbleTint || "";
-          patch.bubbleOpacity = Math.round(theme.bubbleOpacity);
+        if (typeof theme.chatOpacity === "number") {
+          patch.dreamSkin.chatTint = theme.chatTint || "";
+          patch.dreamSkin.chatOpacity = Math.round(theme.chatOpacity);
         }
+        if (typeof theme.replyOpacity === "number") patch.dreamSkin.replyOpacity = theme.replyOpacity;
         save(patch, "已应用主题「" + theme.name + "」");
       };
       const remove = document.createElement("button");
@@ -1489,37 +1551,31 @@
       remove.setAttribute("aria-label","删除主题 " + theme.name);
       remove.onclick = event => {
         event.stopPropagation();
-        save({ customThemes: (data.customThemes || []).filter(t => t.id !== theme.id) }, "已删除主题「" + theme.name + "」");
+        save(() => ({ customThemes: (data.settings.customThemes || []).filter(t => t.id !== theme.id) }), "已删除主题「" + theme.name + "」");
       };
-      card.append(remove);
-      return card;
+      wrapper.append(card,remove);
+      return wrapper;
     }));
   }
-  $("atelier-opacity").addEventListener("input", atelierPaint);
+  $("atelier-opacity").addEventListener("input", () => { atelierDirty = true; atelierPaint(); });
   document.querySelectorAll(".atelier-swatch").forEach(swatch => {
-    swatch.onclick = () => { atelierPalette = swatch.dataset.palette; atelierPaint(); };
+    swatch.onclick = () => { atelierDirty = true; atelierPalette = swatch.dataset.palette; atelierPaint(); };
   });
-  // 气泡颜色与透明度：即时预览 + 立即保存，真实挂件气泡经快照同步更新。
-  $("atelier-bubble-tint").value = atelierBubbleTint;
-  $("atelier-bubble-tint").addEventListener("input", () => {
-    atelierBubbleTint = $("atelier-bubble-tint").value;
-    atelierPaint();
-    save({ bubbleTint: atelierBubbleTint }, "气泡颜色已更新");
-  });
-  $("atelier-bubble-opacity").addEventListener("input", () => {
-    atelierPaint();
-    save({ bubbleOpacity: Number($("atelier-bubble-opacity").value) }, "气泡透明度已更新");
-  });
-  $("atelier-save").onclick = () => {
+  // 对话阅读面外观：通过皮肤设置更新宿主，旧桌宠外观字段保留但不再由此控件读写。
+  $("atelier-chat-tint").value = atelierChatTint;
+  bindDreamAdjustment("atelier-chat-tint","chatTint",value => { atelierChatTint=value; atelierPaint(); },"对话气泡颜色已更新",String);
+  bindDreamAdjustment("atelier-chat-opacity","chatOpacity",atelierPaint,"对话气泡透明度已更新");
+  bindDreamAdjustment("atelier-reply-opacity","replyOpacity",atelierPaint,"AI 回复透明度已更新");
+  $("atelier-save").onclick = async () => {
     const value = Number($("atelier-opacity").value);
     const name = ($("atelier-name").value || "").trim() || (atelierLabels[atelierPalette] || atelierPalette) + " · " + value + "%";
-    const themes = Array.isArray(data.customThemes) ? [...data.customThemes] : [];
-    themes.push({ id: "local-" + atelierPalette + "-" + Date.now().toString(36), name,
-      palette: atelierPalette, opacity: value, bubbleTint: atelierBubbleTint,
-      bubbleOpacity: Number($("atelier-bubble-opacity").value), updatedAt: new Date().toISOString().slice(0,10) });
-    save({ customThemes: themes.slice(-24) }, "已保存主题「" + name + "」");
-    $("atelier-name").value = "";
-    $("atelier-status").textContent = "";
+    const theme = { id: "local-" + Date.now().toString(36) + "-" + (++atelierSequence), name,
+      palette: atelierPalette, opacity: value, chatTint: atelierChatTint,
+      chatOpacity: Number($("atelier-chat-opacity").value), replyOpacity:Number($("atelier-reply-opacity").value), updatedAt: new Date().toISOString().slice(0,10) };
+    if (await save(() => ({ customThemes: [...(data.settings.customThemes || []),theme].slice(-24) }), "已保存主题「" + name + "」")) {
+      $("atelier-name").value = "";
+      $("atelier-status").textContent = "";
+    }
   };
   $("atelier-export").onclick = async () => {
     const payload = JSON.stringify({ schema: 1, palette: atelierPalette, opacity: Number($("atelier-opacity").value) }, null, 2);
@@ -1531,7 +1587,7 @@
     }
   };
 
-  $("undo").onclick = () => save(originalDreamSkin ? { ...original, dreamSkin: { ...originalDreamSkin } } : original, "已恢复到打开设置时");
+  $("undo").onclick = () => { atelierDirty = false; return save(originalDreamSkin ? { ...original, dreamSkin: { ...originalDreamSkin } } : original, "已恢复到打开设置时"); };
   $("dock-left").onclick = () => api.command("dock-left");
   $("dock-right").onclick = () => api.command("dock-right");
   $("reset").onclick = () => api.command("reset");
@@ -1561,15 +1617,32 @@
   };
 
   const storeSelection = state => JSON.stringify([
-    state.settings.characterPack, state.dreamSkin?.themePreset, state.dreamSkin?.onlineThemeId,
+    state.settings.characterPack, state.dreamSkin?.themePreset, state.dreamSkin?.onlineThemeId, state.dreamSkin?.opacity,
     state.dreamSkin?.wallpaperId, state.dreamSkin?.wallpaperFile,
     state.characterPacks?.map(pack => pack.id), state.wallpapers?.map(wall => wall.id), state.artVersion
   ]);
+  // Position, breath/interaction state and bridge heartbeat timestamps do not
+  // change this form. Do not invalidate all cards while they animate/scroll.
+  const settingsViewKey = state => JSON.stringify([
+    keys.map(key=>state.settings[key]),state.settings.customHonorific,
+    state.dreamSkin,state.byok,state.source?.online,state.source?.files,
+    state.quotaWindows,state.ledger?.todaySteps,
+    state.webCompanion?.online,state.webCompanion?.active,state.webCompanion?.port,state.webCompanion?.quota,
+    state.artVersion
+  ]);
+  function sameAssets(before,after) {
+    return ["characterPacks","wallpapers"].every(key=>{
+      const a=before[key]||[],b=after[key]||[];
+      return a.length===b.length&&a.every((item,i)=>Object.keys(item).length===Object.keys(b[i]).length&&
+        Object.keys(item).every(field=>typeof item[field]==="object" ? JSON.stringify(item[field])===JSON.stringify(b[i][field]) : item[field]===b[i][field]));
+    });
+  }
   api.subscribe(next => {
     if (next.settings.sound !== data.settings.sound || next.settings.volume !== data.settings.volume || next.settings.soundSet !== data.settings.soundSet) stop();
     const refreshStore = contentHub && storeSelection(next) !== storeSelection(data);
+    const changed=settingsViewKey(next)!==settingsViewKey(data)||!sameAssets(data,next);
     data = next;
-    render();
+    if(changed)queueRender();
     if (refreshStore) contentHub.render();
   });
 

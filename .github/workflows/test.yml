@@ -16,3 +16,16 @@ jobs:
       - run: npm ci
       - run: npm run build:native
       - run: npm test
+      - name: Verify tray-only pet window
+        run: node tools/verify-tray-window.cjs
+      - name: Verify full-area dragging and artwork docking
+        run: node tools/verify-window-drag.cjs
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/browser-extension
+          path: web-regression
+          persist-credentials: false
+      - name: Appearance invariants (rotation, role surfaces, footer fade)
+        env:
+          WEB_COMPANION_PATH: ${{ github.workspace }}/web-regression/Gemini-Web-Companion
+        run: npm run verify:appearance

@@ -30,6 +30,7 @@ class UsageLedger {
     this.storagePath = options.storagePath || null;
     this.now = options.now || (() => new Date());
     this.records = new Map();
+    this.cachedSummary = null;
     this.quotaRemainingPercent = null;
     if (this.storagePath) {
       const stored = readJson(this.storagePath, { records: [] });
@@ -48,18 +49,22 @@ class UsageLedger {
     const previous = this.records.get(sessionId + ":" + step?.step_index);
     const record = makeRecord(step, sessionId, previous);
     if (!record) return null;
+    if (step.historical && Date.parse(record.timestamp) < this.now().getTime() - 90 * 86400000) return null;
     if (previous && JSON.stringify(previous.tokens) === JSON.stringify(record.tokens)) return null;
     this.records.set(record.id, record);
+    this.cachedSummary = null;
     // Fill late numeric metadata without another completion bubble or sound.
     return previous ? { ...record, updated: true } : record;
   }
   save() {
     if (!this.storagePath) return;
     const cutoff = this.now().getTime() - 90 * 86400000;
-    writeJson(this.storagePath, {
-      schemaVersion: 2,
-      records: [...this.records.values()].filter(row => new Date(row.timestamp).getTime() >= cutoff)
-    });
+    const records = [...this.records.values()].filter(row => Date.parse(row.timestamp) >= cutoff);
+    writeJson(this.storagePath, { schemaVersion: 2, records });
+    if (records.length !== this.records.size) {
+      this.records = new Map(records.map(row => [row.id, row]));
+      this.cachedSummary = null;
+    }
   }
   calculateTurnCost() { return null; }
   getQuotaStatus() {
@@ -74,6 +79,7 @@ class UsageLedger {
   }
   getSnapshot() {
     const date = localDate(this.now());
+    if (this.cachedSummary?.date === date) return { ...this.cachedSummary, quota: this.getQuotaStatus() };
     const rows = [...this.records.values()].filter(row => row.date === date);
     const sum = key => {
       if (!rows.length || rows.some(row => row.tokens[key] === null)) return null;
@@ -81,15 +87,17 @@ class UsageLedger {
       return Number.isSafeInteger(value) ? value : null;
     };
     const partial = rows.some(row => row.tokens.total === null);
-    const latest = [...this.records.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0] || null;
-    return {
+    let latest = null;
+    for (const row of this.records.values()) if (!latest || row.timestamp > latest.timestamp) latest = row;
+    this.cachedSummary = {
       date, todayTokens: {
         prompt: sum("input"), cache: sum("cache"), output: sum("output"),
         total: sum("total")
       },
       todaySteps: rows.length, todayTurns: null, todayCost: null,
-      quota: this.getQuotaStatus(), accountBalance: null, latest, partial, isDemoMode: false
+      accountBalance: null, latest, partial, isDemoMode: false
     };
+    return { ...this.cachedSummary, quota: this.getQuotaStatus() };
   }
   get todayTotalTokens() { return this.getSnapshot().todayTokens.total; }
 }

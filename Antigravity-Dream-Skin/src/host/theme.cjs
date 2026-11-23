@@ -1,11 +1,24 @@
 // Serialized into the host by its existing local CDP endpoint. No app files are modified.
 async function installTheme(config){
  const key="__agyDreamSkinV2";
- if(window[key]){if(window[key].owner!==config.owner)throw new Error("皮肤由另一个运行实例管理");if(window[key].status().applied){await window[key].update(config);return window[key].status();}window[key].destroy();}
+ const engineRevision="2026-11-12-chat-appearance-v6",mountKey="__agyDreamSkinMountV2";
+ if(window[key]){if(window[key].owner!==config.owner)throw new Error("皮肤由另一个运行实例管理");if(window[key].engineRevision===engineRevision&&window[key].status().applied){await window[key].update(config);return window[key].status();}window[key].destroy();}
+ // Initial image decoding yields to other callers. Keep one initializer and let
+ // later calls replace its desired config instead of leaving orphan observers.
+ if(window[mountKey]){
+  const pending=window[mountKey];if(pending.owner!==config.owner)throw new Error("皮肤由另一个运行实例管理");
+  pending.latest=config;await pending.ready;if(pending.error)throw pending.error;
+  return window[key]?.status()||{applied:false,reason:"initialization-retired"};
+ }
+ let finishMount;const mounting={owner:config.owner,latest:config,ready:new Promise(resolve=>{finishMount=resolve;})};
+ window[mountKey]=mounting;
+ try{
  document.querySelectorAll('#agy-dream-style-v2, #agy-dream-wallpaper-v2').forEach(el => el.remove());
  const root=document.querySelector("#root")||document.querySelector("#app");
  if(!root)return{applied:false,reason:"unsupported-root"};
- let image=new Image();image.src=config.image;await image.decode();let currentSrc=config.image;
+ let image;
+ do{config=mounting.latest;image=new Image();image.src=config.image;try{await image.decode();}catch(error){if(config===mounting.latest)throw error;}}while(config!==mounting.latest);
+ let currentSrc=config.image;
  if(!root.isConnected)return{applied:false,reason:"detached-root"};
  document.querySelectorAll('#agy-dream-wallpaper-v2').forEach(el => el.remove());
  const saved=[],seen=new WeakSet(),trackedVars=new Set();
@@ -102,17 +115,35 @@ async function installTheme(config){
  };
  let layer=document.createElement("div");layer.id="agy-dream-wallpaper-v2";layer.setAttribute("aria-hidden","true");
  Object.assign(layer.style,{position:"fixed",inset:"0",zIndex:"0",pointerEvents:"none",overflow:"hidden",backgroundRepeat:"no-repeat",backgroundPosition:"center",backgroundColor:"#f8f6ff",transition:"opacity 0.4s ease"});
- let wallpaperGen=0,incoming=null,committedImage=image,deferred=null,latest=config;
+ let wallpaperGen=0,incoming=null,committedImage=image,deferred=null,latest=config,retained=[],pendingDecode=null,presentedId=config.wallpaperId||null;
  const foreground=()=>!document.hidden&&document.hasFocus();
  function discardIncoming(){
+  for(const el of [...retained,...(incoming?[incoming]:[])]){
+   for(const anim of el.getAnimations?.()||[]){anim.onfinish=null;anim.cancel();}
+   el.remove();
+  }
+  retained=[];incoming=null;
+ }
+ function retainIncoming(){
   if(!incoming)return;
+  const alpha=getComputedStyle(incoming).opacity;
   for(const anim of incoming.getAnimations?.()||[]){anim.onfinish=null;anim.cancel();}
-  incoming.remove();incoming=null;
+  incoming.style.opacity=alpha;
+  retained.push(incoming);incoming=null;
+ }
+ function pauseIncoming(){
+  for(const anim of incoming?.getAnimations?.()||[]){
+   const time=anim.currentTime;
+   anim.pause();
+   // pause() alone takes effect on a later rendering opportunity. Hold the
+   // current time synchronously so blur cannot advance the visible blend.
+   if(time!==null)anim.currentTime=time;
+  }
  }
  function deferWallpaper(next){
   deferred=next;
-  discardIncoming();
-  image=committedImage;
+  if(incoming)pauseIncoming();
+  else image=committedImage;
  }
  function commitIncoming(url,p,factor,cfg){
   discardIncoming();
@@ -121,7 +152,11 @@ async function installTheme(config){
   layer.style.backgroundPosition="center,"+(cfg.positionX??50)+"% "+(cfg.positionY??50)+"%";
   layer.style.backgroundColor=cfg.fit==="adaptive"?p.adaptiveBg:"transparent";
   currentSrc=url;committedImage=image;
+  presentedId=cfg.wallpaperId||null;
  }
+ const userRole='.agy-user-bubble,[data-testid="user-message-bubble"],[data-testid="user-input-step"],user-query,.user-query';
+ const aiRole='[data-markdown-root],.markdown-body,.prose,.leading-relaxed.select-text';
+ const roleExcluded=`${userRole},:is(${userRole}) *,pre,pre *,.monaco-editor,.monaco-editor *,.cm-editor,.cm-editor *,.xterm,.xterm *,[data-testid="tool-group-collapsible"],[data-testid="tool-group-collapsible"] *`;
  const style=document.createElement("style");style.id="agy-dream-style-v2";style.textContent=`
  html.agy-dream-active-v2 body { background:var(--agy-dream-base-bg)!important; }
  html.agy-dream-active-v2 [data-agy-dream-root] { position:relative;z-index:1; }
@@ -338,41 +373,39 @@ async function installTheme(config){
    background-color:var(--agy-ui-hover)!important;
  }
 
- /* Assistant Reading Surface */
- html.agy-dream-active-v2 [data-agy-output-mode="glass"] [data-markdown-root] {
-   background-color:transparent!important;
-   background-image:var(--agy-ui-glass)!important;
-   backdrop-filter:blur(28px) saturate(135%)!important;
-   -webkit-backdrop-filter:blur(28px) saturate(135%)!important;
-   border-radius:18px!important;
-   border:1px solid var(--agy-ui-glass-border)!important;
-   box-shadow:0 8px 32px rgba(10,8,20,0.4),inset 0 1px 0 rgba(var(--agy-ui-highlight-rgb),0.22)!important;
-   padding:16px 22px!important;
+ /* AGY_ROLE_INVARIANT: one user plate, one assistant plate, never per paragraph. */
+ /* AGY 2.31 masks its chat scroller after scrolling. An ancestor mask creates
+    a backdrop root, so reply blur samples an empty surface instead of wallpaper.
+    Unmask only AI-containing chat scrollers in glass mode. CSS keeps late/native
+    class and inline-style changes correct on their first frame; no scroll hook. */
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root])[data-agy-output-mode="glass"] .agy-sheet :is(.overflow-y-auto,.overflow-auto,[role="log"],[data-testid="conversation-scroll"],[data-testid="chat-scroll"]):has(:is(${aiRole}):not(:where(${roleExcluded}))) {
+  mask-image:none!important;-webkit-mask-image:none!important;
  }
- html.agy-dream-active-v2 [data-agy-output-mode="glass"] [data-markdown-root] [data-agy-dream-segment] {
-   background:none!important;
-   backdrop-filter:none!important;
-   -webkit-backdrop-filter:none!important;
-   box-shadow:none!important;
-   border:none!important;
-   padding:0!important;
-   margin-bottom:0!important;
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(.agy-user-bubble,[data-testid="user-message-bubble"],user-query,.user-query) {
+  background-color:rgba(var(--agy-chat-rgb,24,18,36),var(--agy-chat-alpha,1))!important;background-image:none!important;
  }
- html.agy-dream-active-v2 [data-agy-output-mode="glass"] :not([data-markdown-root]) > [data-agy-dream-segment] {
-   background-color:transparent!important;
-   background-image:var(--agy-ui-glass)!important;
-   backdrop-filter:blur(18px) saturate(115%)!important;
-   -webkit-backdrop-filter:blur(18px) saturate(115%)!important;
-   border-radius:14px;
-   box-shadow:inset 0 1px 0 rgba(var(--agy-ui-highlight-rgb),0.14),0 4px 16px rgba(10,8,20,0.12);
-   padding:12px 16px;
-   margin-bottom:6px;
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) {
+  background-color:rgba(var(--agy-chat-rgb,24,18,36),var(--agy-reply-alpha,0))!important;background-image:none!important;
+  opacity:1!important;border:0!important;box-shadow:none!important;
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
  }
- html.agy-dream-active-v2 [data-agy-output-mode="transparent"] [data-markdown-root],
- html.agy-dream-active-v2 [data-agy-output-mode="transparent"] [data-agy-dream-segment] {
-   text-shadow:0 1px 2px rgba(0,0,0,0.6)!important;
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root])[data-agy-output-mode="glass"] :is(${aiRole}):not(:where(${roleExcluded})) {
+  backdrop-filter:blur(28px) saturate(135%)!important;-webkit-backdrop-filter:blur(28px) saturate(135%)!important;
+  border-radius:18px!important;border:1px solid var(--agy-ui-glass-border)!important;
+  box-shadow:0 8px 32px rgba(10,8,20,0.4),inset 0 1px 0 rgba(var(--agy-ui-highlight-rgb),0.22)!important;
+  padding:16px 22px!important;background-clip:padding-box!important;
  }
-
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is([data-markdown-root],.markdown-body,.prose,.leading-relaxed.select-text) :is([data-markdown-root],.markdown-body,.prose,.leading-relaxed.select-text,[data-agy-dream-segment]) {
+  background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border:0!important;
+  padding:0!important;border-radius:0!important;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) [data-agy-ai-shell]:not(:where(${userRole},${aiRole})) {
+  background:none!important;backdrop-filter:none!important;box-shadow:none!important;
+ }
+ /* Native reply wrappers must be clear on their first frame, before scan(). */
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(.scroll-mt-4,[role=article],.scroll-mt-4 div,[role=article] div):has(:is(${aiRole})):not(:where(${roleExcluded},${aiRole},:is(${aiRole}) *)):not(:has(:is(${userRole},form,.surface-composer))) {
+  background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;
+ }
  /* Editors, Terminals, Code Blocks */
  html.agy-dream-active-v2 [data-agy-dream-protect] { background-color:var(--agy-dream-old-bg)!important;backdrop-filter:none!important;opacity:1!important; }
  html.agy-dream-active-v2 pre,
@@ -393,7 +426,7 @@ async function installTheme(config){
   el.style.setProperty(key,value);
  }
  function restore([el,attr,value,priority]){if(attr.startsWith("style:")){const k=attr.slice(6);value?el.style.setProperty(k,value,priority):el.style.removeProperty(k);}else value===null?el.removeAttribute(attr):el.setAttribute(attr,value);}
- mark(root,"data-agy-output-mode");mark(root,"data-agy-theme-preset");mark(root,"data-agy-dream-root");mark(root,"data-agy-dream-clear");
+ mark(root,"data-agy-output-mode");mark(root,"data-agy-theme-preset");mark(root,"data-agy-dream-root");mark(root,"data-agy-dream-clear");mark(root,"data-agy-chat-custom");
  const nativeBackgrounds=new WeakMap([[root,getComputedStyle(root).backgroundColor]]);
  function surfaceBackground(el){
   for(let node=el;node;node=node.parentElement){const bg=nativeBackgrounds.get(node)||getComputedStyle(node).backgroundColor;if(bg!=="transparent"&&bg!=="rgba(0, 0, 0, 0)")return bg;}
@@ -430,12 +463,14 @@ async function installTheme(config){
   return p;
  }
  applyPalette(config.themePreset);
- let active=true,timer,observer,attrObserver,resize,geometryTarget=null,healing=false;
+ let active=true,timer,observer,attrObserver,resize,geometryTarget=null,healing=false,instance;
  function ensureMounted(){
   if(!active||healing||!root.isConnected)return false;
+  if(window[key]!==instance){destroy();return false;}
   healing=true;
   try{
    document.querySelectorAll("#agy-dream-wallpaper-v2").forEach(el=>{if(el!==layer)el.remove();});
+   document.querySelectorAll("#agy-dream-style-v2").forEach(el=>{if(el!==style)el.remove();});
    if(!document.documentElement.classList.contains("agy-dream-active-v2"))document.documentElement.classList.add("agy-dream-active-v2");
    if(!style.isConnected&&document.head)document.head.append(style);
    if(!layer.isConnected&&document.body)document.body.prepend(layer);
@@ -445,6 +480,7 @@ async function installTheme(config){
    if(root.getAttribute("data-agy-theme-preset")!==wantPreset||!document.body.style.getPropertyValue("--agy-ui-surface"))applyPalette(wantPreset);
    const wantMode=config.outputMode==="glass"?"glass":"transparent";
    if(root.getAttribute("data-agy-output-mode")!==wantMode)root.setAttribute("data-agy-output-mode",wantMode);
+   syncConversationAppearance();
   }finally{healing=false;}
   return true;
  }
@@ -478,7 +514,14 @@ async function installTheme(config){
    if(rect.height<=80&&rect.width>area.width*.3&&getComputedStyle(fade).backgroundImage.includes("linear-gradient"))mark(fade,"data-agy-dream-fade");
   }
   for(let parent=area.scope;parent&&root.contains(parent);parent=parent.parentElement){if(!nativeBackgrounds.has(parent))nativeBackgrounds.set(parent,getComputedStyle(parent).backgroundColor);mark(parent,"data-agy-dream-clear");if(parent===root)break;}
-  for(const article of area.scope.querySelectorAll(".scroll-mt-4,[role=article],.prose,.markdown-body,[data-markdown-root]")){
+  for(const article of area.scope.querySelectorAll(".scroll-mt-4,[role=article],.prose,.markdown-body,[data-markdown-root],.leading-relaxed.select-text")){
+   if(article.matches(aiRole)&&!article.parentElement?.closest(aiRole)&&!article.closest(roleExcluded)){
+    for(let shell=article.parentElement,depth=0;shell&&shell!==area.scope&&depth<4;shell=shell.parentElement,depth++){
+     if(shell.querySelector(userRole+',form,.surface-composer')||shell.matches('button,[role=button],aside,nav'))break;
+     mark(shell,'data-agy-ai-shell');
+     if(shell.matches('.scroll-mt-4,[role=article]'))break;
+    }
+   }
    const plate=article.closest(".scroll-mt-4")||article;
    mark(plate,"data-agy-dream-reading");
    seen.add(plate);
@@ -528,38 +571,80 @@ async function installTheme(config){
  }
  function schedule(){clearTimeout(timer);timer=setTimeout(scan,120);}
  function onWindowLifecycle(){
-  ensureMounted();schedule();
+  if(!ensureMounted())return;
+  schedule();
   if(!foreground()){
-   if(incoming){++wallpaperGen;deferWallpaper(latest);}
+   pauseIncoming();
   }else if(deferred){void update(deferred);}
+  else if(incoming)for(const anim of incoming.getAnimations?.()||[]){
+   if(anim.playState==="finished")anim.onfinish?.();else anim.play();
+  }
+ }
+ const wallpaperKey=value=>JSON.stringify([value.image,value.themePreset,value.scrim,value.fit,value.zoom,value.positionX,value.positionY,value.transition]);
+ function syncConversationAppearance(){
+  const chatCustom=/^#[0-9a-f]{6}$/i.test(config.chatTint||"")||Number.isFinite(config.chatOpacity);
+  if(root.hasAttribute("data-agy-chat-custom")!==chatCustom)root.toggleAttribute("data-agy-chat-custom",chatCustom);
+  const chatHex=/^#[0-9a-f]{6}$/i.test(config.chatTint||"")?config.chatTint.slice(1):(dark?"181224":"fffaff");
+  const values={"--agy-chat-rgb":[0,2,4].map(i=>parseInt(chatHex.slice(i,i+2),16)).join(","),
+   "--agy-chat-alpha":String((Number.isFinite(config.chatOpacity)?Math.max(0,Math.min(100,config.chatOpacity)):100)/100),
+   "--agy-reply-alpha":String((Number.isFinite(config.replyOpacity)?Math.max(0,Math.min(100,config.replyOpacity)):(config.outputMode==="glass"?22:0))/100)};
+  for(const [name,value] of Object.entries(values))if(root.style.getPropertyValue(name)!==value)variable(root,name,value);
+ }
+ function applyAppearance(next){
+  config=next;
+  const p=applyPalette(config.themePreset);
+  root.setAttribute("data-agy-output-mode",config.outputMode==="glass"?"glass":"transparent");
+  syncConversationAppearance();
+  layer.style.opacity=String(config.opacity??.55);
+  return p;
+ }
+ const appearanceKeys=['chatTint','chatOpacity','replyOpacity','opacity','outputMode'];
+ function updateAppearance(patch){
+  if(!active||window[key]!==instance)return status();
+  const values=Object.fromEntries(appearanceKeys.filter(k=>Object.hasOwn(patch,k)).map(k=>[k,patch[k]]));
+  latest={...latest,...values};config={...config,...values};
+  if(deferred)deferred={...deferred,...values};
+  const mode=config.outputMode==='glass'?'glass':'transparent';
+  if(root.getAttribute('data-agy-output-mode')!==mode)root.setAttribute('data-agy-output-mode',mode);
+  syncConversationAppearance();
+  const opacity=String(config.opacity??.55);if(layer.style.opacity!==opacity)layer.style.opacity=opacity;
+  return status();
  }
  async function update(next){
-  const thisGen=++wallpaperGen;
+  if(!active||window[key]!==instance)return;
   latest=next;
+  if(!deferred&&layer.style.backgroundImage&&wallpaperKey(next)===wallpaperKey(config)&&(incoming||next.image===currentSrc)){
+   if(pendingDecode!==null){++wallpaperGen;pendingDecode=null;}
+   applyAppearance(next);scan();return;
+  }
+  const thisGen=++wallpaperGen;
+  pendingDecode=null;
   const wantsFade=next.transition!=="none"&&Boolean(currentSrc)&&next.image!==currentSrc;
   if(wantsFade&&!foreground()){deferWallpaper(next);return;}
   deferred=null;
   let crossfade=false;
   if(next.image&&next.image!==currentSrc){
+   pendingDecode=wallpaperKey(next);
    const fresh=new Image();fresh.src=next.image;
-   try{await fresh.decode();}catch{if(thisGen===wallpaperGen){discardIncoming();image=committedImage;}return;}
+   try{await fresh.decode();}catch{if(thisGen===wallpaperGen){pendingDecode=null;image=committedImage;}return;}
    if(thisGen!==wallpaperGen||!active||!root.isConnected)return;
+   pendingDecode=null;
    if(wantsFade&&!foreground()){deferWallpaper(next);return;}
    image=fresh;
    crossfade=next.transition!=="none"&&layer.isConnected&&Boolean(currentSrc);
   }else image=committedImage;
-  config=next;
-  const p=applyPalette(config.themePreset);
+  // A small appearance update can arrive while this image is decoding. Keep
+  // that newer preference when committing the wallpaper, without restarting it.
+  next={...next,...Object.fromEntries(appearanceKeys.filter(k=>Object.hasOwn(latest,k)).map(k=>[k,latest[k]]))};
+  const p=applyAppearance(next);
   document.querySelectorAll("#agy-dream-wallpaper-v2").forEach(el=>{if(el!==layer)el.remove();});
-  root.setAttribute("data-agy-output-mode",config.outputMode==="glass"?"glass":"transparent");
-  layer.style.opacity=String(config.opacity??.55);
   const region=document.querySelector(".agy-sheet")||root;
   const r=region.getBoundingClientRect();
   const factor=(r.width>0&&r.height>0&&image.naturalWidth>0&&image.naturalHeight>0)?(config.fit==="contain"?Math.min(r.width/image.naturalWidth,r.height/image.naturalHeight):Math.max(r.width/image.naturalWidth,r.height/image.naturalHeight))*(config.zoom??1):1;
   if(!crossfade){
    commitIncoming(config.image,p,factor,config);
   }else{
-   discardIncoming();
+   retainIncoming();
    const inc=document.createElement("div");inc.className="agy-dream-wallpaper-incoming";
    Object.assign(inc.style,{
     position:"absolute",inset:"0",pointerEvents:"none",borderRadius:"inherit",
@@ -573,8 +658,8 @@ async function installTheme(config){
    try{
     const anim=inc.animate([{opacity:0},{opacity:1}],{duration:1200,easing:"cubic-bezier(.4,0,.2,1)",fill:"forwards"});
     anim.onfinish=()=>{
-     if(thisGen!==wallpaperGen||incoming!==inc)return;
-     if(!foreground()){deferWallpaper(latest);return;}
+     if(incoming!==inc)return;
+     if(!foreground())return;
      commitIncoming(next.image,p,factor,next);
     };
    }catch{commitIncoming(config.image,p,factor,config);}
@@ -585,24 +670,30 @@ async function installTheme(config){
   active=false;clearTimeout(timer);observer?.disconnect();attrObserver?.disconnect();resize?.disconnect();
   window.removeEventListener("focus",onWindowLifecycle);window.removeEventListener("blur",onWindowLifecycle);document.removeEventListener("visibilitychange",onWindowLifecycle);
   deferred=null;discardIncoming();
-  document.querySelectorAll('#agy-dream-style-v2, #agy-dream-wallpaper-v2').forEach(el => el.remove());
-  document.documentElement.classList.remove("agy-dream-active-v2");
-  for(const entry of saved.reverse())restore(entry);
+  style.remove();layer.remove();
+  if(window[key]===instance){
+   document.documentElement.classList.remove("agy-dream-active-v2");
+   for(const entry of saved.reverse())restore(entry);
+   delete window[key];
+  }
   saved.length=0;
-  delete window[key];return{removed:true};
+  return{removed:true};
  }
  document.querySelectorAll("#agy-dream-wallpaper-v2").forEach(el => el.remove());
  document.head.append(style);document.body.prepend(layer);document.documentElement.classList.add("agy-dream-active-v2");
- update(config);
  observer=new MutationObserver(schedule);observer.observe(root,{childList:true,subtree:true});
- attrObserver=new MutationObserver(()=>{if(!healing){ensureMounted();schedule();}});
+ attrObserver=new MutationObserver(records=>{if(!healing){ensureMounted();if(records.some(r=>r.attributeName==='class'))schedule();}});
  attrObserver.observe(document.documentElement,{attributes:true,attributeFilter:["class","style"]});
  if(document.body)attrObserver.observe(document.body,{attributes:true,attributeFilter:["class","style"]});
+ attrObserver.observe(root,{attributes:true,attributeFilter:["class","style"]});
  window.addEventListener("focus",onWindowLifecycle,{passive:true});
  window.addEventListener("blur",onWindowLifecycle,{passive:true});
  document.addEventListener("visibilitychange",onWindowLifecycle,{passive:true});
  resize=new ResizeObserver(schedule);resize.observe(root);
- const status=()=>({applied:Boolean(active&&root.isConnected&&layer.isConnected&&style.isConnected&&document.documentElement.classList.contains("agy-dream-active-v2")),themePreset:root.getAttribute("data-agy-theme-preset")||"violet",protected:root.querySelectorAll("[data-agy-dream-protect]").length,surfaces:root.querySelectorAll("[data-agy-dream-clear]").length,trackedChanges:saved.length});
- window[key]={update,destroy,status,owner:config.owner};return status();
+ const status=()=>({defaultChatTint:dark?"#181224":"#fffaff",applied:Boolean(active&&root.isConnected&&layer.isConnected&&style.isConnected&&document.documentElement.classList.contains("agy-dream-active-v2")),wallpaper:{selected:latest.wallpaperId||null,presented:presentedId,transitioning:!!incoming,deferred:!!deferred,decoding:pendingDecode!==null},themePreset:root.getAttribute("data-agy-theme-preset")||"violet",protected:root.querySelectorAll("[data-agy-dream-protect]").length,surfaces:root.querySelectorAll("[data-agy-dream-clear]").length,trackedChanges:saved.length});
+ instance={update,updateAppearance,destroy,status,owner:config.owner,engineRevision};window[key]=instance;
+ await update(config);return status();
+ }catch(error){mounting.error=error;throw error;}
+ finally{if(window[mountKey]===mounting)delete window[mountKey];finishMount();}
 }
 module.exports={installTheme};

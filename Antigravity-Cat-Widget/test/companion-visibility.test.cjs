@@ -21,7 +21,31 @@ test('widget drag keeps free movement and persists a snapped host placement on a
   assert.equal(restored.artShift,snapped.artShift);
   const standalone = placeDraggedWidget(area,220,-1290,300,{snap:true});
   assert.equal(standalone.bounds.x,area.x);
-  assert.equal(standalone.artShift,0);
+  assert.equal(standalone.visualX,area.x,'standalone artwork can touch the display edge');
+  assert.equal(standalone.artShift,-70);
+});
+test('artwork reaches both halves and both edges while the transparent window stays in bounds', () => {
+  for (const area of [{x:0,y:0,width:1280,height:900},{x:-1920,y:-200,width:1920,height:1080}]) {
+    for (const scale of [140,220,360]) for (const following of [false,true]) {
+      const top=placeDraggedWidget(area,scale,area.x-100,area.y-1000,{following,snap:true});
+      assert.equal(top.visualX,area.x);
+      assert.equal(top.visualY,area.y+10);
+      assert.equal(top.bounds.y,area.y);
+      assert(top.artShiftY<0);
+      const bottom=placeDraggedWidget(area,scale,area.x+area.width,area.y+area.height,{following,snap:true});
+      assert.equal(bottom.visualX+scale,area.x+area.width);
+      assert.equal(bottom.visualY+scale,area.y+area.height);
+      for(const p of [top,bottom]) {
+        assert(p.bounds.x>=area.x&&p.bounds.y>=area.y);
+        assert(p.bounds.x+p.bounds.width<=area.x+area.width);
+        assert(p.bounds.y+p.bounds.height<=area.y+area.height);
+        if(following) {
+          const restored=hostPlacement({kind:'host',bounds:area},scale,p.hostOffsetX,p.hostOffsetY,p.side);
+          assert.deepEqual(restored.bounds,p.bounds);assert.equal(restored.artShiftY,p.artShiftY);
+        }
+      }
+    }
+  }
 });
 test('mutual visibility uses real foreground and retains the Web owner through a taskbar excursion', () => {
   const policy = new CompanionVisibility();

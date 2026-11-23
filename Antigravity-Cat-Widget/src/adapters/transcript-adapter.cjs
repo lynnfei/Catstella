@@ -17,11 +17,11 @@ class TranscriptAdapter extends EventEmitter{
      if(!Number.isSafeInteger(s.step_index))continue;const planner=s.source==="MODEL"&&s.type==="PLANNER_RESPONSE";const userReply=s.source==="USER_EXPLICIT"&&s.type==="USER_INPUT";if(!planner&&!userReply)continue;
      const sessionId=path.basename(path.resolve(file,"../../.."));
      if(userReply){const replyKey="u"+s.step_index;if(c.seen.get(replyKey)==="user")continue;c.seen.set(replyKey,"user");if(c.seen.size>10000)c.seen.delete(c.seen.keys().next().value);if(c.offset-c.pending.length<=c.baselineSize)continue;this.emit("userInput",{sessionId,stepIndex:s.step_index});continue;}
-     const signature=[s.status,s.input_tokens,s.cache_read_tokens,s.output_tokens].join("|");if(c.seen.get(s.step_index)===signature)continue;c.seen.set(s.step_index,signature);
-     if(c.seen.size>10000)c.seen.delete(c.seen.keys().next().value);
      const tools=[...new Set((Array.isArray(s.tool_calls)?s.tool_calls:[]).map(tc=>typeof tc?.name==="string"&&tc.name?tc.name:null).filter(Boolean))].slice(0,6);
+     const signature=JSON.stringify([s.status,s.input_tokens,s.cache_read_tokens,s.output_tokens,tools]);if(c.seen.get(s.step_index)===signature)continue;c.seen.set(s.step_index,signature);
+     if(c.seen.size>10000)c.seen.delete(c.seen.keys().next().value);
      const event={sessionId,step_index:s.step_index,created_at:s.created_at,status:s.status,source:s.source,type:s.type,tools,input_tokens:s.input_tokens??null,cache_read_tokens:s.cache_read_tokens??null,output_tokens:s.output_tokens??null,historical:c.offset-c.pending.length<=c.baselineSize};
-     this.emit("step",event);if(!event.historical&&tools.includes("ask_question"))this.emit("askUser",{sessionId,stepIndex:s.step_index,tools});
+     this.emit("step",event);if(!event.historical&&s.status==="DONE"&&tools.includes("ask_question"))this.emit("askUser",{sessionId,stepIndex:s.step_index,tools});
      if(s.status==="DONE")this.emit("turnDone",event);else if(s.status==="ERROR")this.emit("turnError",{sessionId,stepIndex:s.step_index,historical:event.historical});else if(s.status==="RUNNING")this.emit("turnRunning",{sessionId,stepIndex:s.step_index,historical:event.historical});
     }if(c.pending.length>4194304){c.pending=Buffer.alloc(0);c.discarding=true;}
    }}finally{fs.closeSync(fd);}

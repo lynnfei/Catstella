@@ -1,13 +1,16 @@
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;user-select:none;font-family:"Microsoft YaHei UI","Segoe UI",sans-serif}*{box-sizing:border-box}
 #widget{height:100%;display:flex;align-items:flex-end;justify-content:center;padding:0 20px 10px}
-.agy-art{flex:none}
+.agy-art{flex:none;top:var(--agy-shift-y,0px)}
+.agy-art[data-bubble-below="true"] .agy-bubble{bottom:auto;top:calc(100% + 54px);transform-origin:var(--agy-anchor) -48px}
+.agy-art[data-bubble-below="true"] .agy-bubble::after{bottom:auto;top:-27px}
+.agy-art[data-bubble-below="true"] .agy-bubble::before{bottom:auto;top:-48px}
 .agy-art{--agy-bubble-gap:54px;--agy-bubble-room:calc(100vh - var(--agy-width) - var(--agy-bubble-gap) - 16px)}
-.agy-art .agy-bubble{position:absolute;left:50%;bottom:calc(100% + var(--agy-bubble-gap));margin:0;transform:translateX(-50%);animation:none;width:316px;max-width:calc(100vw - 32px);min-height:min(202px,var(--agy-bubble-room));max-height:var(--agy-bubble-room);padding:27px 31px 19px}
+.agy-art .agy-bubble{position:absolute;left:50%;bottom:calc(100% + var(--agy-bubble-gap));margin:0;transform:translateX(-50%);animation:none;width:338px;max-width:calc(100vw - 32px);min-height:min(214px,var(--agy-bubble-room));max-height:var(--agy-bubble-room);padding:22px 33px 18px}
 .agy-art .agy-bubble[hidden],.agy-art [hidden]{display:none!important}
-.agy-art .agy-bubble__title{font-size:18px}.agy-art .agy-bubble__meta{font-size:10px;line-height:1.4;margin:4px 0}
-.agy-art .agy-bubble__title{position:static;flex:none}
+.agy-art .agy-bubble__title{font-size:clamp(15px,4.4vw,17.5px)}.agy-art .agy-bubble__meta{font-size:10px;line-height:1.4;margin:4px 0}
+.agy-art .agy-bubble__title{position:static;flex:none;margin-top:-2px;margin-bottom:2px}
 .agy-art .agy-bubble__title #title{display:block;max-width:min(100%,220px);margin-inline:auto;text-align:center;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.agy-art .agy-bubble__title #close{position:absolute;left:auto;right:14px;top:50%;transform:translateY(-50%);min-width:24px;min-height:24px;font-size:13px;color:#725598;z-index:1}
+.agy-art .agy-bubble__title #close{position:absolute;left:auto;right:11px;top:50%;transform:translateY(-50%);min-width:22px;min-height:22px;font-size:13px;color:#725598;z-index:1}
 .agy-bubble__body{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#bda7e7 transparent}
 .agy-bubble__body:focus-visible{outline:2px solid #a490ec;outline-offset:-2px;border-radius:8px}
 .agy-art .agy-bubble__value{font-size:38px}.agy-art #detail{font-size:12px;color:#697bac;margin-top:4px}
@@ -25,6 +28,8 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
 .agy-art .agy-bubble{opacity:var(--bubble-alpha);border:2px solid color-mix(in srgb,var(--bubble-tint) 72%,#8f6cd0);background:radial-gradient(circle at 18% 25%,color-mix(in srgb,#f8dcff 45%,var(--bubble-tint)) 0,transparent 30%),radial-gradient(circle at 85% 70%,color-mix(in srgb,#d8e5ff 40%,var(--bubble-tint)) 0,transparent 35%),linear-gradient(135deg,color-mix(in srgb,var(--bubble-tint) 22%,#fff),color-mix(in srgb,var(--bubble-tint) 85%,#fff) 55%,var(--bubble-tint));color:#6842a2;box-shadow:inset 0 0 20px #fff,0 0 16px #b58cff45,0 5px 18px #48317928}
 .agy-art .agy-bubble::before,.agy-art .agy-bubble::after{border-color:color-mix(in srgb,var(--bubble-tint) 72%,#8f6cd0);background:color-mix(in srgb,var(--bubble-tint) 88%,#fff);box-shadow:0 0 9px #c9a4ff80}
 .agy-art .agy-bubble__title{color:#7950b6;letter-spacing:1px;text-shadow:0 0 12px #d8b5ff}
+.agy-art .agy-bubble__title #title::before{content:'✦ ';color:#b991e2}
+.agy-art .agy-bubble__title #title::after{content:' ✧';color:#b991e2}
 .agy-art .agy-quota__percent,.agy-art .agy-bubble__value{color:#8851cd;background:linear-gradient(110deg,#6273ec,#b04fd0,#e687ce);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:none}
 .agy-art .agy-quota__track{height:9px;background:#d9c9ee;box-shadow:inset 0 1px 4px #7952a82c}
 .agy-art .agy-quota__fill{background:linear-gradient(90deg,#7778ff,#b47dff,#f1a5e6);box-shadow:0 0 10px #b381ff}

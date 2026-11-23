@@ -25,12 +25,11 @@
 .agy-art[data-state="success"] .agy-effect--sparkle { display: block; animation: agy-pop 720ms ease-out both; }
 .agy-art[data-state="warning"] .agy-motion,
 .agy-art[data-state="error"] .agy-motion { animation: agy-worry 3.6s ease-in-out infinite; }
-.agy-art[data-state="warning"] .agy-effect--tear,
-.agy-art[data-state="error"] .agy-effect--tear { display: block; animation: agy-tear 2.4s ease-in-out infinite; }
+.agy-art[data-alert-effect]:not([data-expression],[data-state="petting"],[data-state="success"]) .agy-effect--tear { display: block; animation: agy-tear 2.4s ease-in-out both; }
 .agy-art[data-state="pressed"] .agy-motion { transform: scale(1.018, .975); }
 .agy-art[data-state="release"] .agy-motion { animation: agy-rebound 560ms ease-out both; }
 .agy-art[data-state="petting"] .agy-motion { animation: agy-nuzzle 1.6s ease-in-out both; }
-.agy-art[data-state="petting"] .agy-effect--heart { display: block; animation: agy-heart 1.6s ease-out both; }
+.agy-art:is([data-state="petting"],[data-expression="proud"]) .agy-effect--heart { display: block; animation: agy-heart 1.6s ease-out both; }
 .agy-art[data-paused="true"] *, .agy-art[data-paused="true"] { animation-play-state: paused !important; }
 .agy-art .agy-bubble {
   position: relative; width: 296px; max-width: min(320px, calc(100vw - 48px));

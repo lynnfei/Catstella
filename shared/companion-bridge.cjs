@@ -17,6 +17,36 @@ const MIME_BY_EXT = {
   ".svg": "image/svg+xml"
 };
 
+let cachedMemosyneAdapter = undefined;
+
+function loadMemosyneAdapter(customAdapterPath) {
+  if (customAdapterPath) {
+    try {
+      if (fs.existsSync(customAdapterPath)) return require(customAdapterPath);
+    } catch {
+      return null;
+    }
+  }
+  if (cachedMemosyneAdapter !== undefined) return cachedMemosyneAdapter;
+  const candidates = [
+    process.env.MEMOSYNE_ADAPTER_PATH,
+    path.resolve(__dirname, "../../Projects/Memosyne/src/catstella-bridge-adapter.cjs"),
+    "D:\\Projects\\Memosyne\\src\\catstella-bridge-adapter.cjs"
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        cachedMemosyneAdapter = require(candidate);
+        return cachedMemosyneAdapter;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  cachedMemosyneAdapter = null;
+  return null;
+}
+
 function isAllowedOrigin(origin) {
   if (!origin) return true;
   if (typeof origin !== "string" || origin === "null") return false;
@@ -81,6 +111,7 @@ class CompanionBridgeServer {
     this.onWebUpdate = options.onWebUpdate || (() => {});
     this.onOpenSettings = options.onOpenSettings;
     this.portalNonce = this.onOpenSettings ? options.portalNonce || crypto.randomBytes(16).toString("hex") : null;
+    this.memosyneOptions = options.memosyneOptions || {};
 
     this.server = null;
     this.boundPort = null;
@@ -154,6 +185,27 @@ class CompanionBridgeServer {
       parsed = new URL(req.url || "/", "http://127.0.0.1");
     } catch {
       this.sendJson(req, res, 400, { ok: false, error: "bad_url" });
+      return;
+    }
+
+    if (parsed.pathname.startsWith("/api/memory/")) {
+      setCorsHeaders(req, res);
+      const adapter = loadMemosyneAdapter(this.memosyneOptions.adapterPath);
+      if (!adapter || typeof adapter.dispatchMemosyneCompanionRequest !== "function") {
+        this.sendJson(req, res, 503, { ok: false, error: "memosyne_unavailable" });
+        return;
+      }
+      Promise.resolve(adapter.dispatchMemosyneCompanionRequest(req, res, parsed, this.memosyneOptions))
+        .then((handled) => {
+          if (!handled && !res.writableEnded) {
+            this.sendJson(req, res, 404, { ok: false, error: "memory_route_not_found" });
+          }
+        })
+        .catch((err) => {
+          if (!res.writableEnded) {
+            this.sendJson(req, res, 500, { ok: false, error: String(err?.message || err) });
+          }
+        });
       return;
     }
 
@@ -258,6 +310,20 @@ class CompanionBridgeServer {
 
           if (body.patch && typeof body.patch === "object" && !Array.isArray(body.patch)) {
             this.onPatch(body.patch);
+          }
+
+          if (body.completedTurn && typeof body.completedTurn === "object") {
+            const adapter = loadMemosyneAdapter(this.memosyneOptions.adapterPath);
+            if (adapter && typeof adapter.getMemosyneBridgeHandler === "function") {
+              adapter.getMemosyneBridgeHandler(this.memosyneOptions)
+                .then(({ store }) => {
+                  const { userPrompt, modelResponse, source = "Web" } = body.completedTurn;
+                  if (userPrompt && modelResponse) {
+                    return store.ingestTurnAndExtract({ userPrompt, modelResponse, source });
+                  }
+                })
+                .catch(() => {});
+            }
           }
 
           const changed =

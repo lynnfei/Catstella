@@ -194,7 +194,7 @@
 
             <div class="card">
               <h3>可读性</h3>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸可见度</b><small>建议 18% ~ 28%</small></span><output id="dream-opacity-value">22%</output></div><input id="dream-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="22"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸可见度</b><small>建议 18% ~ 28%；松手应用</small></span><output id="dream-opacity-value">22%</output></div><input id="dream-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="22"></div>
               <div class="row column"><div class="row-head"><span class="row-text"><b>背景遮罩浓度</b><small>建议 25% ~ 35%，让代码与对话保持最佳可读性</small></span><output id="dream-scrim-value">25%</output></div><input id="dream-scrim" class="damped-range" type="range" min="0" max="60" step="1" value="25"></div>
               <label class="row"><span class="row-text"><b>磨砂玻璃卡片</b><small>给回复文字加一层高清晰度的毛玻璃底</small></span><input id="dream-output-mode" type="checkbox"></label>
             </div>
@@ -222,12 +222,13 @@
               <h3>主题工坊 <span class="chip">本地创作</span></h3>
               <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸不透明度</b><small>与配色组合保存为主题，可反复应用</small></span><output id="atelier-opacity-value">88%</output></div><input id="atelier-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="88"></div>
               <div class="atelier-scene" id="atelier-preview" data-palette="violet" role="img" aria-label="主题预览示意">
-                <div class="atelier-base"><aside>✦</aside><div class="atelier-page"><span class="atelier-brand">Gemini</span><div class="atelier-welcome"><strong>今天想做些什么？</strong><div class="atelier-shortcuts"><span>探索灵感</span><span>整理思路</span><span>润色文字</span></div></div><div class="atelier-reading"><span class="atelier-prompt">帮我整理今天的计划</span><p>先挑一件最重要的事，把它拆成可以马上开始的小步骤。</p><b class="atelier-input">＋  问问 Gemini</b></div></div>
+                <div class="atelier-base"><aside>✦</aside><div class="atelier-page"><span class="atelier-brand">Gemini</span><div class="atelier-welcome"><strong>今天想做些什么？</strong><div class="atelier-shortcuts"><span>探索灵感</span><span>整理思路</span><span>润色文字</span></div></div><div class="atelier-user"><span class="atelier-prompt">帮我整理今天的计划</span></div><div class="atelier-reading"><p>先挑一件最重要的事，把它拆成可以马上开始的小步骤。</p><b class="atelier-input">＋  问问 Gemini</b></div></div></div>
                 <span class="atelier-hint" id="atelier-hint">星轨紫 · 壁纸不透明度 88%</span>
-                <div class="atelier-bubble">本喵在呢喵～</div>
+
               </div>
-              <div class="row"><span class="row-text"><b>气泡颜色</b><small>桌宠台词气泡底色，改动即时生效</small></span><input id="atelier-bubble-tint" type="color" value="#eee6ff" aria-label="气泡颜色"></div>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>气泡不透明度</b><small>随主题一起保存</small></span><output id="atelier-bubble-opacity-value">98%</output></div><input id="atelier-bubble-opacity" class="damped-range" type="range" min="30" max="100" step="1" value="98"></div>
+              <div class="row"><span class="row-text"><b>对话气泡颜色</b><small>反重力内用户消息与模型回答的背景，文字保持清晰</small></span><input id="atelier-chat-tint" type="color" value="#181224" aria-label="对话气泡颜色"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>用户气泡不透明度</b><small>拖动预览，松手应用；随主题一起保存</small></span><output id="atelier-chat-opacity-value">100%</output></div><input id="atelier-chat-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="100"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>AI 回复背景不透明度</b><small>拖动预览，松手应用；透明模式默认 0%，毛玻璃模式默认 22%</small></span><output id="atelier-reply-opacity-value">0%</output></div><input id="atelier-reply-opacity" type="range" min="0" max="100" step="1" value="0"></div>
               <div class="row"><span class="row-text"><b>配色</b></span><div class="atelier-swatches" id="atelier-swatches">
                 <button type="button" class="atelier-swatch active" data-palette="violet" data-label="星轨紫" aria-label="星轨紫"><i style="background:linear-gradient(135deg,#8b68e0,#24193c)"></i></button>
                 <button type="button" class="atelier-swatch" data-palette="pink" data-label="梦幻粉" aria-label="梦幻粉"><i style="background:linear-gradient(135deg,#f59cc6,#3b1830)"></i></button>
@@ -274,6 +275,39 @@
           <!-- 用量 -->
           <section class="page" data-page="quota">
             <h2 class="page-title">用量</h2>
+            <div class="card">
+              <h3>桌宠旁侧用量挂件（耐力计） <span class="chip">实时热更新</span></h3>
+              <label class="row"><span class="row-text"><b>显示旁侧用量挂件</b><small>像小小耐力计一样贴在桌宠空旷一侧，完整气泡展开时自动让位渐隐。</small></span><input id="sideQuotaEnabled" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>挂件样式</b><small>默认星轨弦月弧随左右贴边自动镜像；空间极窄推荐能量柱。</small></span>
+                <select id="sideQuotaVariant">
+                  <option value="arc">星轨弦月弧（默认 · 原神风弧形）</option>
+                  <option value="ring">星晶双环（塞尔达风双圈）</option>
+                  <option value="bar">星辉能量柱（超窄省空间）</option>
+                </select></label>
+              <label class="row"><span class="row-text"><b>挂件与桌宠距离</b><small>微调旁侧挂件到猫猫身侧的留白间距</small></span>
+                <select id="sideQuotaDistance">
+                  <option value="compact">紧凑</option>
+                  <option value="normal">普通（默认）</option>
+                  <option value="relaxed">松弛</option>
+                </select></label>
+              <label class="row"><span class="row-text"><b>挂件大小</b><small>克制范围内的尺寸微调，自动按桌宠缩放等比缩放</small></span>
+                <select id="sideQuotaSize">
+                  <option value="sm">小（0.86×）</option>
+                  <option value="md">中（标准）</option>
+                  <option value="lg">大（1.14×）</option>
+                </select></label>
+              <label class="row"><span class="row-text"><b>计量口径</b><small>支持反重力同款「剩余 XX%」，或 Web 正向「已用 XX%」递增</small></span>
+                <select id="sideQuotaMode">
+                  <option value="remaining">剩余用量 %（反重力同款 · 泄能感）</option>
+                  <option value="used">已用用量 %（Web 正向统计 · 充能感）</option>
+                </select></label>
+              <label class="row"><span class="row-text"><b>挂件数据源</b><small>自动模式会在 Antigravity 未读出时平滑回落到 Gemini Web 伴侣额度</small></span>
+                <select id="sideQuotaSource">
+                  <option value="auto">自动优先活跃端（AGY 优先 / 回落 Web）</option>
+                  <option value="agy">Antigravity 客户端额度</option>
+                  <option value="web">Gemini Web 伴侣额度</option>
+                </select></label>
+            </div>
             <div class="card">
               <h3>双端用量实时看板 <span class="sync-pill offline" id="quota-bridge-pill">⚪ Web 未同步</span></h3>
               <div class="dual-quota-grid">

@@ -45,6 +45,7 @@ internal static class ForegroundHost {
     [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hook);
     [StructLayout(LayoutKind.Sequential)] private struct Message {public IntPtr Window;public uint Id;public UIntPtr WParam;public IntPtr LParam;public uint Time;public Point Point;public uint Private;}
     [DllImport("user32.dll")] private static extern bool PeekMessage(out Message msg,IntPtr w,uint first,uint last,uint remove);
+    [DllImport("user32.dll",SetLastError=true)] private static extern uint MsgWaitForMultipleObjectsEx(uint count,IntPtr[] handles,uint milliseconds,uint wakeMask,uint flags);
     private static volatile bool stopping;
     private static bool IsHost(IntPtr window) {
         try {
@@ -85,6 +86,8 @@ internal static class ForegroundHost {
         try {
             using (var parent = Process.GetProcessById(parentId)) {
                 IntPtr lastHost = IntPtr.Zero,previousForeground=IntPtr.Zero; string previous = null;
+                var hostValidation=new Stopwatch();
+                var parentHandles=new IntPtr[]{parent.Handle};
                 IntPtr trackedHost=IntPtr.Zero;Point hostPoint=new Point();var heartbeat=Stopwatch.StartNew();var layerHeartbeat=Stopwatch.StartNew();bool hostWasAvailable=false;int restoreGeneration=0;
                 Action followHost=delegate(){
                     if(widget==IntPtr.Zero||trackedHost==IntPtr.Zero||IsIconic(trackedHost))return;
@@ -95,8 +98,11 @@ internal static class ForegroundHost {
                     }
                 };
                 WinEvent locationChanged=delegate(IntPtr hook,uint ev,IntPtr w,int obj,int child,uint thread,uint time){if(w==trackedHost&&obj==0)followHost();};
-                IntPtr locationHook=widget==IntPtr.Zero?IntPtr.Zero:SetWinEventHook(0x800B,0x800B,IntPtr.Zero,locationChanged,0,0,0);
-                int pollInterval = 16;
+                IntPtr locationHook=IntPtr.Zero;
+                // Focus and location notifications wake the message wait immediately;
+                // stationary windows do not need a 60 Hz cross-process polling loop.
+                WinEvent focusChanged=delegate(IntPtr hook,uint ev,IntPtr w,int obj,int child,uint thread,uint time){};
+                IntPtr focusHook=SetWinEventHook(3,3,IntPtr.Zero,focusChanged,0,0,0);
                 bool available = false;
                 bool lastWantTop = false;
                 string foregroundKind = "unknown";
@@ -106,14 +112,29 @@ internal static class ForegroundHost {
                     try {
                         IntPtr window = GetForegroundWindow(); uint pid;
                         GetWindowThreadProcessId(window, out pid);
+                        bool foregroundChanged=window!=previousForeground;
                         if(window!=previousForeground||foregroundKind=="unknown")foregroundKind=ForegroundKind(window,pid,parentId);
-                        if(widget!=IntPtr.Zero){
+                        if(foregroundChanged){
                             IntPtr foregroundHost=GetAncestor(window,3);
                             if(IsHost(foregroundHost))lastHost=foregroundHost;
+                        }
+                        // PID/name discovery is expensive. Revalidate at most once
+                        // per second, or immediately after the tracked HWND dies.
+                        if(!hostValidation.IsRunning||hostValidation.ElapsedMilliseconds>=1000||(lastHost!=IntPtr.Zero&&!IsWindow(lastHost))){
                             if(!IsHost(lastHost))lastHost=FindHost();
-                            if(trackedHost!=lastHost){trackedHost=lastHost;hostPoint=new Point();ClientToScreen(lastHost,ref hostPoint);restoreGeneration++;}
+                            hostValidation.Restart();
+                        }
+                        if(widget!=IntPtr.Zero){
+                            if(trackedHost!=lastHost){
+                                if(locationHook!=IntPtr.Zero){UnhookWinEvent(locationHook);locationHook=IntPtr.Zero;}
+                                trackedHost=lastHost;hostPoint=new Point();ClientToScreen(lastHost,ref hostPoint);restoreGeneration++;
+                                if(trackedHost!=IntPtr.Zero){
+                                    uint trackedPid;uint trackedThread=GetWindowThreadProcessId(trackedHost,out trackedPid);
+                                    // Do not subscribe to every application's accessibility/location events.
+                                    if(trackedPid!=0&&trackedThread!=0)locationHook=SetWinEventHook(0x800B,0x800B,IntPtr.Zero,locationChanged,trackedPid,trackedThread,0);
+                                }
+                            }
                             if(GetWindow(widget,4)!=IntPtr.Zero)SetWindowLongPtr(widget,-8,IntPtr.Zero);
-                            bool foregroundChanged=window!=previousForeground;
                             previousForeground=window;
                             available=lastHost!=IntPtr.Zero&&IsWindowVisible(lastHost)&&!IsIconic(lastHost);
                             uint hostPid=0;if(available)GetWindowThreadProcessId(lastHost,out hostPid);
@@ -143,23 +164,24 @@ internal static class ForegroundHost {
                             hostWasAvailable=available;
                             if(available)followHost();
                             bounds=available?Bounds(lastHost):null;kind=bounds==null?"other":"host";
-                            pollInterval = available ? 16 : 32;
 
                         }else{
                             previousForeground=window;
-                            IntPtr foregroundHost=GetAncestor(window,3);
-                            if(IsHost(foregroundHost))lastHost=foregroundHost;
-                            if(!IsHost(lastHost))lastHost=FindHost();
                             bounds=Bounds(lastHost);kind=bounds==null?"other":(pid==parentId?"self":"host");
                         }
                     } catch { lastHost = IntPtr.Zero; }
-                    pollInterval = available ? 16 : 32;
                     string message = "{\"foregroundKind\":\"" + foregroundKind + "\",\"restoreGeneration\":" + restoreGeneration + ",\"kind\":\"" + kind + "\",\"bounds\":" + (bounds ?? "null") + ",\"attached\":" + ((widget!=IntPtr.Zero&&lastHost!=IntPtr.Zero)?"true":"false") + ",\"widgetVisible\":" + ((widget!=IntPtr.Zero&&IsWindowVisible(widget))?"true":"false") + ",\"hostId\":\"" + lastHost.ToInt64() + "\",\"nativeFollowing\":" + ((widget!=IntPtr.Zero)?"true":"false") + "}";
                     if (message != previous || heartbeat.ElapsedMilliseconds>=1000) { Console.WriteLine(message); Console.Out.Flush(); previous = message; heartbeat.Restart(); }
-                } while (!stopping && !parent.WaitForExit(pollInterval));
+                    if(stopping)break;
+                    uint waited=MsgWaitForMultipleObjectsEx(1,parentHandles,100,0x04FF,4);
+                    if(waited==0)break; // Parent exited.
+                    if(waited==0xFFFFFFFF)Thread.Sleep(100); // Never spin if the wait fails.
+                } while (!stopping);
                 if(locationHook!=IntPtr.Zero)UnhookWinEvent(locationHook);
+                if(focusHook!=IntPtr.Zero)UnhookWinEvent(focusHook);
                 if(widget!=IntPtr.Zero&&IsWindow(widget))SetWindowPos(widget,new IntPtr(-2),0,0,0,0,0x0013);
                 GC.KeepAlive(locationChanged);
+                GC.KeepAlive(focusChanged);
                 if(widget!=IntPtr.Zero&&IsWindow(widget))SetWindowLongPtr(widget,-8,IntPtr.Zero);
             }
         } catch { }

@@ -9,6 +9,7 @@
     constructor(now = () => performance.now()) {
       this.now = now;
       this.taps = 0;
+      this.sessionStart = null;
       this.lastSpoken = -Infinity;
       this.previousCategory = null;
     }
@@ -16,11 +17,22 @@
     next(counts, available) {
       const {total,today} = counts || {};
       if (!Number.isSafeInteger(total) || !Number.isSafeInteger(today) || today < 1 || total < today) return null;
-      this.taps = Math.min(4,this.taps + 1);
       const now = this.now();
+      if (this.sessionStart === null) this.sessionStart = now;
+      this.taps = Math.min(12,this.taps + 1);
       if (!available || now - this.lastSpoken < 20_000) return null;
       const milestone = total === 50 || total >= 100 && total % 100 === 0;
-      if (!milestone && this.taps < (this.previousCategory ? 4 : 3)) return null;
+      if (!milestone) {
+        if (this.previousCategory === null) {
+          // Do not blurt out daily pat counts after only a couple of early taps on Day 1;
+          // wait until the user has actively patted for a sustained stretch.
+          const elapsed = now - this.sessionStart;
+          const sustained = (today >= 12 && this.taps >= 12) || (elapsed >= 15_000 && today >= 8 && this.taps >= 6);
+          if (!sustained) return null;
+        } else if (this.taps < 4) {
+          return null;
+        }
+      }
       const category = milestone || this.previousCategory === "petDaily" ? "petReflection" : "petDaily";
       this.previousCategory = category;
       this.lastSpoken = now;

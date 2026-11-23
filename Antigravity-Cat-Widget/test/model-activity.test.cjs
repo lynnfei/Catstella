@@ -28,6 +28,36 @@ test("finished window still wins over nothing but not over waiting",()=>{
  assert.equal(snap.kind,"model-done");
  assert.ok(snap.expiresAt>1000);
 });
+test("waiting is session-scoped and late tool updates cannot undo a user reply",()=>{
+ const m=new ModelActivity();
+ m.observe(20,['ask_question'],'a');m.setWaiting(20,'a');
+ m.observe(200,['read_file'],'b');
+ assert.equal(m.snapshot().kind,'model-waiting');
+ assert.equal(m.clearWaiting('b',201),false);
+ m.begin('b:202',202);m.observe(202,['edit_file'],'b');
+ assert.equal(m.snapshot().waitingUser,false);
+ assert.deepEqual(m.snapshot().tools,['edit_file']);
+ m.end('b:202',202,'model-done');
+ assert.equal(m.snapshot().kind,'model-waiting');
+ m.clearWaiting('a',21);
+ assert.equal(m.setWaiting(20,'a'),false);
+ m.observe(22,['run_command'],'a');
+ assert.equal(m.observe(19,['ask_question'],'a'),false);
+ assert.equal(m.setWaiting(19,'a'),false);
+ assert.notEqual(m.snapshot()?.kind,'model-waiting');
+});
+test("tool-only transcript updates are emitted without inventing waits for failed questions",t=>{
+ const dir=tmp();t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'transcript_full.jsonl');fs.writeFileSync(file,'');
+ const a=new TranscriptAdapter({filePath:file}),steps=[],asks=[];
+ a.on('step',s=>steps.push(s));a.on('askUser',s=>asks.push(s));a.scan();
+ const step={source:'MODEL',type:'PLANNER_RESPONSE',step_index:1,status:'RUNNING'};
+ fs.appendFileSync(file,JSON.stringify(step)+'\n');a.scan();
+ fs.appendFileSync(file,JSON.stringify({...step,tool_calls:[{name:'read_file'}]})+'\n');a.scan();
+ assert.deepEqual(steps.at(-1).tools,['read_file']);assert.equal(steps.length,2);
+ fs.appendFileSync(file,JSON.stringify({...step,status:'ERROR',tool_calls:[{name:'ask_question'}]})+'\n');a.scan();
+ assert.equal(asks.length,0);
+});
 test("transcript parser emits tool names, askUser and userInput events without historical replay",()=>{
  const dir=tmp(),file=path.join(dir,"transcript_full.jsonl"),events={step:[],askUser:[],userInput:[]};
  const planner={step_index:11,source:"MODEL",type:"PLANNER_RESPONSE",status:"RUNNING",created_at:new Date().toISOString()};

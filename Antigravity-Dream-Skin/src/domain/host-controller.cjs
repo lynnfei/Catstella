@@ -1,5 +1,12 @@
 const { discover, Cdp } = require("../../../shared/host.cjs");
 const { installTheme } = require("../host/theme.cjs");
+const { appearancePayload } = require("./theme-loader.cjs");
+const appearanceKeys=new Set(['chatTint','chatOpacity','replyOpacity','opacity','outputMode']);
+function sameWallpaperSettings(signature,settings){
+ if(!signature)return false;
+ const previous=JSON.parse(signature),keys=new Set([...Object.keys(previous),...Object.keys(settings)]);
+ return [...keys].every(key=>appearanceKeys.has(key)||JSON.stringify(previous[key])===JSON.stringify(settings[key]));
+}
 class HostController {
   constructor(loader, onStatus, options = {}) {
     this.owner = options.owner || require("node:crypto").randomUUID();
@@ -35,6 +42,13 @@ class HostController {
       await this.runTick(revision);
     } while (!this.stopping && revision !== this.revision);
   }
+  async applyTheme(client,current,settings,previousSignature){
+    if(current.themed&&current.appearance&&sameWallpaperSettings(previousSignature,settings)){
+      return client.evaluate('window.__agyDreamSkinV2.updateAppearance('+JSON.stringify(appearancePayload(settings))+')');
+    }
+    const payload={...this.loader.payload(settings),owner:this.owner};
+    return client.evaluate('('+installTheme.toString()+')('+JSON.stringify(payload)+')');
+  }
   async syncSecondaryTargets(targets, settings, signature, revision) {
     if (!Array.isArray(targets) || targets.length <= 1) {
       for (const [url, entry] of this.extraClients.entries()) {
@@ -57,7 +71,7 @@ class HostController {
       }
       try {
         const cur = await entry.client.evaluate(
-          "({ready:document.readyState,themed:!!window.__agyDreamSkinV2?.status().applied,owner:window.__agyDreamSkinV2?.owner})"
+          "({ready:document.readyState,themed:!!window.__agyDreamSkinV2?.status().applied,owner:window.__agyDreamSkinV2?.owner,appearance:typeof window.__agyDreamSkinV2?.updateAppearance==='function'})"
         );
         if (revision !== this.revision || this.stopping) return;
         if (!settings.enabled) {
@@ -69,8 +83,7 @@ class HostController {
         }
         if (cur.themed && cur.owner !== this.owner) continue;
         if (!cur.themed || entry.signature !== signature) {
-          const payload = { ...this.loader.payload(settings), owner: this.owner };
-          await entry.client.evaluate("(" + installTheme.toString() + ")(" + JSON.stringify(payload) + ")");
+          await this.applyTheme(entry.client,cur,settings,entry.signature);
           entry.signature = signature;
         }
       } catch {
@@ -106,7 +119,7 @@ class HostController {
         } catch {}
       }
       const current = await this.client.evaluate(
-        "({ready:document.readyState,themed:!!window.__agyDreamSkinV2?.status().applied,owner:window.__agyDreamSkinV2?.owner})"
+        "({ready:document.readyState,themed:!!window.__agyDreamSkinV2?.status().applied,owner:window.__agyDreamSkinV2?.owner,appearance:typeof window.__agyDreamSkinV2?.updateAppearance==='function'})"
       );
       if (revision !== this.revision || this.stopping) return;
       if (!settings.enabled) {
@@ -129,8 +142,7 @@ class HostController {
       }
       const signature = JSON.stringify(settings);
       if (!current.themed || signature !== this.signature) {
-        const payload = { ...this.loader.payload(settings), owner: this.owner };
-        const result = await this.client.evaluate("(" + installTheme.toString() + ")(" + JSON.stringify(payload) + ")");
+        const result = await this.applyTheme(this.client,current,settings,this.signature);
         this.signature = signature;
         this.report({
           connected: true, ...result,

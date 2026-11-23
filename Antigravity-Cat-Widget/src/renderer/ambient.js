@@ -1,7 +1,7 @@
 (function (root) {
   class AmbientChatter {
-    constructor({ allowed, speak, delay = () => (12 + Math.random() * 13) * 60_000 }) {
-      Object.assign(this, { allowed, speak, delay, enabled: false, revision: 0 });
+    constructor({ allowed, speak, pick, delay = () => (12 + Math.random() * 13) * 60_000 }) {
+      Object.assign(this, { allowed, speak, pick, delay, enabled: false, revision: 0, lastLine: null });
     }
     configure(enabled) {
       if (this.enabled === enabled) return;
@@ -16,7 +16,13 @@
         let allowed = false;
         try { allowed = await this.allowed(); } catch {}
         if (revision !== this.revision) return;
-        if (allowed) this.speak();
+        if (allowed) {
+          const picked = AmbientChatter.pickLine !== defaultPickLine
+            ? AmbientChatter.pickLine(this.lastLine)
+            : (typeof this.pick === 'function' ? this.pick(this.lastLine) : defaultPickLine(this.lastLine));
+          this.lastLine = typeof picked === 'object' && picked ? picked.text : picked;
+          this.speak(picked);
+        }
         this.reset(allowed ? undefined : 60_000);
       }, wait ?? this.delay());
     }
@@ -29,10 +35,11 @@
     '路过一颗小行星，顺手给它起名叫糯米。',
     '刚整理了猫耳朵，灵感的接收信号满格。'
   ];
-  AmbientChatter.pickLine = previous => {
+  function defaultPickLine(previous) {
     const pool = lines.filter(line => line !== previous);
     return pool[Math.floor(Math.random() * pool.length)];
-  };
+  }
+  AmbientChatter.pickLine = defaultPickLine;
   if (typeof module === 'object' && module.exports) module.exports = AmbientChatter;
   else root.CatstellaChatter = AmbientChatter;
 })(globalThis);

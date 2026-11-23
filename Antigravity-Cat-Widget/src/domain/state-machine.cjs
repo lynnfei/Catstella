@@ -2,7 +2,7 @@
 // Strictly decoupled from visual rendering; purely functional and deterministic.
 
 const VALID_PERSISTENT_STATES = new Set(["idle", "thinking", "warning", "error", "offline"]);
-const VALID_TRANSIENT_STATES = new Set(["pressed", "release", "petting", "success"]);
+const VALID_TRANSIENT_STATES = new Set(["pressed", "release", "petting", "success", "error"]);
 
 class WidgetStateMachine {
   constructor(initialState = "idle") {

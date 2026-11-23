@@ -7,7 +7,12 @@ const {ForegroundMonitor,hostPlacement,characterPlacement,widgetLayout,placeDrag
 const devGateway=null;
 const {CompanionBridgeServer}=require("../../../shared/companion-bridge.cjs");
 const {createOnlineActions}=require("./online.cjs");
+const {selectWallpaper}=require("../../../Antigravity-Dream-Skin/src/domain/wallpaper-selection.cjs");
 const {CompanionVisibility}=require("../domain/companion-visibility.cjs");
+const {isBoundsVisibleOnDisplays,hasUsableDisplay,reconcileBoundsForDisplays,shouldWindowBeVisible}=require("../domain/window-recovery.cjs");
+const {MouseRouting}=require("../domain/mouse-routing.cjs");
+const {PreviewCache}=require("../domain/preview-cache.cjs");
+const {VisualWatchdog}=require("./visual-watchdog.cjs");
 // 星语皮肤并入同一实例：设置/壁纸/宿主主题化全部由挂件主进程托管，全局只保留一个托盘图标。
 const {DreamSkinSettings,legacyRotatePatch}=require("../../../Antigravity-Dream-Skin/src/domain/settings.cjs"),{WallpaperManager}=require("../../../Antigravity-Dream-Skin/src/domain/theme-loader.cjs"),{HostController}=require("../../../Antigravity-Dream-Skin/src/domain/host-controller.cjs"),{LocalizationController}=require("../../../Antigravity-Dream-Skin/src/domain/localization-controller.cjs");
 let localizationDict={};
@@ -33,15 +38,48 @@ else if(process.argv.includes("--quit")){
  try{if(require("node:fs").existsSync(rtFile)){const rt=JSON.parse(require("node:fs").readFileSync(rtFile,"utf8"));if(rt?.port&&rt?.adminToken){const req=require("node:http").request({hostname:"127.0.0.1",port:rt.port,path:"/admin/shutdown",method:"POST",headers:{"x-catstella-token":rt.adminToken,"Content-Length":"2"},timeout:800},()=>app.quit());req.on("error",()=>app.quit());req.end("{}");setTimeout(()=>app.quit(),900);}else app.quit();}else app.quit();}catch{app.quit();}
 }
 else{
- let quitting=false,shutdownDaemonOnQuit=false,recoveryTimer,visualTimer,visualChecking=false,blankFrames=0,visualCheckInterval=15000,uptimeCheckTimer,bridgeMonitorTimer,updateCheckTimer,initialShowTimer;
- const recoveryLog=reason=>{try{require("node:fs").appendFileSync(path.join(dataDir,"recovery.log"),new Date().toISOString()+" "+reason+"\n");}catch{}};
+ let quitting=false,suspended=false,screenLocked=false,shutdownDaemonOnQuit=false,recoveryTimer,visualTimer,bridgeMonitorTimer,updateCheckTimer,initialShowTimer;
+ const recoveryLog=reason=>{
+  try{
+   const fs=require("node:fs"),file=path.join(dataDir,"recovery.log");
+   fs.mkdirSync(dataDir,{recursive:true});
+   if(fs.existsSync(file)&&fs.statSync(file).size>256*1024)fs.renameSync(file,file+".1");
+   fs.appendFileSync(file,`${new Date().toISOString()} pid=${process.pid} ${reason}\n`);
+  }catch{}
+ };
+ let quitReason="application";
+ recoveryLog(`start parent=${process.ppid}`);
+ process.on("uncaughtExceptionMonitor",(error,origin)=>recoveryLog(`uncaught ${origin} ${error?.name||"Error"} ${error?.code||""}`));
+ app.on("child-process-gone",(_event,details)=>{
+  recoveryLog(`child-gone type=${details.type} reason=${details.reason} code=${details.exitCode}`);
+  if(details?.type==="GPU"&&!quitting&&win&&!win.isDestroyed()){
+   setTimeout(()=>{
+    if(quitting||!win||win.isDestroyed())return;
+    win.webContents.send("widget:force-repaint");
+    win.webContents.invalidate();
+    if(!settings.get("hostWindowOnly"))applyStandaloneTopmost(true);
+   },250);
+  }
+ });
+ app.on("quit",(_event,code)=>recoveryLog(`exit code=${code} reason=${quitReason}`));
+ const quit=reason=>{quitReason=reason;app.quit();};
  // BYOK Highest Startup Priority: bind/handshake gateway BEFORE UI rendering and Dream Skin injection.
  const explicitModelsPath=process.argv.find(a=>a.startsWith("--models-path="))?.slice(14);
  const installRoot=[path.resolve(__dirname,"../../../../.."),path.resolve(__dirname,"../../../.."),path.resolve(__dirname,"../../..")].find(d=>require("node:fs").existsSync(path.join(d,".starsuite-install")))||path.resolve(__dirname,"../../..");
  const modelsFilePath=explicitModelsPath||(explicitDataDir?path.join(explicitDataDir,".catstella","models.json"):devGateway?.defaultModelsPath());
  const byokGateway=devGateway?new devGateway.GatewayCoordinator({filePath:modelsFilePath,installRoot,argv:process.argv,env:process.env}):null;
  const byokHandshake=byokGateway?.available?byokGateway.ensureReady().catch(err=>{recoveryLog("byok-handshake-failed "+err.message);return{available:true,ready:false};}):Promise.resolve({available:false,ready:false});
- let win,tray,panel,source={online:false,source:"正在读取本机日志",files:0},saveTimer,displayScale=null,hostArea=null,hostLayout=null,facing="right",dockSide="",artShift=0,dragPlacement=null;
+ let win,tray,panel,source={online:false,source:"正在读取本机日志",files:0},saveTimer,displayScale=null,hostArea=null,hostLayout=null,facing="right",dockSide="",artShift=0,artShiftY=0,dragPlacement=null;
+ const visualWatchdog=new VisualWatchdog({
+  window:()=>win,
+  eligible:target=>!quitting&&!suspended&&!screenLocked&&!dragPlacement&&target&&!target.isDestroyed()&&target.isVisible()&&!target.isMinimized()&&(!settings.get("hostWindowOnly")||!!hostArea),
+  recover:(target,reason)=>{recoveryLog(`visual-watchdog-recreate reason=${reason}`);target.destroy();}
+ });
+ const mouseRouting=new MouseRouting({
+  window:()=>win,screen,clickThrough:()=>settings.get("clickThrough"),dragging:()=>!!dragPlacement,
+  onIgnored:target=>{if(target&&!target.isDestroyed()&&!target.webContents.isDestroyed())target.webContents.send("widget:mouse-left");},
+  onEntered:(target,coords)=>{if(target&&!target.isDestroyed()&&!target.webContents.isDestroyed())target.webContents.send("widget:mouse-entered",coords);}
+ });
  const noHost=isolatedDev?{discover:async()=>null}:{};
  const foreground=new ForegroundMonitor(),quotaAdapter=new HostQuotaAdapter(noHost);
  const startForeground=handle=>{if(!isolatedDev)foreground.start(handle);};
@@ -49,6 +87,13 @@ else{
  const dialogue=require("../../assets/dialogue/zh-CN.json");
  const running=new (require("../domain/model-activity.cjs").ModelActivity)();
  const settings=new SettingsManager(path.join(dataDir,"settings.json")),ledger=new UsageLedger({storagePath:path.join(dataDir,"usage-v2.json")}),sm=new WidgetStateMachine("offline"),adapter=new TranscriptAdapter(isolatedDev?{appDataDir:path.join(dataDir,"transcripts")}:{}),audio=new AudioManager();
+ function saveUsage(retry=true){
+  clearTimeout(saveTimer);
+  try{ledger.save();}catch(error){
+   recoveryLog(`usage-save-failed ${error.code||error.name}`);
+   if(retry&&!quitting)saveTimer=setTimeout(saveUsage,15000);
+  }
+ }
  const validPatCount=value=>Number.isSafeInteger(value)&&value>=0?value:0;
  let headPatTotal=validPatCount(settings.get("headPatTotal")),interactionSaveTimer,bubbleDirty=false;
  let headPatDay=settings.get("headPatDay"),headPatToday=validPatCount(settings.get("headPatToday"));
@@ -76,8 +121,8 @@ else{
  const readSeed=relative=>require("node:fs").promises.readFile(path.join(onlineSeed,relative));
  const bundled={catalog:async()=>{const data=JSON.parse(await readSeed("catalog.json"));return {schema:1,items:data.items.filter(item=>item.pack?.id==="moriyama-catgirl-pack")};},
   file:async relative=>new Response(await readSeed(relative))};
- const online=createOnlineActions({dataDir,wallpaperDir:skinManager.userDir,characterDir,bundled,fetcher:isolatedDev?async()=>{throw Error("Network disabled in isolated source test");}:(...args)=>net.fetch(...args),
-  onInstalled:kind=>{if(kind==="character")cachedCharacterPacks=null;else cachedWallpapers=null;publish();},version:require("../../../package.json").version,settings,nativeImage,shell,apply,onCheck:result=>{
+ const online=createOnlineActions({dataDir,wallpaperDir:skinManager.userDir,characterDir,bundled,getDreamSkin:()=>skinSettings.getAll(),getFallbackWallpaper:()=>skinManager.listPacks().find(p=>p.file&&!p.id.startsWith("online-")),fetcher:isolatedDev?async()=>{throw Error("Network disabled in isolated source test");}:(...args)=>net.fetch(...args),
+  onInstalled:kind=>{previewCache.clear();if(kind==="character"){cachedCharacterPacks=null;cachedArtVersion=null;lastArtScan=0;}else cachedWallpapers=null;publish();},version:require("../../../package.json").version,settings,nativeImage,shell,apply,onCheck:result=>{
   const next=result.status==="available"?result:null;
   if(next?.latest!==availableUpdate?.latest){availableUpdate=next;updateMenu();}
  }});
@@ -86,6 +131,7 @@ else{
  const WALLPAPER_TITLES={"01_chibi_star_16_9.jpg":"星语星空 · Q版 Stella","02_halloween_duo_16_9.jpg":"万圣双子 · 萌宠同框","03_catgirl_witch_16_9.jpg":"星空大魔女 · 骑行法杖"};
  let availableUpdate=null;
  let cachedCharacterPacks=null,cachedWallpapers=null,lastPackScan=0,lastWallScan=0;
+ const previewCache=new PreviewCache(nativeImage);
  const getCharacterPacks=()=>{
   const now=Date.now();if(cachedCharacterPacks&&now-lastPackScan<15000)return cachedCharacterPacks;
   const fs=require("node:fs");
@@ -101,7 +147,7 @@ else{
      const manifest=JSON.parse(fs.readFileSync(path.join(dir,"manifest.json"),"utf8"));
      const idle=path.join(dir,"frames","idle.png");
      if(!fs.statSync(idle).isFile()||packs.some(pack=>pack.id===entry.name))continue;
-     const preview=nativeImage.createFromPath(idle).resize({width:384}).toDataURL();
+     const preview=previewCache.get(idle,384);
      const frames=root===characterDir?Object.fromEntries(["idle","blink","proud","sad","shy"].flatMap(frame=>{
       const file=path.join(dir,"frames",frame+".png");
       return fs.existsSync(file)?[[frame,pathToFileURL(file).href]]:[];
@@ -118,7 +164,7 @@ else{
    const fs=require("node:fs");
    cachedWallpapers=skinManager.listPacks(true).filter(pack=>pack.file).map(pack=>{
     let preview="";
-    try{preview=nativeImage.createFromPath(pack.file).resize({width:600}).toDataURL();}catch{}
+    try{preview=previewCache.get(pack.file,600);}catch{}
     const fileName=path.basename(pack.file);
     return{id:pack.id,fileName,filePath:pack.file,title:WALLPAPER_TITLES[fileName]||pack.name,revision:pack.revision||"",preview,pack:pack.pack};
    });
@@ -138,6 +184,7 @@ else{
     else{const st=fs.statSync(full);parts.push(entry.name+":"+st.size+":"+st.mtimeMs);}
    }};
    walk(packsDir);
+   if(fs.existsSync(characterDir))walk(characterDir);
    cachedArtVersion=crypto.createHash("sha1").update(parts.join("|")).digest("hex").slice(0,10);
   }catch{cachedArtVersion="0";}
   lastArtScan=now;return cachedArtVersion;
@@ -150,7 +197,7 @@ else{
    const fs=require("node:fs");
    const walls=getWallpapers();
    const ds=skinSettings.getAll();
-   const activeWall=(ds.wallpaperFile?walls.find(w=>w.filePath&&path.resolve(w.filePath)===path.resolve(ds.wallpaperFile)):null)||walls.find(w=>w.id===ds.wallpaperId)||walls[0]||null;
+   const activeWall=walls.find(w=>w.id===ds.wallpaperId)||(ds.wallpaperFile?walls.find(w=>w.filePath&&path.resolve(w.filePath)===path.resolve(ds.wallpaperFile)):null)||walls[0]||null;
    let wallMtime=0;
    try{if(activeWall?.filePath&&fs.existsSync(activeWall.filePath))wallMtime=Math.round(fs.statSync(activeWall.filePath).mtimeMs);}catch{}
    const q=quotaAdapter.snapshot;
@@ -177,6 +224,11 @@ else{
      }:null,
      modelActivity:running.snapshot(),
      themePreset:ds.themePreset||"violet",
+     chatAppearance:{
+      tint:ds.chatTint||skinController.status.defaultChatTint||"#181224",
+      opacity:ds.chatOpacity??100,
+      reply:ds.replyOpacity??(ds.outputMode==="glass"?22:0)
+     },
      skinEnabled:ds.enabled===true,
      wallpaperId:activeWall?.id||ds.wallpaperId||"gemini-character-sheet-v1",
      wallpaperIds:walls.map(wall=>wall.id),
@@ -237,7 +289,7 @@ else{
     if(Object.keys(dsPatch).length)next.dreamSkin=dsPatch;
    }
    if(Object.keys(next).length)apply(next);
-   if(wallpaperSync&&patch.action==="next-wallpaper"){rotateWallpaper();publish();}
+   if(wallpaperSync&&patch.action==="next-wallpaper")rotateWallpaper();
   },
   onWebUpdate:()=>{syncVisibility();publish();},
   onOpenSettings:byokGateway?.available?(tab=>openSettings(tab==="byok"?"models":tab)):undefined
@@ -245,38 +297,50 @@ else{
  const byokPortal=null;
 
  const displayState=()=>["pressed","release"].includes(sm.currentState)?sm.persistentState:sm.currentState;
- const snapshot=()=>{ledger.quotaRemainingPercent=settings.get("manualQuota")===true?settings.get("manualPercent"):null;return{artShift,dockSide,modelActivity:running.snapshot(),quotaWindows:quotaAdapter.snapshot,webCompanion:companionBridge.getWebSnapshot(),byok:byokGateway?.getSnapshot()??{available:false,gatewayOnline:false},facing,state:displayState(),persistentState:sm.persistentState,dialogue:dialogue.lines,dialogueTags:dialogue.expressionTags,settings:settings.getAll(),dreamSkin:skinSettings.getAll(),skinStatus:skinController.status,characterPacks:getCharacterPacks(),wallpapers:getWallpapers(),artVersion:getArtVersion(),displayScale:displayScale||settings.get("scale"),visibility:{visible:win?.isVisible()===true,supported:process.platform==="win32",foreground:foreground.state.kind,nativeAttached:foreground.state.attached===true,withinHost:!!hostArea},ledger:ledger.getSnapshot(),source,presets:audio.getPresetList()};};
+ const snapshot=()=>{ledger.quotaRemainingPercent=settings.get("manualQuota")===true?settings.get("manualPercent"):null;return{artShift,artShiftY,dockSide,modelActivity:running.snapshot(),quotaWindows:quotaAdapter.snapshot,webCompanion:companionBridge.getWebSnapshot(),byok:byokGateway?.getSnapshot()??{available:false,gatewayOnline:false},facing,state:displayState(),persistentState:sm.persistentState,dialogue:dialogue.lines,dialogueTags:dialogue.expressionTags,settings:settings.getAll(),dreamSkin:skinSettings.getAll(),skinStatus:skinController.status,characterPacks:getCharacterPacks(),wallpapers:getWallpapers(),artVersion:getArtVersion(),displayScale:displayScale||settings.get("scale"),visibility:{visible:win?.isVisible()===true,supported:process.platform==="win32",foreground:foreground.state.kind,nativeAttached:foreground.state.attached===true,withinHost:!!hostArea},ledger:ledger.getSnapshot(),source,presets:audio.getPresetList()};};
  const send=(channel,data)=>{for(const w of [win,panel])if(w&&!w.isDestroyed())w.webContents.send(channel,data);};
  const syncByokPortal=()=>{if(byokPortal)byokPortal.setFromSnapshot(byokGateway.getSnapshot(),{port:companionBridge.boundPort,portalNonce:companionBridge.portalNonce}).catch(()=>{});};
  const publish=()=>{const snap=snapshot();send("widget:snapshot",snap);syncByokPortal();};
- function syncQuotaState(){if(["idle","warning"].includes(sm.persistentState)){const isArgon=Boolean(quotaAdapter.snapshot.modelInfo?.modelName?.toLowerCase().includes("argon"));const values=settings.get("manualQuota")?[settings.get("manualPercent"),settings.get("manualWeeklyPercent")]:(isArgon&&typeof quotaAdapter.snapshot.argon?.weekly==="number")?[quotaAdapter.snapshot.argon.weekly,quotaAdapter.snapshot.argon.fiveHour]:[quotaAdapter.snapshot.fiveHour,quotaAdapter.snapshot.weekly,quotaAdapter.snapshot.argon?.weekly];sm.setPersistentState(values.some(v=>typeof v==="number"&&v<=20)?"warning":"idle");}}
+ function syncQuotaState(){
+  if(!["idle","warning"].includes(sm.persistentState))return;
+  const quota=quotaAdapter.snapshot;
+  const model=quota.modelInfo?.modelName?.toLowerCase()||"";
+  const gemini=quota.gemini||quota;
+  const active=/claude|gpt|opus|sonnet/.test(model)?quota.claudeGpt||{}:gemini;
+  const values=settings.get("manualQuota")
+   ?[settings.get("manualPercent"),settings.get("manualWeeklyPercent")]
+   :model.includes("argon")?[quota.argon?.fiveHour??gemini.fiveHour,quota.argon?.weekly]
+   :[active.fiveHour,active.weekly];
+  sm.setPersistentState(values.some(value=>Number.isFinite(value)&&value<=20)?"warning":"idle");
+ }
  // 壁纸轮播（分钟级，上游 slideshow 语义）与旧字段一次性迁移。
  let slideshowTimer=null;
  function rotateWallpaper(){
   const next=skinManager.nextId(skinSettings.get("wallpaperId"));
   const pack=next?skinManager.listPacks().find(p=>p.id===next):null;
   if(!next||next===skinSettings.get("wallpaperId"))return;
-  skinSettings.update({wallpaperId:next,wallpaperFile:pack?.file||""});
+  try{skinSettings.update({wallpaperId:next,wallpaperFile:pack?.file||""});}
+  catch(error){recoveryLog(`wallpaper-save-failed ${error.code||error.name}`);return;}
   skinController.update(skinSettings.getAll());
+  publish();
  }
  function scheduleSlideshow(){
   if(slideshowTimer){clearInterval(slideshowTimer);slideshowTimer=null;}
   if(skinSettings.get("slideshow")!==false){
    const minutes=Number(skinSettings.get("slideshowIntervalMinutes"))||5;
-   slideshowTimer=setInterval(rotateWallpaper,Math.max(1,Math.min(60,minutes))*60000);
+   const probeMs=isolatedDev?Number(process.argv.find(a=>a.startsWith("--test-slideshow-ms="))?.split("=")[1]):0;
+   slideshowTimer=setInterval(rotateWallpaper,probeMs>=100&&probeMs<=5000?probeMs:Math.max(1,Math.min(60,minutes))*60000);
   }
  }
  function migrateLegacyDreamSettings(){
+  const migrating=skinSettings.get("legacyMigrated")!==true;
   if(skinSettings.get("legacyMigrated")!==true){
    const patch=legacyRotatePatch(skinSettings.getAll());
    if(patch)skinSettings.update(patch);
    skinSettings.update({legacyMigrated:true});
   }
-  const packs=skinManager.listPacks(true).filter(p=>p.file);
-  const file=skinSettings.get("wallpaperFile"),currentId=skinSettings.get("wallpaperId");
-  const byFile=file&&packs.find(pack=>[pack.file,...(pack.aliasFiles||[])].some(candidate=>path.resolve(candidate)===path.resolve(file)));
-  const selected=byFile||packs.find(pack=>pack.id===currentId||pack.aliases?.includes(currentId))||packs[0];
-  if(selected&&(selected.file!==file||selected.id!==currentId))skinSettings.update({wallpaperId:selected.id,wallpaperFile:selected.file});
+  const selected=selectWallpaper(skinManager,skinSettings.getAll(),{fileOnly:migrating});
+  if(selected&&(selected.wallpaperFile!==skinSettings.get("wallpaperFile")||selected.wallpaperId!==skinSettings.get("wallpaperId")))skinSettings.update(selected);
  }
  function desktopBounds(x,y,previous){
   const saved=Number.isFinite(x)&&Number.isFinite(y);
@@ -286,15 +350,18 @@ else{
   displayScale=scale;
   const left=previous?previous.x+previous.width-width:saved?x:area.x+area.width-width-18;
   const top=previous?previous.y+previous.height-height:saved?y:area.y+area.height-height-18;
-  return characterPlacement(area,scale,{width,height},left+(width-scale)/2,top).bounds;
+  const placement=characterPlacement(area,scale,{width,height},left+(width-scale)/2+(saved?settings.get("desktopArtShiftX"):previous?artShift:0),top+(saved?settings.get("desktopArtShiftY"):previous?artShiftY:0));
+  artShift=placement.artShift;artShiftY=placement.artShiftY;
+  dockSide=Math.abs(placement.visualX-area.x)<2?"left":Math.abs(placement.visualX+scale-area.x-area.width)<2?"right":"";
+  return placement.bounds;
  }
- function applyStandaloneTopmost(){
+ function applyStandaloneTopmost(force=false){
   if(!win||win.isDestroyed())return;
   const wantTop=Boolean(settings.get("alwaysOnTop"));
   if(process.platform==='darwin'||process.platform==='linux'){
-   win.setAlwaysOnTop(wantTop,wantTop?"screen-saver":"normal");
+   if(force||win.isAlwaysOnTop()!==wantTop)win.setAlwaysOnTop(wantTop,wantTop?"screen-saver":"normal");
   }else{
-   if(win.isAlwaysOnTop()!==wantTop)win.setAlwaysOnTop(wantTop,wantTop?"pop-up-menu":"normal");
+   if((force&&wantTop)||win.isAlwaysOnTop()!==wantTop)win.setAlwaysOnTop(wantTop,wantTop?"pop-up-menu":"normal");
   }
  }
  // 宿主消失时优雅退守：恢复独立桌面尺寸与位置（用户最后的自由坐标，缺省右下角），绝不闪退或强行隐藏。
@@ -302,9 +369,10 @@ else{
   if(!win||win.isDestroyed())return;
   hostArea=null;hostLayout=null;artShift=0;dockSide="";
   win.setBounds(desktopBounds(settings.get("x"),settings.get("y")));
-  applyStandaloneTopmost();
+  applyStandaloneTopmost(true);
+  if(win.isMinimized())win.restore();
   if(!win.isVisible())win.showInactive();
-  win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+  mouseRouting.setIgnored(settings.get("clickThrough"));
   updateMenu();
  }
  function syncVisibility(){
@@ -334,6 +402,7 @@ else{
   // Standalone mode degrades gracefully to a free-floating desktop pet.
   if(!placement){
    const wasFollowing=!!hostArea;
+   if(previousArea)visualWatchdog.reset();
    hostArea=null;hostLayout=null;
    if(settings.get("standaloneDesktopMode")){
     if(wasFollowing||!win.isVisible())degradeToStandalone();
@@ -345,7 +414,7 @@ else{
 
   // Host is available - native ForegroundHost.exe owns z-order (do NOT call win.setAlwaysOnTop(false) here!)
   if(dragPlacement){hostArea=state.bounds;return false;}
-  hostArea=state.bounds;displayScale=placement.scale;artShift=placement.artShift;
+  hostArea=state.bounds;displayScale=placement.scale;artShift=placement.artShift;artShiftY=placement.artShiftY;
   dockSide=Math.abs(placement.visualX-hostArea.x)<2?"left":Math.abs(placement.visualX+displayScale-hostArea.x-hostArea.width)<2?"right":"";
   facing=facingAt(placement.visualX+displayScale/2,hostArea,facing);
   const nextLayout=JSON.stringify([state.hostId,state.restoreGeneration,displayScale,hostArea.width,hostArea.height,settings.get("hostOffsetX"),settings.get("hostOffsetY"),settings.get("hostDock")]);
@@ -370,40 +439,50 @@ else{
  function show(){
   if(!win||win.isDestroyed())createWindow();
   if(settings.get("hostWindowOnly"))startForeground(win.getNativeWindowHandle());
+  if(!settings.get("hostWindowOnly")){
+   const reconciled=reconcileBoundsForDisplays(win.getBounds(),screen.getAllDisplays(),()=>desktopBounds(settings.get("x"),settings.get("y")));
+   if(reconciled.actionable&&reconciled.changed)win.setBounds(reconciled.bounds);
+  }
+  if(win.isMinimized())win.restore();
   if(!win.isVisible()){
-   win.show();
-   if(!settings.get("hostWindowOnly"))applyStandaloneTopmost();
+   win.showInactive();
+   if(!settings.get("hostWindowOnly"))applyStandaloneTopmost(true);
    else win.moveTop();
+  }else if(!settings.get("hostWindowOnly")){
+   applyStandaloneTopmost(true);
   }
   syncVisibility();
-  win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+  mouseRouting.setIgnored(settings.get("clickThrough"));
  }
  function apply(partial){
-  const allowed=["characterPack","scale","alwaysOnTop","reducedMotion","sound","volume","soundSet","bubbleOn","turnCostOn","turnCostDurationMs","clickThrough","bubblePage","manualQuota","manualPercent","manualWeeklyPercent","hostWindowOnly","standaloneDesktopMode","clickCatAction","easterEggs","ambientChatter","autoUpdateCheck","syncCharacter","syncWallpaper","syncInteraction","petDisplayMode","userHonorificMode","customHonorific","customThemes","bubbleTint","bubbleOpacity"];
+  const allowed=["characterPack","scale","alwaysOnTop","reducedMotion","sound","volume","soundSet","bubbleOn","turnCostOn","turnCostDurationMs","clickThrough","bubblePage","manualQuota","manualPercent","manualWeeklyPercent","hostWindowOnly","standaloneDesktopMode","clickCatAction","sideQuotaEnabled","sideQuotaVariant","sideQuotaDistance","sideQuotaSize","sideQuotaMode","sideQuotaSource","easterEggs","ambientChatter","autoUpdateCheck","syncCharacter","syncWallpaper","syncInteraction","petDisplayMode","userHonorificMode","customHonorific","customThemes","bubbleTint","bubbleOpacity"];
   if(partial?.characterPack!==undefined&&!getCharacterPacks().some(pack=>pack.id===partial.characterPack)){
    partial={...partial};delete partial.characterPack;
   }
   const oldScale=settings.get("scale"),oldHostOnly=settings.get("hostWindowOnly"),oldDisplayMode=settings.get("petDisplayMode");
   if(!oldHostOnly&&partial?.hostWindowOnly===true&&win){const pos=win.getBounds();settings.update({x:pos.x,y:pos.y});}
-  settings.update(Object.fromEntries(Object.entries(partial||{}).filter(([k])=>allowed.includes(k))));
+  const widgetPatch=Object.fromEntries(Object.entries(partial||{}).filter(([k])=>allowed.includes(k)));
+  if(Object.keys(widgetPatch).length)settings.update(widgetPatch);
   if(partial?.dreamSkin&&typeof partial.dreamSkin==="object"&&!Array.isArray(partial.dreamSkin)){
    const dream={...partial.dreamSkin};
    const previous=skinSettings.getAll();
    // 壁纸画廊走 wallpaperFile 选择；同步解析为壁纸包 id 供主题负载使用。
-   if(typeof dream.wallpaperFile==="string"&&dream.wallpaperFile){
-    const pack=skinManager.listPacks().find(p=>p.file&&path.resolve(p.file)===path.resolve(dream.wallpaperFile));
-    if(pack)dream.wallpaperId=pack.id;
+   if(Object.hasOwn(dream,"wallpaperId")||Object.hasOwn(dream,"wallpaperFile")){
+    const selected=selectWallpaper(skinManager,{...previous,...dream},{fileOnly:!Object.hasOwn(dream,"wallpaperId")});
+    if(selected)Object.assign(dream,selected);
    }
    delete dream.legacyMigrated;
    skinSettings.update(dream);
-   cachedWallpapers=null;lastWallScan=0;
+   if(skinSettings.get("wallpaperId")!==previous.wallpaperId||skinSettings.get("wallpaperFile")!==previous.wallpaperFile){cachedWallpapers=null;lastWallScan=0;}
    skinController.update(skinSettings.getAll());
    localization.update(skinSettings.getAll());
    const next=skinSettings.getAll();
    if(["slideshow","slideshowIntervalMinutes","wallpaperId"].some(key=>next[key]!==previous[key]))scheduleSlideshow();
   }
   syncQuotaState();
-  if(oldHostOnly!==settings.get("hostWindowOnly")||oldDisplayMode!==settings.get("petDisplayMode"))foreground.stop();
+  if(oldHostOnly!==settings.get("hostWindowOnly")||oldDisplayMode!==settings.get("petDisplayMode")){
+   visualWatchdog.reset();foreground.stop();
+  }
   if(settings.get("hostWindowOnly"))startForeground(win?.getNativeWindowHandle());
   else if(settings.get("petDisplayMode")==="prefer-web")startForeground();
   else foreground.stop();
@@ -413,11 +492,12 @@ else{
     artShift=0;dockSide="";
     win.setBounds(desktopBounds(settings.get("x"),settings.get("y")));
    }else if(settings.get("scale")!==oldScale&&!hostArea){
-    win.setBounds(desktopBounds(null,null,win.getBounds()));
-    if(dockSide)dock(dockSide);
+    const pos=desktopBounds(null,null,win.getBounds());
+    win.setBounds(pos);
+    settings.update({x:pos.x,y:pos.y,desktopArtShiftX:artShift,desktopArtShiftY:artShiftY});
    }
    if(!settings.get("hostWindowOnly"))applyStandaloneTopmost();
-   win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+   mouseRouting.setIgnored(settings.get("clickThrough"));
    syncVisibility();
   }
   audio.setEnabled(settings.get("sound"));audio.setVolume(settings.get("volume"));audio.setPreset(settings.get("soundSet"));publish();updateMenu();return snapshot();
@@ -431,8 +511,8 @@ else{
   if(page)panel.webContents.once("did-finish-load",()=>{if(panel&&!panel.isDestroyed())panel.webContents.send("widget:navigate",page);});
   panel.on("closed",()=>panel=null);
  }
- function reset(){if(settings.get("hostWindowOnly")&&hostArea){settings.update({hostOffsetX:18,hostOffsetY:18,hostDock:""});syncVisibility();publish();return;}if(!win||win.isDestroyed())return;const pos=desktopBounds();artShift=0;dockSide="";win.setBounds(pos);settings.update({x:pos.x,y:pos.y});show();publish();}
- function recall(){show();win?.show();if(!settings.get("hostWindowOnly"))applyStandaloneTopmost();win?.moveTop();if(settings.get("hostWindowOnly")&&!win?.isVisible())openSettings();}
+ function reset(){if(settings.get("hostWindowOnly")&&hostArea){settings.update({hostOffsetX:18,hostOffsetY:18,hostDock:""});syncVisibility();publish();return;}if(!win||win.isDestroyed())return;const pos=desktopBounds();artShift=0;dockSide="";win.setBounds(pos);settings.update({x:pos.x,y:pos.y,desktopArtShiftX:0,desktopArtShiftY:0});show();publish();}
+ function recall(){show();if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();if(!settings.get("hostWindowOnly"))applyStandaloneTopmost(true);win.moveTop();win.webContents.send("widget:force-repaint");win.webContents.invalidate();}if(settings.get("hostWindowOnly")&&!win?.isVisible())openSettings();}
  function updateMenu(){
   if(!tray)return;
   const byokSnap=byokGateway?.getSnapshot();
@@ -456,35 +536,55 @@ else{
    }
    byokItems.push({label:"🔌 BYOK 模型网关",submenu:sub});
   }
-  tray.setContextMenu(Menu.buildFromTemplate([{label:"Catstella",enabled:false},{label:"显示 / 唤回挂件",click:recall},{label:"重启套件",click:()=>{app.relaunch();app.quit();}},{label:"统一设置中心",click:()=>openSettings()},...byokItems,...(availableUpdate?[{label:"有新版 "+availableUpdate.latest+" · 查看发行页",click:()=>void online.handle("release")}]:[]),{type:"separator"},
+  tray.setContextMenu(Menu.buildFromTemplate([{label:"Catstella",enabled:false},{label:"显示 / 唤回挂件",click:recall},{label:"重启套件",click:()=>{app.relaunch();quit("tray-restart");}},{label:"统一设置中心",click:()=>openSettings()},...byokItems,...(availableUpdate?[{label:"有新版 "+availableUpdate.latest+" · 查看发行页",click:()=>void online.handle("release")}]:[]),{type:"separator"},
   {label:"应用到 Antigravity（皮肤）",type:"checkbox",checked:skinSettings.get("enabled")===true,click:()=>{skinSettings.update({enabled:skinSettings.get("enabled")!==true});skinController.update(skinSettings.getAll());publish();}},
-  {label:"切换下一张壁纸",click:()=>{rotateWallpaper();publish();}},{type:"separator"},
+  {label:"切换下一张壁纸",click:rotateWallpaper},{type:"separator"},
   {label:"仅在 Antigravity 窗口内显示",type:"checkbox",checked:settings.get("hostWindowOnly"),click:()=>apply({hostWindowOnly:!settings.get("hostWindowOnly")})},
   {label:"无宿主时退守桌面显示",type:"checkbox",enabled:settings.get("hostWindowOnly"),checked:settings.get("hostWindowOnly")&&settings.get("standaloneDesktopMode"),click:()=>apply({standaloneDesktopMode:!settings.get("standaloneDesktopMode")})},
   {label:"显示气泡",type:"checkbox",checked:settings.get("bubbleOn"),click:()=>apply({bubbleOn:!settings.get("bubbleOn")})},
   {label:"桌面模式始终置顶",type:"checkbox",enabled:!settings.get("hostWindowOnly"),checked:!settings.get("hostWindowOnly")&&settings.get("alwaysOnTop"),click:()=>apply({alwaysOnTop:!settings.get("alwaysOnTop")})},
   {label:"鼠标穿透 · Ctrl+Alt+Shift+G 恢复",type:"checkbox",checked:settings.get("clickThrough"),click:()=>apply({clickThrough:!settings.get("clickThrough")})},
-  {label:"停靠左下角",click:()=>dock("left")},{label:"停靠右下角",click:()=>dock("right")},{label:"重置位置",click:reset},{type:"separator"},{label:"退出 Catstella",click:()=>app.quit()}]));
+  {label:"停靠左下角",click:()=>dock("left")},{label:"停靠右下角",click:()=>dock("right")},{label:"重置位置",click:reset},{type:"separator"},{label:"退出 Catstella",click:()=>quit("tray")}]));
  }
  function createWindow(){
   const pos=desktopBounds(settings.get("x"),settings.get("y"));
   facing=facingAt(pos.x+pos.width/2,screen.getDisplayMatching(pos).workArea,facing,0);
-  win=new BrowserWindow({...pos,frame:false,transparent:true,hasShadow:false,resizable:false,skipTaskbar:true,alwaysOnTop:!settings.get("hostWindowOnly")&&settings.get("alwaysOnTop"),show:false,
+  // On Windows, skipTaskbar only removes the current Shell tab. A toolbar
+  // window also carries WS_EX_TOOLWINDOW, so show/z-order changes cannot turn
+  // the persistent pet back into an ordinary taskbar/Alt-Tab application.
+  win=new BrowserWindow({...pos,...(process.platform==="win32"?{type:"toolbar"}:{}),frame:false,transparent:true,hasShadow:false,resizable:false,skipTaskbar:true,alwaysOnTop:!settings.get("hostWindowOnly")&&settings.get("alwaysOnTop"),show:false,
    webPreferences:{preload:path.join(__dirname,"preload.cjs"),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
+  const created=win;
+  visualWatchdog.reset();
   // Apply the same native bounds path as dragging before the first frame.
   // On Windows at fractional DPI, constructor sizing can be a few DIP wider.
   if(process.platform==="win32")win.setBounds(pos);
-  win.loadFile(path.join(__dirname,"../renderer/index.html"));
   clearTimeout(initialShowTimer);
-  initialShowTimer=setTimeout(()=>{if(win&&!win.isDestroyed()&&!win.isVisible()){recoveryLog("renderer-ready-timeout");show();}},5000);
-  win.on("closed",()=>{clearTimeout(initialShowTimer);dragPlacement=null;foreground.stop();win=null;if(!quitting)setTimeout(show,250);});
+  initialShowTimer=setTimeout(()=>{if(!quitting&&win===created&&!created.isDestroyed()&&!created.isVisible()){recoveryLog("renderer-ready-timeout");show();}},5000);
+  created.on("closed",()=>{
+   if(win!==created)return;
+   clearTimeout(initialShowTimer);
+   visualWatchdog.reset();
+   dragPlacement=null;foreground.stop();win=null;
+   if(!quitting){
+    recoveryLog("window-closed-recreate");
+    setTimeout(()=>{if(!quitting&&(!win||win.isDestroyed()))show();},250);
+   }
+  });
   win.webContents.setWindowOpenHandler(()=>({action:"deny"}));win.webContents.on("will-navigate",e=>e.preventDefault());
-  win.webContents.on("render-process-gone",()=>{if(!quitting&&win&&!win.isDestroyed())win.destroy();});
-  win.webContents.on("did-finish-load",()=>{blankFrames=0;publish();});
-  win.on("show",publish);win.on("hide",publish);
-  let unresponsiveTimer;
-  win.on("unresponsive",()=>{const stuck=win;clearTimeout(unresponsiveTimer);unresponsiveTimer=setTimeout(()=>{if(!quitting&&win===stuck&&!stuck.isDestroyed())stuck.destroy();},10000);});
-  win.on("responsive",()=>clearTimeout(unresponsiveTimer));win.on("closed",()=>clearTimeout(unresponsiveTimer));
+  win.webContents.on("render-process-gone",(_event,details)=>{
+   recoveryLog(`renderer-gone reason=${details.reason} code=${details.exitCode}`);
+   if(!quitting&&win===created&&!created.isDestroyed())created.destroy();
+  });
+  win.on("session-end",()=>recoveryLog("windows-session-end"));
+  const resetVisual=()=>{if(win===created)visualWatchdog.reset();};
+  created.webContents.on("did-start-loading",resetVisual);
+  created.webContents.on("did-finish-load",()=>{resetVisual();publish();});
+  for(const event of ["show","hide"])created.on(event,()=>{resetVisual();publish();});
+  for(const event of ["minimize","restore"])created.on(event,resetVisual);
+  // A brief renderer stall is handled by the same visible-window checks.
+  // A renderer process exit still takes the immediate recovery path above.
+  created.loadFile(path.join(__dirname,"../renderer/index.html")).catch(error=>recoveryLog(`renderer-load-failed ${error.code||error.name}`));
  }
  function trusted(e){return[win,panel].some(w=>w&&!w.isDestroyed()&&e.sender===w.webContents);}
  const releaseNotes=require("../../assets/release-notes.json");
@@ -534,11 +634,11 @@ else{
    require("node:fs").mkdirSync(dir,{recursive:true});
    shell.openPath(dir);
   }
-  else if(command==="next-wallpaper"){rotateWallpaper();publish();}
+  else if(command==="next-wallpaper")rotateWallpaper();
   else if(command==="open-project-repo")void shell.openExternal("https://github.com/lynnfei/Catstella");
   else if(command==="open-upstream-repo")void shell.openExternal("https://github.com/Monokumakuki/Antigravity-Star-Suite");
   else if(command==="menu")tray?.popUpContextMenu();
-  else if(command==="quit")app.quit();
+  else if(command==="quit")quit("renderer-command");
   else if(command==="reset")reset();
   else if(command==="dock-left")dock("left");else if(command==="dock-right")dock("right");
   else if(command==="show-bubble")apply({bubbleOn:true});
@@ -558,37 +658,39 @@ else{
   const {scale:size,width,height}=widgetLayout(a,settings.get("scale"));
   const placement=characterPlacement(a,size,{width,height},side==="left"?a.x:a.x+a.width-size,a.y+a.height-height);
   displayScale=size;
-  win.setBounds(placement.bounds);artShift=placement.artShift;dockSide=side;facing=side;
-  if(hostArea)settings.update({hostOffsetX:side==="left"?a.width-size:0,hostOffsetY:0,hostDock:side});else settings.update({x:placement.bounds.x,y:placement.bounds.y});publish();
+  win.setBounds(placement.bounds);artShift=placement.artShift;artShiftY=placement.artShiftY;dockSide=side;facing=side;
+  if(hostArea)settings.update({hostOffsetX:side==="left"?a.width-size:0,hostOffsetY:0,hostDock:side});else settings.update({x:placement.bounds.x,y:placement.bounds.y,desktopArtShiftX:placement.artShift,desktopArtShiftY:placement.artShiftY});publish();
  }
  ipcMain.on("widget:drag",(e,phase,dx,dy)=>{
   if(!win||win.isDestroyed()||e.sender!==win.webContents)return;
   if(phase==="start"){
    const bounds=win.getBounds(),scale=displayScale||settings.get("scale");
-   dragPlacement={bounds,scale,visualX:bounds.x+(bounds.width-scale)/2+artShift,artShift,dockSide,facing};
-   win.setIgnoreMouseEvents(false);
+   dragPlacement={bounds,scale,visualX:bounds.x+(bounds.width-scale)/2+artShift,artShift,artShiftY,dockSide,facing};
+   visualWatchdog.reset();
+   mouseRouting.setIgnored(false);
    return;
   }
   const drag=dragPlacement;
   if(!drag||!["move","end","cancel"].includes(phase))return;
   if(phase==="cancel"){
-   dragPlacement=null;win.setBounds(drag.bounds);displayScale=drag.scale;artShift=drag.artShift;dockSide=drag.dockSide;facing=drag.facing;syncVisibility();win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});publish();return;
+   dragPlacement=null;visualWatchdog.reset();win.setBounds(drag.bounds);displayScale=drag.scale;artShift=drag.artShift;artShiftY=drag.artShiftY;dockSide=drag.dockSide;facing=drag.facing;syncVisibility();mouseRouting.setIgnored(settings.get("clickThrough"));publish();return;
   }
   if(!Number.isFinite(dx)||!Number.isFinite(dy)||Math.abs(dx)>100000||Math.abs(dy)>100000)return;
-  const left=drag.visualX+dx,top=drag.bounds.y+dy;
-  const area=hostArea||screen.getDisplayNearestPoint({x:Math.round(left+drag.scale/2),y:Math.round(top+drag.bounds.height/2)}).workArea;
+  const left=drag.visualX+dx,top=drag.bounds.y+drag.artShiftY+dy;
+  const area=hostArea||screen.getDisplayNearestPoint({x:Math.round(left+drag.scale/2),y:Math.round(top+drag.bounds.height-drag.scale/2)}).workArea;
   const placement=placeDraggedWidget(area,settings.get("scale"),left,top,{following:!!hostArea,snap:phase==="end"});
   const {scale,side}=placement;
   const direction=side||facingAt(placement.visualX+scale/2,area,facing);
-  const changed=displayScale!==scale||artShift!==placement.artShift||dockSide!==side||facing!==direction;
-  displayScale=scale;artShift=placement.artShift;dockSide=side;facing=direction;
+  const changed=displayScale!==scale||artShift!==placement.artShift||artShiftY!==placement.artShiftY||dockSide!==side||facing!==direction;
+  displayScale=scale;artShift=placement.artShift;artShiftY=placement.artShiftY;dockSide=side;facing=direction;
   win.setBounds(placement.bounds);
   if(phase==="end"){
    dragPlacement=null;
-   win.setIgnoreMouseEvents(settings.get("clickThrough"),{forward:true});
+   visualWatchdog.reset();
+   mouseRouting.setIgnored(settings.get("clickThrough"));
    try{
     if(hostArea)settings.update({hostOffsetX:placement.hostOffsetX,hostOffsetY:placement.hostOffsetY,hostDock:side});
-    else settings.update({x:placement.bounds.x,y:placement.bounds.y});
+    else settings.update({x:placement.bounds.x,y:placement.bounds.y,desktopArtShiftX:placement.artShift,desktopArtShiftY:placement.artShiftY});
    }catch{recoveryLog("drag-position-save-failed");}
   }
   if(changed||phase==="end")publish();
@@ -608,7 +710,7 @@ else{
    return {total:headPatTotal,today:headPatToday};
   }
  });
- ipcMain.on("widget:hit",(e,interactive)=>{if(trusted(e)&&e.sender===win?.webContents&&!dragPlacement)win.setIgnoreMouseEvents(settings.get("clickThrough")||interactive!==true,{forward:true});});
+ ipcMain.on("widget:hit",(e,interactive)=>{if(trusted(e)&&e.sender===win?.webContents&&!dragPlacement)mouseRouting.setIgnored(settings.get("clickThrough")||interactive!==true);});
  ipcMain.handle("widget:audio",(e,type)=>trusted(e)&&["press","release"].includes(type)?audio.getAudioFile(type):null);
  quotaAdapter.on("change",()=>{syncQuotaState();publish();});
  byokGateway?.on("change",()=>{publish();updateMenu();});
@@ -635,29 +737,46 @@ else{
   lastDisplayState=state;
   publish();
  });
- foreground.on("change",()=>{if(syncVisibility()!==false)publish();});
+ let lastForegroundChild=null,lastForegroundMessage="";
+ foreground.on("change",state=>{
+  const message=JSON.stringify(state);
+  if(lastForegroundChild===foreground.child&&message===lastForegroundMessage)return;
+  lastForegroundChild=foreground.child;lastForegroundMessage=message;
+  if(syncVisibility()!==false)publish();
+ });
+ adapter.on("step",step=>{if(!step.historical&&running.observe(step.step_index,step.tools,step.sessionId))publish();});
  adapter.on("turnDone",step=>{
   const recorded=ledger.recordStep(step);
   const activityChanged=!step.historical&&running.end(step.sessionId+":"+step.step_index,step.step_index,"model-done",!!recorded&&!recorded.updated);
-  if(!step.historical){running.observe(step.step_index,step.tools);sm.setPersistentState((running.size||byokBusy)?"thinking":"idle");syncQuotaState();}
-  if(recorded){clearTimeout(saveTimer);saveTimer=setTimeout(()=>ledger.save(),1000);if(!step.historical&&!recorded.updated){sm.handleTurnSuccess();send("widget:step",recorded);}}
+  if(!step.historical){sm.setPersistentState((running.size||byokBusy)?"thinking":"idle");syncQuotaState();}
+  if(recorded){clearTimeout(saveTimer);saveTimer=setTimeout(saveUsage,1000);if(!step.historical&&!recorded.updated){sm.handleTurnSuccess();send("widget:step",recorded);}}
   if(activityChanged)publish();
  });
- adapter.on("askUser",s=>{if(s.historical)return;running.setWaiting(s.stepIndex);publish();});
- adapter.on("userInput",s=>{if(s.historical)return;if(running.clearWaiting())publish();});
+ adapter.on("askUser",s=>{if(!s.historical&&running.setWaiting(s.stepIndex,s.sessionId))publish();});
+ adapter.on("userInput",s=>{if(s.historical)return;if(running.clearWaiting(s.sessionId,s.stepIndex))publish();});
  adapter.on("turnRunning",s=>{
   if(s.historical||!running.begin(s.sessionId+":"+s.stepIndex,s.stepIndex))return;
   sm.setPersistentState("thinking");publish();
  });
  adapter.on("turnError",s=>{
   if(s.historical)return;
-  const changed=running.end(s.sessionId+":"+s.stepIndex,s.stepIndex,"model-error");
-  sm.setPersistentState(running.size?"thinking":"error");
+  const changed=running.end(s.sessionId+":"+s.stepIndex,s.stepIndex,"model-error",true);
+  if(!changed)return;
+  sm.setPersistentState((running.size||byokBusy)?"thinking":source.online?"idle":"offline");
+  syncQuotaState();
+  if(!running.size&&sm.currentState!=="pressed")sm.triggerTransient("error",2400);
+  publish();
+ });
+ adapter.on("status",status=>{
+  const changed=source.online!==status.online||source.files!==status.files||source.lastUpdated!==status.lastUpdated;
+  source=status;
+  if(!status.online){running.clear();if(!byokBusy)sm.setPersistentState("offline");}
+  else if(sm.persistentState==="offline")sm.setPersistentState((running.size||byokBusy)?"thinking":"idle");
+  syncQuotaState();
   if(changed)publish();
  });
- adapter.on("status",status=>{source=status;if(!status.online){running.clear();if(!byokBusy)sm.setPersistentState("offline");}else if(sm.persistentState==="offline")sm.setPersistentState((running.size||byokBusy)?"thinking":"idle");syncQuotaState();publish();});
  app.on("second-instance",(_event,args)=>{
-  if(args.includes("--quit")){shutdownDaemonOnQuit=true;app.quit();return;}
+  if(args.includes("--quit")){shutdownDaemonOnQuit=true;quit("second-instance-command");return;}
   if(byokGateway?.available&&args.includes("--settings-byok")){openSettings("models");return;}
   if(args.includes("--settings")){openSettings();return;}
   if(args.includes("--enable")||args.includes("--disable")){skinSettings.update({enabled:args.includes("--enable")});skinController.update(skinSettings.getAll());publish();}
@@ -676,6 +795,7 @@ else{
   if(!isolatedDev)skinController.start(skinSettings.getAll());
   if(byokPortal){syncByokPortal();byokPortal.start();}
   if(!isolatedDev)localization.start();
+  mouseRouting.start();
   scheduleSlideshow();
   if(!isolatedDev){
    globalShortcut.register("CommandOrControl+Alt+G",recall);globalShortcut.register("CommandOrControl+Alt+Shift+G",()=>{apply({clickThrough:false});recall();});
@@ -683,54 +803,96 @@ else{
    else if(settings.get("petDisplayMode")==="prefer-web")startForeground();
   }
   audio.setEnabled(settings.get("sound"));audio.setVolume(settings.get("volume"));audio.setPreset(settings.get("soundSet"));
-  if(!isolatedDev){adapter.start();quotaAdapter.start();}
-  let lastWebOnline=false,lastWebActive=false;
+  // Explicit source checks may read only the already-isolated transcripts directory.
+  if(!isolatedDev||process.argv.includes("--test-transcripts"))adapter.start();
+  if(!isolatedDev)quotaAdapter.start();
+  let lastWebOnline=false,lastWebActive=false,lastWebVisible=false,recoveryTickCount=0;
   bridgeMonitorTimer=setInterval(()=>{
    const ws=companionBridge.getWebSnapshot();
-   if(ws.online!==lastWebOnline||ws.active!==lastWebActive){
-    lastWebOnline=ws.online;lastWebActive=ws.active;
+   if(ws.online!==lastWebOnline||ws.active!==lastWebActive||ws.visible!==lastWebVisible){
+    lastWebOnline=ws.online;lastWebActive=ws.active;lastWebVisible=ws.visible;
     syncVisibility();publish();
    }
   },3500);
-  recoveryTimer=setInterval(()=>{if(!win||win.isDestroyed()){show();return;}if(settings.get("hostWindowOnly"))startForeground(win.getNativeWindowHandle());else if(settings.get("petDisplayMode")==="prefer-web")startForeground();},2000);
-  // Adaptive visual check interval based on uptime
-  uptimeCheckTimer=setInterval(()=>{
+  recoveryTimer=setInterval(()=>{
+   recoveryTickCount=(recoveryTickCount+1)%30;
+   if(quitting)return;
+   if(!win||win.isDestroyed()){if(!suspended&&!screenLocked)show();return;}
+   if(settings.get("hostWindowOnly"))startForeground(win.getNativeWindowHandle());
+   else if(settings.get("petDisplayMode")==="prefer-web")startForeground();
+   if(suspended||screenLocked||dragPlacement)return;
+   const hideForWeb=companionVisibility.hideDesktop(settings.get("petDisplayMode"),companionBridge.getWebSnapshot(),foreground.state);
+   const wantVisible=shouldWindowBeVisible({
+    quitting,suspended,screenLocked,dragPlacement,hideForWeb,
+    hostWindowOnly:settings.get("hostWindowOnly"),hasHostArea:!!hostArea,
+    standaloneDesktopMode:settings.get("standaloneDesktopMode")
+   });
+   if(!wantVisible){if(win.isVisible())syncVisibility();return;}
+   if(win.isMinimized()){recoveryLog("minimized-window-restore");win.restore();}
+   if(!settings.get("hostWindowOnly")&&!hostArea){
+    const reconciled=reconcileBoundsForDisplays(win.getBounds(),screen.getAllDisplays(),()=>desktopBounds(settings.get("x"),settings.get("y")));
+    if(reconciled.actionable&&reconciled.changed){
+     recoveryLog("offscreen-bounds-restore");
+     win.setBounds(reconciled.bounds);
+     win.webContents.invalidate();
+    }
+   }
+   if(!win.isVisible()){
+    recoveryLog("hidden-window-restore");
+    show();
+    win.webContents.send("widget:force-repaint");
+    win.webContents.invalidate();
+    publish();
+    return;
+   }
+   if(recoveryTickCount===0&&!settings.get("hostWindowOnly")&&settings.get("alwaysOnTop")&&!(panel&&!panel.isDestroyed()&&panel.isVisible())){
+    applyStandaloneTopmost(true);
+   }
+  },2000);
+  visualTimer=setInterval(()=>{
    const uptime=process.uptime();
-   visualCheckInterval=uptime>=7200?120000:uptime>=3600?60000:15000;
-  },300000);
-  let lastVisualCheck=0;
-  visualTimer=setInterval(async()=>{
-   if(Date.now()-lastVisualCheck<visualCheckInterval)return;
-   lastVisualCheck=Date.now();
-   if(visualChecking||!win||win.isDestroyed()||!win.isVisible()||(settings.get("hostWindowOnly")&&!hostArea))return;
-   visualChecking=true;const checked=win;
-   try{
-    const healthy=await Promise.race([checked.webContents.executeJavaScript(`(()=>{const face=document.querySelector('.agy-face');if(!face)return false;const r=face.getBoundingClientRect();if(r.width<20||r.height<20)return false;let node=face;while(node){const s=getComputedStyle(node);if(s.display==='none'||s.visibility==='hidden'||Number(s.opacity)===0)return false;node=node.parentElement;}return [...face.querySelectorAll('img')].some(img=>img.complete&&img.naturalWidth>0&&Number(getComputedStyle(img).opacity)>0);})()`),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error("renderer-check-timeout")),4000);timer.unref();})]);
-    if(!healthy){recoveryLog("invalid-character-layout-recreate");checked.destroy();return;}
-    const frame=await Promise.race([checked.webContents.capturePage(),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error("capture-timeout")),4000);timer.unref();})]);
-    const pixels=frame.toBitmap();let opaque=0;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>32)opaque++;
-    blankFrames=opaque<500?blankFrames+1:0;
-    if(blankFrames>=2&&win===checked&&!checked.isDestroyed()){recoveryLog("blank-surface-recreate opaque="+opaque);checked.destroy();}
-   }catch(error){if(win===checked&&!checked.isDestroyed()){recoveryLog("surface-check-recreate "+error.message);checked.destroy();}}
-   finally{visualChecking=false;}
+   void visualWatchdog.tick(uptime>=7200?120000:uptime>=3600?60000:15000);
   },15000);
-  const resume=()=>{if(sm.currentState==="pressed")sm.clearTransient();hostLayout=null;foreground.stop();show();publish();
+  const resume=()=>{suspended=false;visualWatchdog.reset();if(sm.currentState==="pressed")sm.clearTransient();hostLayout=null;foreground.stop();show();publish();
    if(win&&!win.isDestroyed()){
      win.webContents.send('widget:force-repaint');
      win.webContents.invalidate();
    }
   };
-  powerMonitor.on("resume",resume);powerMonitor.on("unlock-screen",resume);
-  screen.on("display-removed",reset);
-  screen.on("display-metrics-changed",()=>{
-   if(!win||win.isDestroyed())return;
+  powerMonitor.on("suspend",()=>{suspended=true;visualWatchdog.reset();});
+  powerMonitor.on("resume",resume);
+  powerMonitor.on("lock-screen",()=>{screenLocked=true;visualWatchdog.reset();});
+  powerMonitor.on("unlock-screen",()=>{screenLocked=false;resume();});
+  const reconcileDisplayLayout=(persistValid=false)=>{
+   if(quitting||!win||win.isDestroyed()||dragPlacement)return;
+   const displays=screen.getAllDisplays();
+   if(!hasUsableDisplay(displays))return;
    if(!hostArea){
-    if(dockSide){dock(dockSide);return;}
-    win.setBounds(desktopBounds(null,null,win.getBounds()));
+    const savedX=settings.get("x"),savedY=settings.get("y");
+    const savedCandidate=Number.isFinite(savedX)&&Number.isFinite(savedY)?desktopBounds(savedX,savedY):null;
+    if(savedCandidate&&isBoundsVisibleOnDisplays(savedCandidate,displays)){
+     win.setBounds(savedCandidate);
+    }else{
+     const current=win.getBounds();
+     const pos=isBoundsVisibleOnDisplays(current,displays)?desktopBounds(null,null,current):desktopBounds();
+     win.setBounds(pos);
+     if(persistValid){
+      try{settings.update({x:pos.x,y:pos.y,desktopArtShiftX:artShift,desktopArtShiftY:artShiftY});}
+      catch(error){recoveryLog(`display-position-save-failed ${error.code||error.name}`);}
+     }
+    }
    }
-   syncVisibility();publish();
-  });
+   syncVisibility();
+   if(!settings.get("hostWindowOnly"))applyStandaloneTopmost(true);
+   win.webContents.send("widget:force-repaint");
+   win.webContents.invalidate();
+   publish();
+  };
+  screen.on("display-removed",()=>reconcileDisplayLayout(false));
+  screen.on("display-added",()=>reconcileDisplayLayout(false));
+  screen.on("display-metrics-changed",()=>reconcileDisplayLayout(true));
  });
- app.on("before-quit",()=>{quitting=true;clearInterval(visualTimer);clearInterval(recoveryTimer);clearInterval(bridgeMonitorTimer);clearInterval(updateCheckTimer);clearTimeout(byokIdleTimer);if(slideshowTimer)clearInterval(slideshowTimer);foreground.stop();adapter.stop();quotaAdapter.stop();companionBridge.stop().catch(()=>{});byokPortal?.stop().catch(()=>{});byokGateway?.stop({shutdownDaemon:shutdownDaemonOnQuit}).catch(()=>{});skinController.stop();localization.stop();sm.destroy();clearTimeout(saveTimer);ledger.save();globalShortcut.unregisterAll();tray?.destroy();});
- app.on("window-all-closed",()=>{if(!tray)app.quit();});
+ app.on("before-quit",()=>{quitting=true;recoveryLog(`before-quit reason=${quitReason}`);mouseRouting.stop();clearInterval(visualTimer);visualWatchdog.reset();clearInterval(recoveryTimer);clearInterval(bridgeMonitorTimer);clearInterval(updateCheckTimer);clearTimeout(byokIdleTimer);if(slideshowTimer)clearInterval(slideshowTimer);foreground.stop();adapter.stop();quotaAdapter.stop();companionBridge.stop().catch(()=>{});byokPortal?.stop().catch(()=>{});byokGateway?.stop({shutdownDaemon:shutdownDaemonOnQuit}).catch(()=>{});skinController.stop();localization.stop();sm.destroy();saveUsage(false);globalShortcut.unregisterAll();tray?.destroy();});
+ // A transient window failure is recovered even if the tray could not initialize.
+ app.on("window-all-closed",()=>{});
 }

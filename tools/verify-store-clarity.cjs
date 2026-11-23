@@ -46,9 +46,10 @@ async function testStoreClarity() {
   const storeNav = page.locator('button.nav-item[data-page="store"]');
   await storeNav.click();
 
-  // Wait for content-hub cards to render
+  // Wait for content-hub cards to render and page transition to finish
   const cards = page.locator('#content-hub .hub-card');
-  await page.waitForSelector('#content-hub .hub-card', { timeout: 5000 });
+  await page.waitForSelector('section.page.active[data-page="store"] #content-hub .hub-card', { timeout: 5000 });
+  await page.waitForTimeout(260);
   const cardCount = await cards.count();
   console.log(`Found ${cardCount} cards in content-hub.`);
 
@@ -77,7 +78,7 @@ async function testStoreClarity() {
     console.log(`Saved detail screenshot to: ${artifactPath}`);
 
     // Close dialog
-    await page.locator('.hub-dialog button', { hasText: '关闭' }).click();
+    await page.locator('.hub-dialog[open] button', { hasText: '关闭' }).first().click();
     await page.waitForTimeout(200);
   }
 

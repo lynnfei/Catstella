@@ -7,8 +7,9 @@
   "scripts": {
     "start:widget": "node tools/launch.cjs",
     "restart:widget": "node tools/restart.cjs",
-    "test": "node --test Antigravity-Cat-Widget/test/runtime.test.cjs Antigravity-Cat-Widget/test/startup-render.test.cjs Antigravity-Dream-Skin/test/runtime.test.cjs tools/source-hashes.test.cjs Antigravity-Cat-Widget/test/personality.test.cjs Antigravity-Cat-Widget/test/quota-cache.test.cjs shared/companion-bridge.test.cjs tools/web-companion-path.test.cjs Antigravity-Cat-Widget/test/companion-visibility.test.cjs shared/online.test.cjs",
+    "test": "node --test Antigravity-Cat-Widget/test/runtime.test.cjs Antigravity-Cat-Widget/test/startup-render.test.cjs Antigravity-Dream-Skin/test/runtime.test.cjs Antigravity-Dream-Skin/test/wallpaper-selection.test.cjs Antigravity-Dream-Skin/test/localization.test.cjs tools/source-hashes.test.cjs Antigravity-Cat-Widget/test/personality.test.cjs Antigravity-Cat-Widget/test/model-activity.test.cjs Antigravity-Cat-Widget/test/quota-cache.test.cjs shared/companion-bridge.test.cjs tools/web-companion-path.test.cjs Antigravity-Cat-Widget/test/companion-visibility.test.cjs Antigravity-Cat-Widget/test/window-recovery.test.cjs Antigravity-Cat-Widget/test/side-quota.test.cjs shared/online.test.cjs shared/online-mutations.test.cjs",
     "verify:runtime": "node tools/verify-runtime.cjs",
+    "verify:appearance": "node tools/verify-appearance-invariants.cjs",
     "verify:cold-start": "node tools/verify-cold-start.cjs",
     "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-native.ps1",
     "build:installers": "node tools/build-installers.cjs",

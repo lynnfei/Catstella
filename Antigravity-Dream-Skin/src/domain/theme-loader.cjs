@@ -2,6 +2,16 @@ const fs=require("node:fs"),path=require("node:path"),{pathToFileURL}=require("n
 const {createHash}=require("node:crypto");
 const IMAGE_MIME={".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg",".webp":"image/webp"};
 const DEFAULT_WALLPAPER_ID="gemini-character-sheet-v1";
+// Appearance-only edits must not read or encode wallpaper files.
+function appearancePayload(settings={}){
+ return {
+  outputMode:settings.outputMode==="glass"?"glass":"transparent",
+  chatTint:/^#[0-9a-f]{6}$/i.test(settings.chatTint||"")?settings.chatTint:"",
+  chatOpacity:typeof settings.chatOpacity==="number"&&Number.isFinite(settings.chatOpacity)?Math.max(0,Math.min(100,settings.chatOpacity)):null,
+  replyOpacity:typeof settings.replyOpacity==="number"&&Number.isFinite(settings.replyOpacity)?Math.max(0,Math.min(100,settings.replyOpacity)):null,
+  opacity:Math.max(0,Math.min(100,settings.opacity??55))/100
+ };
+}
 
 // 只做轻量格式校验：按文件头解码 PNG/JPEG/WebP 的真实尺寸，返回 null 表示无效或已损坏。
 // 绝不引入 SHA256 强校验——用户替换或新增壁纸不应导致崩溃白屏。
@@ -160,16 +170,15 @@ class WallpaperManager{
   try{pack=this.resolve(settings.wallpaperId);buffer=fs.readFileSync(pack.file);}
   catch(error){pack=this.resolve(settings.wallpaperId);buffer=fs.readFileSync(pack.file);}
   return{
-   version:2,themePreset:["violet","pink","ocean","onyx"].includes(settings.themePreset)?settings.themePreset:"violet",
-   outputMode:settings.outputMode==="glass"?"glass":"transparent",
+   version:2,wallpaperId:pack.id,themePreset:["violet","pink","ocean","onyx"].includes(settings.themePreset)?settings.themePreset:"violet",
+   ...appearancePayload(settings),
    positionX:Math.max(0,Math.min(100,settings.positionX??50)),
    positionY:Math.max(0,Math.min(100,settings.positionY??50)),
    zoom:Math.max(1,Math.min(2,settings.zoom??1)),
-   opacity:Math.max(0,Math.min(100,settings.opacity??55))/100,
    transition:settings.transition==="none"?"none":"fade",fit:["cover","contain","adaptive"].includes(settings.fit)?settings.fit:"adaptive",
    scrim:Math.max(0,Math.min(60,settings.scrim??12))/100,
    image:"data:"+pack.mime+";base64,"+buffer.toString("base64")
   };
  }
 }
-module.exports={WallpaperManager,DreamSkinThemeLoader:WallpaperManager,DEFAULT_WALLPAPER_ID,probeImage};
+module.exports={WallpaperManager,DreamSkinThemeLoader:WallpaperManager,DEFAULT_WALLPAPER_ID,probeImage,appearancePayload};

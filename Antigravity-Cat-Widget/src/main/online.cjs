@@ -6,6 +6,7 @@ const { readJson, writeJson } = require('../../../shared/storage.cjs');
 const { probeImage } = require('../../../Antigravity-Dream-Skin/src/domain/theme-loader.cjs');
 
 function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, settings, nativeImage, shell, apply,
+  getDreamSkin = () => settings.get('dreamSkin') || {}, getFallbackWallpaper = () => null,
   onCheck = () => {}, onInstalled = () => {}, fetcher, bundled }) {
   const cache = path.join(dataDir, 'update-check.json');
   const client = create({
@@ -21,6 +22,37 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
     return result;
   }
   const operations = new Map();
+  let mutationQueue = Promise.resolve();
+  function mutate(key, task) {
+    if (!operations.has(key)) {
+      const pending = mutationQueue.then(task).finally(() => operations.delete(key));
+      operations.set(key, pending);
+      mutationQueue = pending.catch(() => {});
+    }
+    return operations.get(key);
+  }
+  function assetDirectory(baseDir, packId) {
+    fs.mkdirSync(baseDir, { recursive: true });
+    const root = fs.realpathSync(baseDir), dest = path.join(root, packId);
+    if (fs.existsSync(dest) && (fs.lstatSync(dest).isSymbolicLink() || !fs.lstatSync(dest).isDirectory() || fs.realpathSync(dest) !== dest)) throw new Error('invalid asset directory');
+    return { root, dest };
+  }
+  function replaceAsset(baseDir, packId, write) {
+    const { root, dest } = assetDirectory(baseDir, packId);
+    const pending = fs.mkdtempSync(path.join(root, '.install-'));
+    const backup = path.join(root, '.replace-' + randomUUID());
+    let moved = false;
+    try {
+      write(pending);
+      if (fs.existsSync(dest)) { fs.renameSync(dest, backup); moved = true; }
+      try { fs.renameSync(pending, dest); }
+      catch (error) { if (moved) { fs.renameSync(backup, dest); moved = false; } throw error; }
+    } finally {
+      if (fs.existsSync(pending)) fs.rmSync(pending, { recursive: true, force: true });
+    }
+    // A locked obsolete file must not turn an otherwise complete update into failure.
+    if (moved) try { fs.rmSync(backup, { recursive: true, force: true }); } catch {}
+  }
   function validateImage(buffer, mime, limit) {
     const image = probeImage(buffer);
     if (!image?.width || !image.height || image.mime !== mime ||
@@ -33,28 +65,19 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
       validateImage(bytes, 'image/png', 1_500_000);
       return [frame, bytes];
     }));
-    fs.mkdirSync(characterDir, { recursive: true });
-    const root = fs.realpathSync(characterDir);
-    const dest = path.join(root, packId);
-    // 覆盖语义：同目录已存在说明是更新，先清掉旧版再落新文件。
-    if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
-    const pending = fs.mkdtempSync(path.join(root, '.install-'));
-    try {
+    replaceAsset(characterDir, packId, pending => {
       const frameDir = path.join(pending, 'frames');
       fs.mkdirSync(frameDir);
       for (const [name, bytes] of Object.entries(images)) fs.writeFileSync(path.join(frameDir, name + '.png'), bytes);
       writeJson(path.join(pending, 'manifest.json'), {
         id: packId, name: item.name, description: item.description, credit: item.credit, revision: item.sha256
       });
-      fs.renameSync(pending, dest);
-    } finally {
-      if (fs.existsSync(pending) && path.dirname(fs.realpathSync(pending)) === root) fs.rmSync(pending, { recursive: true, force: true });
-    }
+    });
   }
   async function install(id, applyAfterwards) {
     const asset = await client.download(id);
     if (asset.theme) {
-      apply({ dreamSkin: { themePreset: asset.theme.palette, opacity: asset.theme.opacity, onlineThemeId: id } });
+      apply({ dreamSkin: { themePreset: asset.theme.palette, opacity: asset.theme.opacity, onlineThemeId: id, onlineThemeRevision: asset.item.sha256 } });
       return { ok: true, kind: 'theme' };
     }
     if (asset.character) {
@@ -68,47 +91,37 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
     const dir = path.join(wallpaperDir, packId);
     const filename = 'wallpaper.' + asset.item.path.split('.').pop();
     const file = path.join(dir, filename);
-    fs.mkdirSync(dir, { recursive: true });
-    if (!fs.lstatSync(dir).isDirectory() || fs.realpathSync(dir) !== path.join(fs.realpathSync(wallpaperDir), packId)) throw new Error('invalid wallpaper directory');
-    const temp = file + '.' + randomUUID() + '.tmp';
-    try {
-      fs.writeFileSync(temp, buffer, { flag: 'wx' });
-      fs.renameSync(temp, file);
-    } finally {
-      fs.rmSync(temp, { force: true });
-    }
-    writeJson(path.join(dir, 'manifest.json'), { id: packId, file: filename, name: asset.item.name, credit: asset.item.credit, revision: asset.item.sha256, pack: asset.item.pack });
-    if (applyAfterwards) apply({ dreamSkin: { wallpaperId: packId, wallpaperFile: file } });
+    replaceAsset(wallpaperDir, packId, pending => {
+      fs.writeFileSync(path.join(pending, filename), buffer);
+      writeJson(path.join(pending, 'manifest.json'), { id: packId, file: filename, name: asset.item.name, credit: asset.item.credit, revision: asset.item.sha256, pack: asset.item.pack });
+    });
     onInstalled('wallpaper');
+    if (applyAfterwards || getDreamSkin().wallpaperId === packId) apply({ dreamSkin: { wallpaperId: packId, wallpaperFile: file } });
     return { ok: true, kind: 'wallpaper' };
   }
   // 卸载：按目录名精确移除在线素材，正在使用的角色/壁纸/主题一并回退到内置默认。
   function uninstall(id) {
     if (!/^[a-z0-9][a-z0-9-]{0,60}$/i.test(id)) return { ok: false, reason: 'invalid' };
     const packId = 'online-' + id;
-    let kind = null;
-    const tryRemove = (baseDir, assign) => {
-      try {
-        const root = fs.realpathSync(baseDir);
-        const target = path.join(root, packId);
-        if (fs.existsSync(target) && fs.realpathSync(target) === target) {
-          fs.rmSync(target, { recursive: true, force: true });
-          assign();
-        }
-      } catch {}
-    };
-    tryRemove(characterDir, () => { kind = 'character'; });
-    tryRemove(wallpaperDir, () => { if (!kind) kind = 'wallpaper'; });
-    if (!kind) {
-      const dream = settings.get('dreamSkin') || {};
-      if (dream.onlineThemeId === id) kind = 'theme';
+    let kind = null, location;
+    for (const [candidate, base] of [['character', characterDir], ['wallpaper', wallpaperDir]]) {
+      if (!fs.existsSync(base)) continue;
+      const checked = assetDirectory(base, packId);
+      if (fs.existsSync(checked.dest)) { kind = candidate; location = checked; break; }
     }
+    const dream = getDreamSkin();
+    if (!kind && dream.onlineThemeId === id) kind = 'theme';
     if (!kind) return { ok: false, reason: 'not-installed' };
     const patch = {};
-    if (kind === 'character' && settings.get('characterPack') === packId) patch.characterPack = '';
-    if (kind === 'wallpaper' && (settings.get('dreamSkin') || {}).wallpaperId === packId) patch.dreamSkin = { wallpaperId: '', wallpaperFile: '' };
-    if (kind === 'theme' && (settings.get('dreamSkin') || {}).onlineThemeId === id) patch.dreamSkin = { themePreset: 'violet', onlineThemeId: '' };
+    if (kind === 'character' && settings.get('characterPack') === packId) patch.characterPack = 'gemini-star-v1';
+    if (kind === 'wallpaper' && (dream.wallpaperId === packId || location && dream.wallpaperFile && path.dirname(path.resolve(dream.wallpaperFile)) === location.dest)) {
+      const fallback = getFallbackWallpaper();
+      patch.dreamSkin = { wallpaperId: fallback?.id || 'gemini-character-sheet-v1', wallpaperFile: fallback?.file || '' };
+    }
+    if (kind === 'theme') patch.dreamSkin = { themePreset: 'violet', opacity: 55, onlineThemeId: '', onlineThemeRevision: '' };
+    // Persist a valid replacement before removing an in-use asset. A failed save keeps its files intact.
     if (Object.keys(patch).length) apply(patch);
+    if (location) fs.rmSync(location.dest, { recursive: true, force: true });
     onInstalled(kind);
     return { ok: true, kind };
   }
@@ -135,10 +148,9 @@ function createOnlineActions({ dataDir, wallpaperDir, characterDir, version, set
         return theme ? { ok: true, ...theme } : { ok: false };
       }
       if ((action === 'install' || action === 'download') && typeof value === 'string') {
-        if (!operations.has(value)) operations.set(value, install(value, action === 'install').finally(() => operations.delete(value)));
-        return await operations.get(value);
+        return await mutate(action + ':' + value, () => install(value, action === 'install'));
       }
-      if (action === 'uninstall' && typeof value === 'string') return uninstall(value);
+      if (action === 'uninstall' && typeof value === 'string') return await mutate('uninstall:' + value, () => uninstall(value));
       return { ok: false };
     } catch (error) {
       return { ok: false, reason: failureReason(error) };

@@ -2,11 +2,12 @@
  const api=window.widgetApi,$=id=>document.getElementById(id),mascot=$("mascot"),motion=$("motion"),sleepShell=motion.parentElement;
  let snapshot,selected="quota",closed=true,temporary=null,timeout,pointer=null,gesture=0,currentSound=null,hit=null;
  let tapTimer=null,artRenderSequence=0,artReadyNotified=false;
- let personality,talkState,talkLine,autoHide,hideAnimation,lastBubbleOpen=null,lastBubbleView;
+ let personality,talkState,talkLine,talkFields=undefined,sideQuota=null,autoHide,hideAnimation,lastBubbleOpen=null,lastBubbleView,lastTalkMode=null;
  let modelTalkTimer,modelTalkKey,modelTalkTemplate;
- let patReflection,patReflectionTimer,lastTalkClick=-Infinity;
+ let patReflection,patReflectionTimer,lastTalkClick=-Infinity,tapChain=Promise.resolve();
+ let alertState,alertTimer;
  let consecutiveClicks=0;
- function armBubble(){clearTimeout(autoHide);const focus=document.activeElement;if(!closed&&!($("bubble").contains(focus)&&focus.matches(":focus-visible")))autoHide=setTimeout(()=>{closed=true;consecutiveClicks=0;render();},6500);}
+ function armBubble(){clearTimeout(autoHide);const focus=document.activeElement;if(!closed&&!(temporary&&temporary===ambientMessage)&&!($("bubble").contains(focus)&&focus.matches(":focus-visible")))autoHide=setTimeout(()=>{closed=true;consecutiveClicks=0;render();},6500);}
  const {formatLine}=window.CatstellaDialogue;
  const headPatDialogue=new window.CatstellaHeadPatDialogue();
  const formatTalk=(line,fields)=>formatLine(line,{mode:snapshot?.settings.userHonorificMode,name:snapshot?.settings.customHonorific},fields);
@@ -32,8 +33,18 @@
  }
  function chooseTalk(express=false){
   talkState=snapshot.persistentState||snapshot.state;
-  talkLine=personality.say(talkState==="offline"?"idle":talkState);
+  talkFields=undefined;talkLine=personality.say(talkState==="offline"?"idle":talkState);
   if(express)pet.show(personality.expressionFor(talkLine),"dialogue");
+ }
+ function syncAlertEffect(){
+  const state=snapshot.state==="error"?"error":snapshot.persistentState||snapshot.state;
+  if(state===alertState)return;
+  alertState=state;
+  clearTimeout(alertTimer);
+  delete mascot.dataset.alertEffect;
+  if(state!=="warning"&&state!=="error")return;
+  mascot.dataset.alertEffect=state;
+  alertTimer=setTimeout(()=>delete mascot.dataset.alertEffect,2400);
  }
  const modelToolLabels={run_command:"终端命令",read_file:"读文件",write_file:"写文件",edit_file:"改文件",search_web:"联网搜索",schedule:"定时任务",manage_task:"后台任务",manage_subagents:"子代理",invoke_subagent:"子代理",ask_question:"向你提问",list_plugin_accounts:"插件账号",search_marketplace:"插件市场"};
  const formatModelTools=tools=>{const labels=[...(Array.isArray(tools)?tools:[])].map(name=>modelToolLabels[name]||name).slice(0,3);return labels.join(" · ");};
@@ -81,7 +92,8 @@
  async function paintArtwork(pack,frames,artKey){
   if(mascot.dataset.characterPack===pack&&mascot.dataset.artKey===artKey)return;
   const sequence=++artRenderSequence;
-  mascot.dataset.artReady="false";
+  const packChanged=mascot.dataset.characterPack!==pack;
+  if(mascot.dataset.artReady!=="true"||packChanged)mascot.dataset.artReady="false";
   mascot.dataset.characterPack=pack;mascot.dataset.artKey=artKey;
   const v="?v="+artKey.replace(/[^a-z0-9]/gi,"-");
   const base=pack==="lin-cat"?"../../assets/character-packs/lin-cat/frames/":"../../assets/character-packs/gemini-star-v1/frames/";
@@ -98,14 +110,19 @@
   if(shyEl)shyEl.src=source("shy");
   if(angryEl)angryEl.src=source("sad");
   const images=[idleEl,blinkEl,proudEl,shyEl,angryEl].filter(Boolean);
-  await Promise.all(images.map(image=>image.decode?image.decode().catch(()=>{}):Promise.resolve()));
+  await Promise.all(images.map(image=>image.decode?Promise.race([image.decode().catch(()=>{}),new Promise(resolve=>setTimeout(resolve,2500))]):Promise.resolve()));
   if(sequence!==artRenderSequence)return;
-  mascot.dataset.artReady="true";
+  mascot.dataset.artReady="true";syncSideQuota();
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   if(!artReadyNotified&&typeof api.ready==="function"){
    artReadyNotified=true;
    api.ready();
   }
+ }
+ function syncSideQuota(dragging=Boolean(pointer?.dragging)){
+  if(!sideQuota||!snapshot)return;
+  mascot.dataset.facing=snapshot.facing||"right";
+  sideQuota.update({snapshot,mainBubbleVisible:!closed&&snapshot.settings.bubbleOn,dragging,artReady:mascot.dataset.artReady==="true"});
  }
  function render(){
   if(!snapshot)return;const s=snapshot.settings,l=snapshot.ledger,pages=getPages();
@@ -118,10 +135,16 @@
   // 帧图 URL 全部携带内容指纹版本号：资产更新即缓存失效，根治"偶尔变回老立绘"。
   const artKey=pack+":"+(snapshot.artVersion||"0");
   void paintArtwork(pack,frames,artKey);
-  mascot.style.setProperty("--agy-width",(snapshot.displayScale||s.scale)+"px");mascot.style.setProperty("--agy-shift",(snapshot.artShift||0)+"px");mascot.dataset.state=snapshot.state;mascot.dataset.dock=snapshot.dockSide||"";mascot.dataset.facing=snapshot.facing||"left";mascot.dataset.reducedMotion=String(s.reducedMotion);
-  mascot.style.setProperty("--bubble-tint",/^#[0-9a-f]{6}$/i.test(s.bubbleTint||"")?s.bubbleTint:"#eee6ff");mascot.style.setProperty("--bubble-alpha",String(Math.min(100,Math.max(30,typeof s.bubbleOpacity==="number"?s.bubbleOpacity:98))/100));
-  bubbleVisibility(!closed&&s.bubbleOn);for(const id of ["quota","web-quota-panel","byok-panel","value","detail"])if($(id))$(id).hidden=true;$("page").textContent=(pages.indexOf(selected)+1)+" / "+pages.length;
-  if(temporary){$("title").textContent=temporary.title;$("value").hidden=false;$("value").textContent=temporary===ambientMessage?formatTalk(temporary.body):temporary.body;$("detail").hidden=!temporary.detail;$("detail").textContent=temporary.detail||"";$("meta").textContent=temporary.meta||"";return;}
+  mascot.style.setProperty("--agy-width",(snapshot.displayScale||s.scale)+"px");mascot.style.setProperty("--agy-shift",(snapshot.artShift||0)+"px");mascot.style.setProperty("--agy-shift-y",(snapshot.artShiftY||0)+"px");
+  const size=snapshot.displayScale||s.scale,top=innerHeight-size+(snapshot.artShiftY||0),above=top-70,below=innerHeight-top-size-64;
+  mascot.dataset.bubbleBelow=String(below>above);
+  mascot.style.setProperty("--agy-bubble-room",Math.max(80,Math.max(above,below))+"px");
+  mascot.dataset.state=snapshot.state;mascot.dataset.dock=snapshot.dockSide||"";mascot.dataset.facing=snapshot.facing||"left";mascot.dataset.reducedMotion=String(s.reducedMotion);
+  syncAlertEffect();
+  mascot.style.setProperty("--bubble-tint",/^#[0-9a-f]{6}$/i.test(s.bubbleTint||"")&&s.bubbleTint.toLowerCase()!=="#eee6ff"?s.bubbleTint:"");mascot.style.setProperty("--bubble-alpha",typeof s.bubbleOpacity==="number"&&s.bubbleOpacity!==98?String(Math.min(100,Math.max(30,s.bubbleOpacity))/100):"");
+  bubbleVisibility(!closed&&s.bubbleOn);syncSideQuota();for(const id of ["quota","web-quota-panel","byok-panel","value","detail","meta"])if($(id))$(id).hidden=true;$("page").textContent=(pages.indexOf(selected)+1)+" / "+pages.length;
+  $("value").classList.toggle("agy-phrase",temporary?temporary.kind==="talk":selected==="talk");
+  if(temporary){$("title").textContent=temporary.title;$("value").hidden=false;$("value").textContent=temporary.kind==="talk"?formatTalk(temporary.body):temporary.body;$("detail").hidden=!temporary.detail;$("detail").textContent=temporary.detail||"";$("meta").hidden=!temporary.meta;$("meta").textContent=temporary.meta||"";return;}
   if(selected==="quota"){
    $("quota").hidden=false;
    $("title").textContent="Gemini Models";
@@ -130,7 +153,15 @@
    if(tag){
     if(q?.modelInfo){
      tag.hidden=false;
-     tag.innerHTML='<span>'+q.modelInfo.modelName+'</span><span class="thinking-badge">思考: '+q.modelInfo.thinking+'</span>';
+     if(!tag.firstElementChild){
+      const model=document.createElement("span"),thinking=document.createElement("span");
+      thinking.className="thinking-badge";
+      tag.replaceChildren(model,thinking);
+     }
+     const model=q.modelInfo.modelName||"";
+     const thinking="思考: "+q.modelInfo.thinking;
+     if(tag.firstElementChild.textContent!==model)tag.firstElementChild.textContent=model;
+     if(tag.lastElementChild.textContent!==thinking)tag.lastElementChild.textContent=thinking;
     }else{
      tag.hidden=true;
     }
@@ -159,7 +190,7 @@
    const wc=snapshot.webCompanion;
    const webBrief=wc?.quota?(typeof wc.quota.fiveHourUsedPct==="number"?(" · Web 5h 剩余 "+Math.max(0,100-wc.quota.fiveHourUsedPct)+"%"):(wc.quota.dailyTotal?(" · Web 今日 "+wc.quota.dailyTotal+" 次"):"")):"";
    let extraHint="";if(isArgon&&typeof gData?.weekly==="number"){extraHint=" · 通用周额度余 "+Math.round(gData.weekly)+"%";}else if(!isArgon&&hasArgonQuota){extraHint=" · 🪐 Argon 余 "+Math.round(q.argon.weekly)+"%";}$("caption").textContent=(s.manualQuota?"手动记录":q?.stale?"上次读取 · 待更新":q?.cached?"上次读取":"")+extraHint+webBrief;
-   $("meta").textContent="官方模型额度通道 · 点此刷新";
+   $("meta").textContent="";
   }else if(selected==="webQuota"){
    const wc=snapshot.webCompanion||{},wq=wc.quota||{};
    $("web-quota-panel").hidden=false;
@@ -190,7 +221,7 @@
     if($("web-split-label"))$("web-split-label").textContent="当前会话负载";
     $("web-model-split").textContent=wq.flashCount||wq.thinkingCount||wq.proCount?((wq.flashCount||0)+" / "+(wq.thinkingCount||0)+" / "+(wq.proCount||0)):"第 0 轮";
    }
-   $("meta").textContent=wq.resetHint?("重置时间: "+wq.resetHint):(wc.online?"与浏览器扩展实时联动中":"打开 Gemini 网页即可自动同步");
+   $("meta").hidden=false;$("meta").textContent=wq.resetHint?("重置时间: "+wq.resetHint):(wc.online?"与浏览器扩展实时联动中":"打开 Gemini 网页即可自动同步");
 /* @byok-dev-start */
   }else if(selected==="claudeGpt"){
    const b=snapshot.byok||{},ap=b.activeProvider,choices=Array.isArray(b.enabledModelChoices)?b.enabledModelChoices:[];
@@ -208,25 +239,25 @@
    if($("byok-balance-badge")&&balText)$("byok-balance-badge").textContent=balText;
    $("byok-ping").textContent=typeof ap?.pingMs==="number"?("⚡ "+ap.pingMs+" ms"):(ap?.enabled?"点此测速":"未启用");
    $("byok-requests").textContent=(typeof b.todayRequests==="number"?b.todayRequests:0)+" 次";
-   $("meta").textContent=(b.gatewayOnline?("网关 127.0.0.1:"+b.port):"网关离线")+" · 点卡片测速查余";
+   $("meta").hidden=false;$("meta").textContent=(b.gatewayOnline?("网关 127.0.0.1:"+b.port):"网关离线")+" · 点卡片测速查余";
 /* @byok-dev-end */
   }else if(selected==="today"){
    $("title").textContent="今日用量 · 本机";$("value").hidden=false;$("value").textContent=format(l.todayTokens.total);$("detail").hidden=false;
    $("detail").textContent="输入 "+format(l.todayTokens.prompt)+" · 缓存 "+format(l.todayTokens.cache)+" · 输出 "+format(l.todayTokens.output);
-   $("meta").textContent=l.todaySteps+" 个模型步骤 · "+(l.partial?"部分字段缺失":snapshot.source.coverage||"只读日志");
+   $("meta").hidden=false;$("meta").textContent=l.todaySteps+" 个模型步骤 · "+(l.partial?"部分字段缺失":snapshot.source.coverage||"只读日志");
   }else if(selected==="latest"){
    const r=l.latest;$("title").textContent="最近模型步骤";$("value").hidden=false;$("value").textContent=format(r?.tokens.total);$("detail").hidden=false;$("detail").textContent=r?"输入 "+format(r.tokens.input)+" · 输出 "+format(r.tokens.output):"尚无数值记录";
-   $("meta").textContent=r?"本机记录 · 费用 —（无价格来源）":"等待真实会话记录";
-  }else{$("title").textContent="喵言喵语";$("value").hidden=false;$("value").classList.add("agy-phrase");if(talkState!==(snapshot.persistentState||snapshot.state))chooseTalk();const statusLine=modelTalk();$("value").textContent=statusLine||formatTalk(patReflection?.line||talkLine,patReflection?.fields);$("meta").textContent=statusLine?"本机 Antigravity 日志":"点点本喵，再聊一句";}
-  if(selected!=="talk")$("value").classList.remove("agy-phrase");
+   $("meta").hidden=false;$("meta").textContent=r?"本机记录 · 费用 —（无价格来源）":"等待真实会话记录";
+  }else{$("title").textContent="喵言喵语";$("value").hidden=false;$("value").classList.add("agy-phrase");const nextTalkState=snapshot.persistentState||snapshot.state;if(!talkLine){chooseTalk();}else if(talkState!==nextTalkState){talkState=nextTalkState;if(closed)chooseTalk();}const statusLine=modelTalk();const patLine=!statusLine&&patReflection?.line;const talkMode=statusLine?"model":(patLine?"pat":"idle");if(!closed&&lastTalkMode==="model"&&talkMode!=="model"&&!temporary)armBubble();lastTalkMode=talkMode;$("value").textContent=statusLine||formatTalk(patLine||talkLine,patLine?patReflection.fields:talkFields);$("meta").hidden=false;$("meta").textContent=statusLine?"本机 Antigravity 日志":"点点本喵，再聊一句";}
+  if(selected!=="talk"){lastTalkMode=null;$("value").classList.remove("agy-phrase");}
  }
- function message(title,body,detail="",ms=4500,meta=""){clearAmbient();clearTimeout(timeout);temporary={title,body,detail,meta};closed=false;render();if(ms>0)timeout=setTimeout(()=>{temporary=null;render();},ms);}
+ function message(title,body,detail="",ms=4500,meta="",kind="notice"){clearAmbient();clearTimeout(timeout);if(ms>0)clearTimeout(autoHide);temporary={title,body,detail,meta,kind};closed=false;render();if(ms>0)timeout=setTimeout(()=>{temporary=null;if(!closed)armBubble();render();},ms);}
  function rememberBubble(patch){
   if(Object.entries(patch).every(([key,value])=>snapshot.settings[key]===value))return;
   Object.assign(snapshot.settings,patch);
   if(api.rememberBubble)api.rememberBubble(patch);else void api.save(patch);
  }
- function select(delta){const pages=getPages();armBubble();clearTimeout(timeout);temporary=null;closed=false;selected=pages[(pages.indexOf(selected)+delta+pages.length)%pages.length];if(selected==="talk")chooseTalk(true);rememberBubble({bubblePage:selected});render();}
+ function select(delta){const pages=getPages();clearTimeout(patReflectionTimer);patReflection=null;talkFields=undefined;armBubble();clearTimeout(timeout);temporary=null;closed=false;selected=pages[(pages.indexOf(selected)+delta+pages.length)%pages.length];if(selected==="talk")chooseTalk(true);rememberBubble({bubblePage:selected});render();}
  $("prev").onclick=()=>select(-1);$("next").onclick=()=>select(1);$("close").onclick=()=>{clearTimeout(autoHide);closed=true;consecutiveClicks=0;render();};$("toggle").onclick=()=>{closed=!closed;if(!snapshot.settings.bubbleOn)rememberBubble({bubbleOn:true});armBubble();render();};$("settings").onclick=()=>api.command("settings");
 /* @byok-dev-start */
  if($("byok-panel"))$("byok-panel").onclick=()=>api.command("byok-ping-active");
@@ -236,7 +267,7 @@
 /* @byok-dev-end */
  if($("web-quota-panel"))$("web-quota-panel").onclick=()=>select(1);
  window.addEventListener("contextmenu",e=>{e.preventDefault();api.command("menu");});
- $("bubble").addEventListener("pointerenter",()=>clearTimeout(autoHide));$("bubble").addEventListener("pointerleave",armBubble);
+ $("bubble").addEventListener("pointerenter",()=>{clearTimeout(autoHide);if(temporary&&temporary===ambientMessage)clearTimeout(ambientTimer);});$("bubble").addEventListener("pointerleave",()=>{if(temporary&&temporary===ambientMessage){clearTimeout(ambientTimer);ambientTimer=setTimeout(clearAmbient,2200);}else armBubble();});
  $("bubble").addEventListener("focusin",event=>{if(event.target.matches(":focus-visible"))clearTimeout(autoHide);});
  $("bubble").addEventListener("focusout",event=>{if(!$("bubble").contains(event.relatedTarget))queueMicrotask(armBubble);});
  function hitsHead(event){
@@ -244,19 +275,23 @@
   const x=event.clientX-area.left,y=event.clientY-area.top;
   return x>=area.width*.07&&x<=area.width*.93&&y>=area.height*.035&&y<=area.height*.80;
  }
- async function recordHeadPat(){
-  let counts;
-  try{counts=await api.pointer("head-pat");}catch{return;}
-  const available=snapshot&&!closed&&snapshot.settings.bubbleOn&&selected==="talk"&&!temporary&&!document.hidden&&
-   !modelTalk()&&["idle","offline"].includes(snapshot.persistentState||snapshot.state);
-  const offer=headPatDialogue.next(counts,available);
-  if(!offer||!snapshot.dialogue[offer.category]?.length)return;
-  patReflection={line:personality.say(offer.category),fields:offer.fields};
-  clearTimeout(patReflectionTimer);patReflectionTimer=setTimeout(()=>{
+ function canOfferHeadPat(){
+  return Boolean(snapshot&&!closed&&snapshot.settings.bubbleOn&&selected==="talk"&&!temporary&&!document.hidden&&
+   !modelTalk()&&["idle","offline"].includes(snapshot.persistentState||snapshot.state));
+ }
+ function applyPatOffer(offer){
+  if(!offer||!snapshot?.dialogue[offer.category]?.length)return false;
+  const line=personality.say(offer.category);
+  talkState=snapshot.persistentState||snapshot.state;
+  talkLine=line;
+  talkFields=offer.fields;
+  patReflection={line,fields:offer.fields};
+  clearTimeout(patReflectionTimer);
+  patReflectionTimer=setTimeout(()=>{
+   // Unlock head tapping while keeping the already-shown line on screen until next click or auto-hide.
    patReflection=null;
-   if(!closed&&selected==="talk")render();
   },5500);
-  render();
+  return true;
  }
  function animatePress(pressed){motion.dataset.pressed=String(pressed);}
  const pointerDistance=event=>Math.hypot(event.clientX-pointer.x,event.clientY-pointer.y);
@@ -268,7 +303,19 @@
   animatePress(false);
   api.pointer("cancel");
  }
- function activate(head=false){
+ function willLandOnTalk(){
+  if(closed)return false;
+  const action=snapshot?.settings?.clickCatAction||"talk";
+  if(action==="cyclePages"){
+   const pages=getPages();
+   return pages[(pages.indexOf(selected)+1)%pages.length]==="talk";
+  }
+  const nextClicks=consecutiveClicks+1;
+  if(nextClicks===2&&hasWebData())return false;
+  if((nextClicks===2||nextClicks===3)&&snapshot?.byok?.available&&selected!=="claudeGpt"&&selected!=="talk")return false;
+  return true;
+ }
+ function activate(head=false,patCounts=null){
   const action = snapshot?.settings?.clickCatAction || "talk";
   if (action === "cyclePages") {
     if (closed) {
@@ -276,6 +323,17 @@
       armBubble();
       render();
     } else {
+      const pages=getPages();
+      const target=pages[(pages.indexOf(selected)+1)%pages.length];
+      if(target==="talk"){
+       selected="talk";
+       if(head&&patCounts){
+        const offer=headPatDialogue.next(patCounts,canOfferHeadPat());
+        if(!applyPatOffer(offer))chooseTalk(true);
+       }else chooseTalk(true);
+       rememberBubble({bubblePage:"talk"});armBubble();clearTimeout(timeout);temporary=null;closed=false;render();
+       return;
+      }
       select(1);
     }
     return;
@@ -305,8 +363,20 @@
     render();
 /* @byok-dev-end */
   } else {
-    if(head&&selected==="talk"&&(patReflection||performance.now()-lastTalkClick<180))return;
+    const alreadyTalk=selected==="talk";
+    if(head&&alreadyTalk&&patReflection){
+     if(patCounts)headPatDialogue.next(patCounts,false);
+     return;
+    }
+    const throttled=head&&alreadyTalk&&performance.now()-lastTalkClick<180;
     selected = "talk";
+    const offer=head&&patCounts?headPatDialogue.next(patCounts,canOfferHeadPat()):null;
+    if(applyPatOffer(offer)){
+     rememberBubble({ bubblePage: "talk", bubbleOn: true });
+     render();
+     return;
+    }
+    if(throttled)return;
     if(head)lastTalkClick=performance.now();
     chooseTalk(true);
     rememberBubble({ bubblePage: "talk", bubbleOn: true });
@@ -336,7 +406,7 @@
   pointer.distance=Math.max(pointer.distance,pointerDistance(event));
   if(pointer.distance>PetBehavior.tapSlop||pointer.dragging){
    cancelPointerPress();
-   if(!pointer.dragging){pointer.dragging=true;api.drag?.("start");}
+   if(!pointer.dragging){pointer.dragging=true;api.drag?.("start");syncSideQuota(true);}
    api.drag?.("move",event.screenX-pointer.screenX,event.screenY-pointer.screenY);
   }
  });
@@ -346,7 +416,7 @@
   const {sleeping,head,startedAt,dragging}=pointer;
   const distance=event?Math.max(pointer.distance,pointerDistance(event)):pointer.distance;
   const isTap=!cancel&&!dragging&&PetBehavior.isTap(performance.now()-startedAt,distance);
-  if(dragging)api.drag?.(cancel?"cancel":"end",event?event.screenX-pointer.screenX:0,event?event.screenY-pointer.screenY:0);
+  if(dragging){api.drag?.(cancel?"cancel":"end",event?event.screenX-pointer.screenX:0,event?event.screenY-pointer.screenY:0);syncSideQuota(false);}
   pointer=null;
   animatePress(false);
   if(!sleeping)api.pointer(isTap?"up":"cancel");
@@ -354,8 +424,20 @@
   syncPet();
   if(isTap){
    if(pet.activity(true)||sleeping||pet.rest!=="awake")return;
-   activate(head);
-   if(head){if(pet.tap()==="proud")api.pointer("pet");void recordHeadPat();}
+   if(!head){activate(false);return;}
+   if(pet.tap()==="proud")api.pointer("pet");
+   if(!willLandOnTalk()){
+    activate(true);
+    tapChain=tapChain.then(async()=>{
+     const counts=await api.pointer("head-pat").catch(()=>null);
+     if(counts)headPatDialogue.next(counts,false);
+    });
+   }else{
+    tapChain=tapChain.then(async()=>{
+     const counts=await api.pointer("head-pat").catch(()=>null);
+     activate(true,counts);
+    });
+   }
   }
  }
  motion.addEventListener("pointerup",event=>release(false,event));
@@ -370,6 +452,14 @@
  });
  window.addEventListener("mousemove",e=>{const active=!!e.target.closest(".interactive");if(hit!==active){hit=active;api.hit(active);}});
  window.addEventListener("mouseleave",()=>{hit=false;api.hit(false);});
+ if(api.onMouseLeft)api.onMouseLeft(()=>{hit=false;api.hit(false);sideQuota?.handleExternalLeave?.();});
+ if(api.onMouseEntered)api.onMouseEntered(coords=>{
+  if(!coords||!Number.isFinite(coords.x)||!Number.isFinite(coords.y))return;
+  const el=document.elementFromPoint(coords.x,coords.y);
+  const active=!!el?.closest(".interactive");
+  if(hit!==active){hit=active;api.hit(active);}
+  sideQuota?.handleExternalHoverCheck?.(coords.x,coords.y);
+ });
 
   function reloadImages(){
     const ts=Date.now();
@@ -386,6 +476,20 @@
   if(api.onRefresh)api.onRefresh(()=>{
     reloadImages();
     render();
+  });
+  if(api.onForceRepaint)api.onForceRepaint(()=>{
+    const idleImg=document.querySelector(".agy-frame--idle");
+    if(idleImg&&(!idleImg.complete||idleImg.naturalWidth===0))reloadImages();
+    mascot.dataset.artReady="true";
+    // Nudge Chromium compositor layer after GPU/sleep/display wake without altering layout.
+    mascot.style.transform="translateZ(0)";
+    void mascot.offsetWidth;
+    requestAnimationFrame(()=>{
+      mascot.style.transform="";
+      syncPet();
+      syncSideQuota();
+      render();
+    });
   });
   api.subscribe(data=>{if(snapshot&&(!data.settings.sound||data.settings.soundSet!==snapshot.settings.soundSet||data.settings.volume!==snapshot.settings.volume))stopSound();snapshot=data;scheduleModelTalk();render();});
  api.onStep(step=>{if(!closed&&snapshot?.settings.turnCostOn){message("模型步骤完成",format(step.tokens.total)+" tokens","输入 "+format(step.tokens.input)+" · 输出 "+format(step.tokens.output),snapshot.settings.turnCostDurationMs,"真实本机记录 · 非整轮计费");play("release");}});
@@ -409,15 +513,33 @@
  function clearAmbient(){
   if(!ambientMessage)return;
   clearTimeout(ambientTimer);
+  clearTimeout(autoHide);
   if(temporary===ambientMessage){temporary=null;closed=true;render();}
   ambientMessage=null;
  }
+ sideQuota=window.CatstellaSideQuota?.SideQuotaController
+  ? new window.CatstellaSideQuota.SideQuotaController({
+     container:$("widget")||document.body,
+     mascot,
+     onOpenQuota:source=>{
+      const target=source==="web"&&hasWebData()?"webQuota":"quota";
+      selected=target;closed=false;
+      clearTimeout(patReflectionTimer);patReflection=null;talkFields=undefined;
+      temporary=null;clearTimeout(timeout);clearAmbient();
+      if(snapshot)snapshot={...snapshot,settings:{...snapshot.settings,bubbleOn:true,bubblePage:target}};
+      armBubble();
+      rememberBubble({bubblePage:target,bubbleOn:true});
+      render();
+     }
+    })
+  : null;
  const readyForAmbient=()=>snapshot?.settings.ambientChatter&&snapshot.settings.bubbleOn&&closed&&!pointer&&!temporary&&!document.hidden&&["idle","offline"].includes(snapshot.state);
  const chatter=new window.CatstellaChatter({
   allowed:async()=>readyForAmbient()&&await api.canChatter()&&readyForAmbient(),
-  speak:()=>{
-   previousAmbient=window.CatstellaChatter.pickLine(previousAmbient);
-   message("喵言喵语",previousAmbient,"",0);
+  pick:previous=>personality?personality.say("idle"):window.CatstellaChatter.pickLine(previous),
+  speak:picked=>{
+   const resolved=picked===undefined?window.CatstellaChatter.pickLine(previousAmbient):picked;const text=typeof resolved==="object"&&resolved?resolved.text:resolved;previousAmbient=text;
+   message("喵言喵语",previousAmbient,"",0,"","talk");
    ambientMessage=temporary;
    render();
    ambientTimer=setTimeout(clearAmbient,4500);
@@ -433,5 +555,5 @@
  });
  snapshot=await api.get();personality=new window.StarPersonality(snapshot.dialogue,Math.random,snapshot.dialogueTags);selected=snapshot.settings.bubblePage;scheduleModelTalk();render();
  chatter.configure(snapshot.settings.ambientChatter===true);
- window.addEventListener("beforeunload",()=>{clearTimeout(timeout);clearTimeout(autoHide);clearTimeout(hideAnimation);clearTimeout(modelTalkTimer);clearTimeout(patReflectionTimer);pet.dispose();stopSound();});
+ window.addEventListener("beforeunload",()=>{clearTimeout(timeout);clearTimeout(autoHide);clearTimeout(hideAnimation);clearTimeout(modelTalkTimer);clearTimeout(patReflectionTimer);clearTimeout(alertTimer);pet.dispose();stopSound();});
 })();

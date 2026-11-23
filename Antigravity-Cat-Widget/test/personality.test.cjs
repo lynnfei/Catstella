@@ -223,11 +223,98 @@ test('pet reflection dialogue contains count placeholders and honors honorific s
  assert.equal(formatLine('{user}，AGY 模型步骤 #{step}',{mode:'zayu'},{step:7}),'杂鱼君，AGY 模型步骤 #7');
  let now=0;
  const talk=new HeadPatDialogue(()=>now);
- assert.equal(talk.next({total:20,today:1},true),null);
- assert.equal(talk.next({total:21,today:2},true),null);
- assert.equal(talk.next({total:22,today:3},false),null);
- assert.deepEqual(talk.next({total:23,today:4},true),{category:'petDaily',fields:{count:23,today:4}});
- for(let total=24;total<=28;total++)assert.equal(talk.next({total,today:total-19},true),null);
+ // Early rapid taps must not blurt today's count before sustained patting.
+ for(let i=1;i<=11;i++)assert.equal(talk.next({total:19+i,today:i},true),null);
+ assert.deepEqual(talk.next({total:31,today:12},true),{category:'petDaily',fields:{count:31,today:12}});
+ for(let total=32;total<=36;total++)assert.equal(talk.next({total,today:total-19},true),null);
  now=20_000;
- assert.deepEqual(talk.next({total:29,today:10},true),{category:'petReflection',fields:{count:29,today:10}});
+ assert.deepEqual(talk.next({total:37,today:18},true),{category:'petReflection',fields:{count:37,today:18}});
+ // Elapsed active stretch (15s+, >=6 session taps, >=8 today) also unlocks the quip.
+ let delayedNow=0;
+ const delayedTalk=new HeadPatDialogue(()=>delayedNow);
+ for(let i=1;i<=5;i++)assert.equal(delayedTalk.next({total:7+i,today:4+i},true),null);
+ delayedNow=16_000;
+ assert.deepEqual(delayedTalk.next({total:13,today:10},true),{category:'petDaily',fields:{count:13,today:10}});
+});
+
+test('categorized idle chatter supports explicit topic filtering, anti-repeat group rotation and late-night bias',()=>{
+ const dialogue=require('../assets/dialogue/zh-CN.json');
+ const {Personality,TALK_CATEGORIES}=require('../src/renderer/personality.js');
+ const groups=TALK_CATEGORIES.filter(item=>item.id!=='all');
+ assert.ok(groups.length>=6);
+ assert.ok(dialogue.lines.talkGroups,'zh-CN.json must define talkGroups');
+ for(const item of groups){
+  const group=dialogue.lines.talkGroups[item.id];
+  assert.ok(group&&Array.isArray(group.lines)&&group.lines.length>=12,`${item.id} should have >=12 lines`);
+  for(const line of group.lines)assert.ok(dialogue.lines.idle.includes(line),`idle must include ${item.id} line`);
+ }
+ const p=new Personality(dialogue.lines,()=>0.25,dialogue.expressionTags);
+ for(const item of groups){
+  const picked=p.sayWithMeta('idle',{category:item.id});
+  assert.equal(picked.categoryKey,item.id);
+  assert.ok(dialogue.lines.talkGroups[item.id].lines.includes(picked.text));
+ }
+ const allA=p.sayWithMeta('idle',{category:'all',now:new Date(2026,10,16,14,0)});
+ const allB=p.sayWithMeta('idle',{category:'all',now:new Date(2026,10,16,14,5)});
+ assert.notEqual(allA.categoryKey,allB.categoryKey,'auto category mode should not repeat the same group twice in a row');
+ const late=new Personality(dialogue.lines,()=>0.99,dialogue.expressionTags);
+ const nightPick=late.sayWithMeta('idle',{category:'all',now:new Date(2026,10,16,2,30)});
+ assert.ok(nightPick.categoryKey==='nightOwl'||nightPick.categoryKey==='care');
+});
+
+test('settings sanitization validates side quota widget and strips legacy talkCategory',()=>{
+ const fs=require('node:fs');
+ const os=require('node:os');
+ const path=require('node:path');
+ const {SettingsManager,DEFAULT_SETTINGS}=require('../src/domain/settings.cjs');
+ assert.equal(Object.hasOwn(DEFAULT_SETTINGS,'talkCategory'),false);
+ assert.equal(DEFAULT_SETTINGS.sideQuotaEnabled,true);
+ assert.equal(DEFAULT_SETTINGS.sideQuotaVariant,'arc');
+ assert.equal(DEFAULT_SETTINGS.sideQuotaDistance,'normal');
+ assert.equal(DEFAULT_SETTINGS.sideQuotaSize,'md');
+ assert.equal(DEFAULT_SETTINGS.sideQuotaMode,'remaining');
+ assert.equal(DEFAULT_SETTINGS.sideQuotaSource,'auto');
+ const tmpDir=fs.mkdtempSync(path.join(os.tmpdir(),'cat-settings-'));
+ try{
+  const manager=new SettingsManager(path.join(tmpDir,'settings.json'));
+  const cleaned=manager.sanitize({
+   talkCategory:'nightOwl',
+   sideQuotaEnabled:false,
+   sideQuotaVariant:'ring',
+   sideQuotaDistance:'compact',
+   sideQuotaSize:'lg',
+   sideQuotaMode:'used',
+   sideQuotaSource:'web'
+  });
+  assert.equal(Object.hasOwn(cleaned,'talkCategory'),false);
+  assert.deepEqual({
+   sideQuotaEnabled:cleaned.sideQuotaEnabled,
+   sideQuotaVariant:cleaned.sideQuotaVariant,
+   sideQuotaDistance:cleaned.sideQuotaDistance,
+   sideQuotaSize:cleaned.sideQuotaSize,
+   sideQuotaMode:cleaned.sideQuotaMode,
+   sideQuotaSource:cleaned.sideQuotaSource
+  },{
+   sideQuotaEnabled:false,
+   sideQuotaVariant:'ring',
+   sideQuotaDistance:'compact',
+   sideQuotaSize:'lg',
+   sideQuotaMode:'used',
+   sideQuotaSource:'web'
+  });
+  const fallback=manager.sanitize({
+   sideQuotaVariant:'hexagon',
+   sideQuotaDistance:'huge',
+   sideQuotaSize:'xxl',
+   sideQuotaMode:'bogus',
+   sideQuotaSource:'mars'
+  });
+  assert.equal(fallback.sideQuotaVariant,'arc');
+  assert.equal(fallback.sideQuotaDistance,'normal');
+  assert.equal(fallback.sideQuotaSize,'md');
+  assert.equal(fallback.sideQuotaMode,'remaining');
+  assert.equal(fallback.sideQuotaSource,'auto');
+ }finally{
+  fs.rmSync(tmpDir,{recursive:true,force:true});
+ }
 });

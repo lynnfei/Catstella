@@ -7,9 +7,11 @@ const { detectWebCompanion } = require('./web-companion-path.cjs');
 const { writeOnlineSeed } = require('./online-seed.cjs');
 const root = path.resolve(__dirname, '..');
 const desktop = process.argv.includes('--desktop');
+const native = process.argv.includes('--native');
 const web = process.argv.includes('--web');
 const storePreviews = process.argv.includes('--store-previews');
 if (!desktop && !web) throw Error('Specify --desktop and/or --web');
+if (native && !desktop) throw Error('--native requires --desktop and a stopped desktop instance');
 const changes = [];
 const backup = fs.mkdtempSync(path.join(root, 'dist/local-runtime-backup-'));
 const allowed = /\.(?:cjs|js|css|html|json)$/i;
@@ -40,17 +42,38 @@ if (desktop) {
     throw Error('Expected the installed Catstella Suite');
   }
   const staging = path.join(backup, 'staged');
+  if(native){
+    const crypto=require('node:crypto');
+    const nativeDir='Antigravity-Cat-Widget/src/native';
+    const version=crypto.createHash('sha256').update(fs.readFileSync(path.join(root,nativeDir,'ForegroundHost.cs'))).digest('hex').slice(0,12);
+    const source=path.join(root,nativeDir,'ForegroundHost.'+version+'.exe');
+    const dst=path.join(app,nativeDir,'ForegroundHost.exe');
+    const after=fs.readFileSync(source),before=fs.readFileSync(dst);
+    if(!before.equals(after))changes.push({dst,before,after,key:path.join('desktop',nativeDir,'ForegroundHost.exe')});
+  }
   const pet = 'Antigravity-Cat-Widget/src';
   fs.cpSync(path.join(root,pet),path.join(staging,pet),{recursive:true});
   stripByokUi(staging);
   queueTree(path.join(staging,pet),path.join(app,pet),path.join('desktop',pet),
     name => name !== 'native' && !name.startsWith('byok-portal'));
-  for (const area of ['Antigravity-Dream-Skin/src/host', 'Antigravity-Dream-Skin/src/domain', 'shared']) {
+  for (const area of ['Antigravity-Dream-Skin/src/host', 'Antigravity-Dream-Skin/src/domain', 'Antigravity-Dream-Skin/assets/localization', 'shared']) {
     queueTree(path.join(root,area),path.join(app,area),path.join('desktop',area),
       name => !['vendor','gateway'].includes(name));
   }
   const dialogue = 'Antigravity-Cat-Widget/assets/dialogue';
   queueTree(path.join(root,dialogue),path.join(app,dialogue),path.join('desktop',dialogue));
+  const motionStyles = 'Antigravity-Cat-Widget/assets/motions';
+  queueTree(path.join(root,motionStyles),path.join(app,motionStyles),path.join('desktop',motionStyles),name=>name==='gemini-widget.css');
+  const notes = 'Antigravity-Cat-Widget/assets/release-notes.json';
+  const notesTarget = path.join(app,notes), notesAfter = fs.readFileSync(path.join(root,notes));
+  const notesBefore = fs.existsSync(notesTarget) ? fs.readFileSync(notesTarget) : null;
+  if (!notesBefore?.equals(notesAfter)) changes.push({dst:notesTarget,before:notesBefore,after:notesAfter,key:path.join('desktop',notes)});
+  const packageTarget = path.join(app,'package.json');
+  const packageBefore = fs.readFileSync(packageTarget);
+  const packageData = JSON.parse(packageBefore);
+  const version = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version;
+  if (packageData.version !== version) changes.push({dst:packageTarget,before:packageBefore,
+    after:Buffer.from(JSON.stringify({...packageData,version})),key:'desktop/package.json'});
   queueSeed(path.join(app,'online-assets'),'desktop/online-assets');
 }
 if (web) {
@@ -99,6 +122,10 @@ function replace(file, bytes) {
   finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
 }
 const applied = [];
+if (process.argv.includes('--dry-run')) {
+  console.log(JSON.stringify({desktop,web,dryRun:true,changed:changes.map(item=>item.key),backup}));
+  process.exit(0);
+}
 try {
   for (const item of changes) {
     if (item.before) replace(path.join(backup,item.key),item.before);

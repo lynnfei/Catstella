@@ -17,7 +17,11 @@ function characterPlacement(area,size,dimensions,left,top){
  const visualX=Math.max(area.x,Math.min(area.x+area.width-size,left));
  const x=Math.round(Math.max(area.x,Math.min(area.x+area.width-dimensions.width,visualX-gap)));
  const y=Math.round(Math.max(area.y,Math.min(area.y+area.height-dimensions.height,top)));
- return{bounds:{...dimensions,x,y},artShift:visualX-x-gap,visualX};
+ // Constrain the artwork, not the empty bubble reserve above it. Keep the
+ // native window inside the work area and move art within that window.
+ const reserve=dimensions.height-size;
+ const visualY=Math.max(area.y+10,Math.min(area.y+area.height-size,top+reserve));
+ return{bounds:{...dimensions,x,y},artShift:visualX-x-gap,artShiftY:visualY-y-reserve,visualX,visualY};
 }
 function hostPlacement(state,scale,offsetX=18,offsetY=18,dock=""){
  if(!["host","self"].includes(state.kind)||!validBounds(state.bounds))return null;
@@ -28,12 +32,12 @@ function hostPlacement(state,scale,offsetX=18,offsetY=18,dock=""){
 }
 function placeDraggedWidget(area,preferredScale,left,top,{following=false,snap=false}={}){
  const {scale,width,height}=widgetLayout(area,preferredScale);
- const gap=following?0:(width-scale)/2;
+ const gap=0;
  const first=area.x+gap,right=area.x+area.width-scale-gap,bottom=area.y+area.height-height;
  const side=snap?(left<=first+20?"left":left>=right-20?"right":""):"";
  const placement=characterPlacement(area,scale,{width,height},
   side==="left"?first:side==="right"?right:Math.max(first,Math.min(right,left)),snap&&top>=bottom-20?bottom:top);
- return {...placement,scale,side,hostOffsetX:Math.round(right-placement.visualX),hostOffsetY:bottom-placement.bounds.y};
+ return {...placement,scale,side,hostOffsetX:Math.round(right-placement.visualX),hostOffsetY:bottom-placement.bounds.y-placement.artShiftY};
 }
 function facingAt(centerX,area,previous="right",deadZone=12){
  const offset=centerX-(area.x+area.width/2);
