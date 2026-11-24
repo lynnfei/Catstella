@@ -11,7 +11,18 @@ function parseResetTime(desc,remainingFraction){
 // 从宿主模型选择器按钮读取当前模型与思考强度（纯 DOM 只读，不点击任何东西）。
 function extractModelInfo(doc=document){
  if(typeof doc==='undefined'||!doc||typeof doc.querySelector!=='function')return null;
- const modelBtn=doc.querySelector('[data-testid="model-selector-trigger"]')||doc.querySelector('button[aria-label*="current:"],button[aria-label*="当前："]');
+ const candidates=[
+  doc.querySelector('[data-testid="model-selector-trigger"]'),
+  doc.querySelector('button[aria-label*="model" i][aria-label*="current:" i],button[aria-label*="模型"][aria-label*="当前："]'),
+  doc.querySelector('button[aria-label*="current:"],button[aria-label*="当前："]')
+ ];
+ const modelBtn=candidates.find(el=>{
+  if(!el)return false;
+  if(typeof el.getAttribute!=='function')return true;
+  if(el.getAttribute('data-testid')==='permissions-selector-trigger')return false;
+  const a=el.getAttribute('aria-label')||'';
+  return !/(?:permission|权限)/i.test(a);
+ })||null;
  if(!modelBtn)return null;
  const aria=modelBtn.getAttribute('aria-label')||'';
  const currentMatch=aria.match(/(?:current:|当前[：:])\s*(.+)$/i);
@@ -170,21 +181,78 @@ async function queryHostQuota(readCache){
  }
  return readCache();
 }
+function isSameModelInfo(a,b){
+ if(!a&&!b)return true;
+ if(!a||!b)return false;
+ return a.modelName===b.modelName&&a.thinking===b.thinking&&Boolean(a.orchestrator)===Boolean(b.orchestrator)&&a.fullText===b.fullText;
+}
 class HostQuotaAdapter extends EventEmitter{
- constructor(options={}){super();this.hasCustomDiscover=typeof options.discover==='function';this.discover=options.discover||discover;this.isHostProcessRunning=typeof options.isHostProcessRunning==='function'?options.isHostProcessRunning:(this.hasCustomDiscover?null:isHostProcessRunning);this.Client=options.Client||Cdp;this.now=options.now||Date.now;this.snapshot={fiveHour:null,weekly:null,fiveHourReset:"",weeklyReset:"",claudeGpt:emptyChannel(),argon:emptyChannel(),modelInfo:null,fetchedAt:null,online:false};this.active=false;this.failures=0;this.generation=0;this.setTimer=options.setTimer||setTimeout;this.clearTimer=options.clearTimer||clearTimeout;}
+ constructor(options={}){super();this.hasCustomDiscover=typeof options.discover==='function';this.discover=options.discover||discover;this.isHostProcessRunning=typeof options.isHostProcessRunning==='function'?options.isHostProcessRunning:(this.hasCustomDiscover?null:isHostProcessRunning);this.Client=options.Client||Cdp;this.now=options.now||Date.now;this.snapshot={fiveHour:null,weekly:null,fiveHourReset:"",weeklyReset:"",claudeGpt:emptyChannel(),argon:emptyChannel(),modelInfo:null,fetchedAt:null,online:false};this.active=false;this.failures=0;this.generation=0;this.modelBusy=false;this.setTimer=options.setTimer||setTimeout;this.clearTimer=options.clearTimer||clearTimeout;}
  start(){if(this.active)return;this.active=true;this.generation++;this.failures=0;this.tick();}
+ async readFocusedModelInfo(host){
+  const targets=Array.isArray(host?.targets)&&host.targets.length>1?host.targets.filter(t=>t?.webSocketDebuggerUrl):(host?.target?.webSocketDebuggerUrl?[host.target]:[]);
+  if(!targets.length)return null;
+  if(targets.length===1){
+   let c=null;
+   try{
+    c=new this.Client(targets[0].webSocketDebuggerUrl);
+    const modelInfo=await c.evaluate('('+extractModelInfo.toString()+')()');
+    return modelInfo&&typeof modelInfo.modelName==='string'?modelInfo:null;
+   }catch{return null;}finally{c?.close();}
+  }
+  let fallback=null;
+  const expr='(()=>{const modelInfo=('+extractModelInfo.toString()+')();return {focused:typeof document!=="undefined"&&typeof document.hasFocus==="function"?document.hasFocus():false,modelInfo};})()';
+  for(const target of targets){
+   let c=null;
+   try{
+    c=new this.Client(target.webSocketDebuggerUrl);
+    const res=await c.evaluate(expr);
+    const info=res?.modelInfo;
+    if(info&&typeof info.modelName==='string'){
+     if(res.focused)return info;
+     if(!fallback)fallback=info;
+    }
+   }catch{}finally{c?.close();}
+  }
+  return fallback;
+ }
+ async refreshModelInfo(){
+  if(!this.active||this.busy||this.modelBusy)return false;
+  this.modelBusy=true;
+  const generation=this.generation;
+  const current=()=>this.active&&generation===this.generation;
+  try{
+   const host=await this.discover();
+   if(!current()||!host)return false;
+   const modelInfo=await this.readFocusedModelInfo(host);
+   if(current()&&modelInfo&&typeof modelInfo.modelName==='string'&&!isSameModelInfo(this.snapshot.modelInfo,modelInfo)){
+    this.snapshot={...this.snapshot,modelInfo};
+    this.emit('change',this.snapshot);
+    return true;
+   }
+   return false;
+  }catch{return false;}finally{this.modelBusy=false;}
+ }
  async tick(){if(this.busy||!this.active)return;this.busy=true;this.clearTimer(this.timer);const generation=this.generation;let c,ready=false,confirmed=false;const current=()=>this.active&&generation===this.generation;
   try{const host=await this.discover();if(!current())return;if(!host){const running=this.isHostProcessRunning?await this.isHostProcessRunning().catch(()=>false):false;if(!current())return;this.snapshot={...this.snapshot,status:running?'cdp-disabled':'waiting-host'};throw new Error('offline');}if(this.hostIdentity&&this.hostIdentity!==host.target.webSocketDebuggerUrl){this.snapshot={fiveHour:null,weekly:null,fiveHourReset:"",weeklyReset:"",claudeGpt:emptyChannel(),argon:emptyChannel(),modelInfo:null,fetchedAt:null,online:false};this.sampleAt=null;}this.hostIdentity=host.target.webSocketDebuggerUrl;c=new this.Client(host.target.webSocketDebuggerUrl);this.client=c;this.snapshot={...this.snapshot,status:'querying'};// 模型/思考强度识别与额度查询共用同一次 evaluate（模型信息失败不影响额度解析，由 try 整体兜底）。
    const sample=await c.evaluate('(async()=>({modelInfo:('+extractModelInfo.toString()+')(),...(await ('+queryHostQuota.toString()+')('+readHostQuota.toString()+'))}))()');if(!current())return;
+   let nextModel=sample?.modelInfo&&typeof sample.modelInfo.modelName==='string'?sample.modelInfo:null;
+   if(Array.isArray(host.targets)&&host.targets.length>1){
+    c?.close();c=null;this.client=null;
+    const focusedModel=await this.readFocusedModelInfo(host);
+    if(!current())return;
+    if(focusedModel&&typeof focusedModel.modelName==='string')nextModel=focusedModel;
+   }
    if(!sample?.cacheAvailable){
-    if(this.sampleAt!==null&&this.sampleAt!==undefined)this.snapshot={...this.snapshot,online:true,cached:true,stale:this.now()-this.sampleAt>=300000};
-    else this.snapshot={fiveHour:null,weekly:null,fiveHourReset:"",weeklyReset:"",claudeGpt:normalizeChannel(this.snapshot.claudeGpt),argon:normalizeChannel(this.snapshot.argon),modelInfo:this.snapshot.modelInfo,fetchedAt:null,online:true};
+    const mergedModel=nextModel||this.snapshot.modelInfo||null;
+    if(this.sampleAt!==null&&this.sampleAt!==undefined)this.snapshot={...this.snapshot,modelInfo:mergedModel,online:true,cached:true,stale:this.now()-this.sampleAt>=300000};
+    else this.snapshot={fiveHour:null,weekly:null,fiveHourReset:"",weeklyReset:"",claudeGpt:normalizeChannel(this.snapshot.claudeGpt),argon:normalizeChannel(this.snapshot.argon),modelInfo:mergedModel,fetchedAt:null,online:true};
     this.snapshot={...this.snapshot,status:'unsupported-or-initializing'};return;
    }
    ready=[sample.fiveHour,sample.weekly].some(v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=100);
    confirmed=ready&&sample.liveQuery===true;
    if(ready)this.sampleAt=this.now();
-   if(current())this.snapshot={status:ready?'ready':'quota-unavailable',fiveHour:clampPercent(sample?.fiveHour),weekly:clampPercent(sample?.weekly),fiveHourReset:typeof sample?.fiveHourReset==='string'?sample.fiveHourReset:this.snapshot.fiveHourReset||"",weeklyReset:typeof sample?.weeklyReset==='string'?sample.weeklyReset:this.snapshot.weeklyReset||"",claudeGpt:sample?.claudeGpt?normalizeChannel(sample.claudeGpt):normalizeChannel(this.snapshot.claudeGpt),argon:sample?.argon?normalizeChannel(sample.argon):normalizeChannel(this.snapshot.argon),modelInfo:sample?.modelInfo&&typeof sample.modelInfo.modelName==='string'?sample.modelInfo:this.snapshot.modelInfo||null,cached:false,stale:false,observedAt:this.sampleAt,fetchedAt:typeof sample?.fetchedAt==='number'?sample.fetchedAt:null,online:true};
+   if(current())this.snapshot={status:ready?'ready':'quota-unavailable',fiveHour:clampPercent(sample?.fiveHour),weekly:clampPercent(sample?.weekly),fiveHourReset:typeof sample?.fiveHourReset==='string'?sample.fiveHourReset:this.snapshot.fiveHourReset||"",weeklyReset:typeof sample?.weeklyReset==='string'?sample.weeklyReset:this.snapshot.weeklyReset||"",claudeGpt:sample?.claudeGpt?normalizeChannel(sample.claudeGpt):normalizeChannel(this.snapshot.claudeGpt),argon:sample?.argon?normalizeChannel(sample.argon):normalizeChannel(this.snapshot.argon),modelInfo:nextModel||this.snapshot.modelInfo||null,cached:false,stale:false,observedAt:this.sampleAt,fetchedAt:typeof sample?.fetchedAt==='number'?sample.fetchedAt:null,online:true};
   }catch{if(current())this.snapshot={...this.snapshot,status:(this.snapshot.status==='waiting-host'||this.snapshot.status==='cdp-disabled')?this.snapshot.status:'query-failed',online:false,cached:true,stale:true};}
   finally{c?.close();this.client=null;this.busy=false;if(current()){this.failures=ready?0:Math.min(this.failures+1,5);this.emit('change',this.snapshot);if(current())this.timer=this.setTimer(()=>this.tick(),ready?30000:Math.min(30000,3000*2**(this.failures-1)));}else if(this.active)this.timer=this.setTimer(()=>this.tick(),0);}
   return current()&&confirmed;

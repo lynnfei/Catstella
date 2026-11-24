@@ -248,3 +248,63 @@ test('resolveSideQuotaMetrics strips Orchestrator prefix and exposes orchestrato
   });
   assert.equal(webFallback.orchestrator, false);
 });
+
+test('resolveSideQuotaMetrics switches source and Orchestrator crest cleanly across foreground contexts', () => {
+  const baseQuota = {
+    online: true,
+    fiveHour: 86,
+    weekly: 94,
+    modelInfo: { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true }
+  };
+  const webOnline = {
+    online: true,
+    quota: { fiveHourRemainingPct: 60, weeklyRemainingPct: 70, resetHint: '12:37', weeklyResetHint: '明天' }
+  };
+
+  const onDesktop = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'auto', bubblePage: 'quota' },
+    quotaWindows: baseQuota,
+    webCompanion: webOnline,
+    visibility: { effectiveForeground: 'desktop' }
+  });
+  assert.equal(onDesktop.source, 'agy');
+  assert.equal(onDesktop.orchestrator, false);
+  assert.equal(onDesktop.modelOrchestrator, true);
+
+  const onBrowser = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'auto', bubblePage: 'quota' },
+    quotaWindows: baseQuota,
+    webCompanion: webOnline,
+    visibility: { effectiveForeground: 'browser' }
+  });
+  assert.equal(onBrowser.source, 'web');
+  assert.equal(onBrowser.orchestrator, false);
+  assert.equal(onBrowser.modelOrchestrator, false);
+
+  const backToHostOrch = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'auto', bubblePage: 'webQuota' },
+    quotaWindows: baseQuota,
+    webCompanion: webOnline,
+    visibility: { effectiveForeground: 'host' }
+  });
+  assert.equal(backToHostOrch.source, 'agy');
+  assert.equal(backToHostOrch.orchestrator, true);
+  assert.equal(backToHostOrch.modelOrchestrator, true);
+
+  const backToHostRegular = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'auto', bubblePage: 'webQuota' },
+    quotaWindows: { ...baseQuota, modelInfo: { modelName: 'Gemini 4 Pro', thinking: 'High', orchestrator: false } },
+    webCompanion: webOnline,
+    visibility: { effectiveForeground: 'host' }
+  });
+  assert.equal(backToHostRegular.source, 'agy');
+  assert.equal(backToHostRegular.orchestrator, false);
+  assert.equal(backToHostRegular.modelOrchestrator, false);
+
+  const unknownFg = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'auto' },
+    quotaWindows: baseQuota
+  });
+  assert.equal(unknownFg.source, 'agy');
+  assert.equal(unknownFg.orchestrator, true);
+});

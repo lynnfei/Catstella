@@ -196,8 +196,74 @@ async function closeApp(app) {
         modelText: ctrl.tooltip.querySelector('#sq-tip-model-text').textContent,
         headOverflow: head.scrollWidth > head.clientWidth
       };
+
+      const readCrest = () => {
+        ctrl._syncTooltipContent();
+        const g = ctrl.visual.querySelector('.gauge-root');
+        return {
+          orchAttr: g.dataset.orchestrator,
+          orchDisplay: getComputedStyle(g.querySelector('.orch-body')).display,
+          starDisplay: getComputedStyle(g.querySelector('.star-body')).display,
+          badgeText: ctrl.tooltip.querySelector('#sq-tip-badge').textContent
+        };
+      };
+      const baseQuota = {
+        online: true,
+        fiveHour: 86,
+        weekly: 94,
+        modelInfo: { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true }
+      };
+      const webCompanion = { online: true, quota: { fiveHourRemainingPct: 60, weeklyRemainingPct: 70 } };
+      ctrl.update({
+        snapshot: {
+          settings: { sideQuotaEnabled: true, sideQuotaVariant: 'arc', sideQuotaSource: 'auto', manualQuota: false },
+          quotaWindows: baseQuota,
+          webCompanion,
+          visibility: { effectiveForeground: 'desktop' }
+        },
+        mainBubbleVisible: false,
+        dragging: false,
+        artReady: true
+      });
+      const fgDesktop = readCrest();
+      ctrl.update({
+        snapshot: {
+          settings: { sideQuotaEnabled: true, sideQuotaVariant: 'arc', sideQuotaSource: 'auto', manualQuota: false },
+          quotaWindows: baseQuota,
+          webCompanion,
+          visibility: { effectiveForeground: 'browser' }
+        },
+        mainBubbleVisible: false,
+        dragging: false,
+        artReady: true
+      });
+      const fgBrowser = readCrest();
+      ctrl.update({
+        snapshot: {
+          settings: { sideQuotaEnabled: true, sideQuotaVariant: 'arc', sideQuotaSource: 'auto', manualQuota: false },
+          quotaWindows: baseQuota,
+          webCompanion,
+          visibility: { effectiveForeground: 'host' }
+        },
+        mainBubbleVisible: false,
+        dragging: false,
+        artReady: true
+      });
+      const fgHostOrch = readCrest();
+      ctrl.update({
+        snapshot: {
+          settings: { sideQuotaEnabled: true, sideQuotaVariant: 'arc', sideQuotaSource: 'auto', manualQuota: false },
+          quotaWindows: { ...baseQuota, modelInfo: { modelName: 'Gemini 4 Pro', thinking: 'High', orchestrator: false } },
+          webCompanion,
+          visibility: { effectiveForeground: 'host' }
+        },
+        mainBubbleVisible: false,
+        dragging: false,
+        artReady: true
+      });
+      const fgHostRegular = readCrest();
       mount.remove();
-      return { variants, tipInfo };
+      return { variants, tipInfo, fgTransitions: { fgDesktop, fgBrowser, fgHostOrch, fgHostRegular } };
     });
     for (const v of ['arc', 'ring', 'bar']) {
       assert.equal(orchCheck.variants[v].orchOn.attr, 'true');
@@ -210,6 +276,18 @@ async function closeApp(app) {
     assert.equal(orchCheck.tipInfo.orchHidden, false);
     assert.equal(orchCheck.tipInfo.modelText, 'Gemini 4 Neon · Extra High');
     assert.equal(orchCheck.tipInfo.headOverflow, false, 'tooltip model header must not overflow horizontally');
+    assert.equal(orchCheck.fgTransitions.fgDesktop.orchAttr, 'false');
+    assert.equal(orchCheck.fgTransitions.fgDesktop.orchDisplay, 'none');
+    assert.notEqual(orchCheck.fgTransitions.fgDesktop.starDisplay, 'none');
+    assert.equal(orchCheck.fgTransitions.fgBrowser.orchAttr, 'false');
+    assert.match(orchCheck.fgTransitions.fgBrowser.badgeText, /^Web/);
+    assert.equal(orchCheck.fgTransitions.fgHostOrch.orchAttr, 'true');
+    assert.notEqual(orchCheck.fgTransitions.fgHostOrch.orchDisplay, 'none');
+    assert.equal(orchCheck.fgTransitions.fgHostOrch.starDisplay, 'none');
+    assert.match(orchCheck.fgTransitions.fgHostOrch.badgeText, /^AGY/);
+    assert.equal(orchCheck.fgTransitions.fgHostRegular.orchAttr, 'false');
+    assert.equal(orchCheck.fgTransitions.fgHostRegular.orchDisplay, 'none');
+    assert.notEqual(orchCheck.fgTransitions.fgHostRegular.starDisplay, 'none');
 
     // Disabling side quota in settings immediately hides it live.
     await settingsWin.locator('.nav-item[data-page="quota"]').click();

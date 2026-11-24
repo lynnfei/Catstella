@@ -106,13 +106,21 @@
     const hasAgy = agyFive !== null || agyWeek !== null || manual;
     const hasWeb = webFive !== null || webWeek !== null;
     const pref = ["auto", "agy", "web"].includes(s.sideQuotaSource) ? s.sideQuotaSource : "auto";
+    const rawFg = snapshot.visibility?.effectiveForeground || snapshot.visibility?.foregroundKind || "unknown";
+    const fg = ["host", "browser", "desktop", "other"].includes(rawFg) ? rawFg : "unknown";
 
     let source = "agy";
     if (pref === "web") {
       source = "web";
     } else if (pref === "auto") {
-      if (s.bubblePage === "webQuota" && hasWeb) source = "web";
-      else if (!hasAgy && (hasWeb || wc.online)) source = "web";
+      if (fg === "host") {
+        if (!hasAgy && (hasWeb || wc.online)) source = "web";
+      } else if (fg === "browser") {
+        if (hasWeb || wc.online) source = "web";
+      } else {
+        if (s.bubblePage === "webQuota" && hasWeb) source = "web";
+        else if (!hasAgy && (hasWeb || wc.online)) source = "web";
+      }
     }
 
     const mode = s.sideQuotaMode === "used" ? "used" : "remaining";
@@ -131,7 +139,8 @@
         fiveHourReset: wq?.resetHint || (wc.online ? "实时同步" : "等待同步"),
         weeklyReset: wq?.weeklyResetHint || (wq?.dailyTotal ? `今日 ${wq.dailyTotal} 次` : (wq?.resetHint || "等待同步")),
         metricMode: mode,
-        orchestrator: false
+        orchestrator: false,
+        modelOrchestrator: false
       };
     }
 
@@ -146,6 +155,8 @@
       : rawAgyModel;
     const thinkingRaw = q.modelInfo?.thinkingLevel || q.modelInfo?.thinking;
     const thinking = thinkingRaw && thinkingRaw !== "默认" ? ` · ${thinkingRaw}` : "";
+    const modelOrchestrator = isOrchestrator;
+    const orchestrator = modelOrchestrator && (fg === "host" || fg === "unknown");
     return {
       source: "agy",
       sourceBadge: manual
@@ -157,7 +168,8 @@
       fiveHourReset: manual ? "手动额度兜底" : formatResetLabel(agyResets, agyFive === null ? "尚未读取真实额度" : "本机实时窗口"),
       weeklyReset: manual ? "手动额度兜底" : formatResetLabel(agyWeekResets, agyWeek === null ? "尚未读取周周期" : "本机周窗口"),
       metricMode: mode,
-      orchestrator: isOrchestrator
+      orchestrator,
+      modelOrchestrator
     };
   }
 
@@ -883,7 +895,7 @@
       const modelHead = $("sq-tip-model");
       const orchBadge = $("sq-tip-orch");
       const modelText = $("sq-tip-model-text");
-      const isOrch = Boolean(metrics.orchestrator);
+      const isOrch = Boolean(metrics.modelOrchestrator ?? metrics.orchestrator);
       if (modelHead) {
         modelHead.dataset.orchestrator = String(isOrch);
         modelHead.title = isOrch ? `编排器模式 · ${metrics.modelLabel}` : metrics.modelLabel;

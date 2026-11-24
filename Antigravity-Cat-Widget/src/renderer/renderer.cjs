@@ -569,7 +569,7 @@
  const quiet=()=>{clearAmbient();chatter.reset();};
  document.addEventListener("pointerdown",quiet,true);
  document.addEventListener("keydown",quiet,true);
- document.addEventListener("visibilitychange",()=>{quiet();syncPet();});
+ document.addEventListener("visibilitychange",()=>{quiet();syncPet();if(!document.hidden){syncSideQuota();requestAnimationFrame(()=>syncSideQuota());}});
  api.subscribe(data=>{
   chatter.configure(data.settings.ambientChatter===true);
   if(!data.settings.ambientChatter||!data.settings.bubbleOn||!["idle","offline"].includes(data.state)||data.webCompanion?.active)clearAmbient();

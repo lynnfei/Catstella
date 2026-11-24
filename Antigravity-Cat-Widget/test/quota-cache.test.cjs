@@ -187,3 +187,82 @@ test('HostQuotaAdapter reports cdp-disabled when host process runs without CDP a
   assert.equal(parsed.orchestrator, expectedOrch, aria);
  }
 });
+
+test('extractModelInfo ignores permissions-selector-trigger and HostQuotaAdapter.refreshModelInfo tracks model shifts without resetting quota timers', async () => {
+ const { extractModelInfo } = require('../src/adapters/host-quota.cjs');
+ const permEl = {
+  getAttribute: name => name === 'data-testid'
+   ? 'permissions-selector-trigger'
+   : (name === 'aria-label' ? '智能体权限预设，当前：Turbo' : null),
+  innerText: '极速'
+ };
+ const permOnlyDoc = {
+  querySelector: sel => sel === 'button[aria-label*="current:"],button[aria-label*="当前："]' ? permEl : null
+ };
+ assert.equal(extractModelInfo(permOnlyDoc), null);
+
+ let modelPayload = { modelName: 'Gemini 4 Pro', thinking: 'High', orchestrator: false, fullText: 'Gemini 4 Pro High' };
+ const scheduled = [];
+ class SingleClient {
+  async evaluate(expr) {
+   if (expr.includes('queryHostQuota')) return { cacheAvailable: true, fiveHour: 80, weekly: 90, modelInfo: modelPayload };
+   return modelPayload;
+  }
+  close() {}
+ }
+ const a = new HostQuotaAdapter({
+  discover: async () => ({ target: { webSocketDebuggerUrl: 'ws://127.0.0.1/main' }, targets: [{ webSocketDebuggerUrl: 'ws://127.0.0.1/main' }] }),
+  Client: SingleClient,
+  setTimer: (fn, ms) => { scheduled.push(ms); return 1; },
+  clearTimer: () => {}
+ });
+ let changes = 0;
+ a.on('change', () => changes++);
+ a.active = true;
+ await a.tick();
+ assert.equal(changes, 1);
+ assert.equal(scheduled.length, 1);
+ assert.equal(a.snapshot.modelInfo.orchestrator, false);
+
+ // Unchanged model does not emit change or reschedule timer.
+ assert.equal(await a.refreshModelInfo(), false);
+ assert.equal(changes, 1);
+ assert.equal(scheduled.length, 1);
+
+ // Switching to Orchestrator emits change while preserving quota metrics and timer schedule.
+ modelPayload = { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true, fullText: 'Orchestrator Gemini 4 Neon Extra High' };
+ assert.equal(await a.refreshModelInfo(), true);
+ assert.equal(changes, 2);
+ assert.equal(scheduled.length, 1);
+ assert.equal(a.snapshot.fiveHour, 80);
+ assert.equal(a.snapshot.weekly, 90);
+ assert.equal(a.snapshot.modelInfo.modelName, 'Gemini 4 Neon');
+ assert.equal(a.snapshot.modelInfo.orchestrator, true);
+ a.stop();
+
+ // Multi-window targets prioritize focused document.
+ class MultiClient {
+  constructor(url) { this.url = url; }
+  async evaluate() {
+   if (this.url.endsWith('/bg')) {
+    return { focused: false, modelInfo: { modelName: 'Gemini 4 Pro', thinking: 'Low', orchestrator: false, fullText: 'Gemini 4 Pro Low' } };
+   }
+   return { focused: true, modelInfo: { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true, fullText: 'Orchestrator Gemini 4 Neon Extra High' } };
+  }
+  close() {}
+ }
+ const b = new HostQuotaAdapter({
+  discover: async () => ({
+   target: { webSocketDebuggerUrl: 'ws://127.0.0.1/bg' },
+   targets: [{ webSocketDebuggerUrl: 'ws://127.0.0.1/bg' }, { webSocketDebuggerUrl: 'ws://127.0.0.1/fg' }]
+  }),
+  Client: MultiClient,
+  setTimer: () => 1,
+  clearTimer: () => {}
+ });
+ b.active = true;
+ assert.equal(await b.refreshModelInfo(), true);
+ assert.equal(b.snapshot.modelInfo.modelName, 'Gemini 4 Neon');
+ assert.equal(b.snapshot.modelInfo.orchestrator, true);
+ b.stop();
+});
