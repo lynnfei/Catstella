@@ -35,6 +35,9 @@ async function main() {
             <span data-testid="diff-lines">3 lines added, 1 lines removed</span>
             <span data-testid="project-label">Project: Catstella</span>
             <span data-testid="swarm-wait">2 waiting on @coordinator</span>
+            <span data-testid="layout-kw">Knowledge Work</span>
+            <span data-testid="layout-se">Software Engineering</span>
+            <span data-testid="sandbox-note">Default and Auto need the terminal sandbox, which isn't available on this host.</span>
             <button aria-label="Select model, current: Gemini 4 Hydrogen Extra">Gemini 4 Hydrogen Extra</button>
             <div data-testid="user-message-bubble">
               <div data-testid="user-message-content"><span>Done</span><span>Plan</span></div>
@@ -93,6 +96,9 @@ async function main() {
         diffLines: document.querySelector('[data-testid="diff-lines"]').textContent,
         projectLabel: document.querySelector('[data-testid="project-label"]').textContent,
         swarmWait: document.querySelector('[data-testid="swarm-wait"]').textContent,
+        layoutKw: document.querySelector('[data-testid="layout-kw"]').textContent,
+        layoutSe: document.querySelector('[data-testid="layout-se"]').textContent,
+        sandboxNote: document.querySelector('[data-testid="sandbox-note"]').textContent,
         userSpans: Array.from(document.querySelectorAll('[data-testid="user-message-content"] span')).map((s) => s.textContent),
         mdCells: Array.from(document.querySelectorAll('[data-markdown-root] th, [data-markdown-root] td')).map((c) => c.textContent),
         mdCopyText: mdCopyBtn.textContent,
@@ -120,6 +126,9 @@ async function main() {
     assert.equal(snap.diffLines, "新增 3 行，删除 1 行");
     assert.equal(snap.projectLabel, "项目：Catstella");
     assert.equal(snap.swarmWait, "2 个正在等待 @coordinator");
+    assert.equal(snap.layoutKw, "知识办公");
+    assert.equal(snap.layoutSe, "软件工程");
+    assert.equal(snap.sandboxNote, "默认 和 自动 需要终端沙箱，但当前主机暂不支持。");
     assert.deepEqual(snap.userSpans, ["Done", "Plan"], "User message prose must remain untouched");
     assert.deepEqual(snap.mdCells, ["Status", "Done", "Active"], "Markdown prose and table text must remain untouched");
     assert.equal(snap.mdCopyText, "file.cjs");

@@ -140,6 +140,10 @@ async function installLocalization(config){
   if((m=trimmed.match(/^(\d+)\s+stuck$/i)))return m[1]+" 个卡住";
   if((m=trimmed.match(/^(\d+)\s+waiting\s+on\s+(@\S+)$/i)))return m[1]+" 个正在等待 "+m[2];
   if((m=trimmed.match(/^Waiting\s+on\s+(@\S+)$/i)))return"正在等待 "+m[1];
+  if((m=trimmed.match(/^(.+)\s+needs?\s+the\s+terminal\s+sandbox,\s+which\s+isn't\s+available\s+on\s+this\s+host\.$/i))){
+   const presets=m[1].replace(/\bDefault\b/g,"默认").replace(/\bAuto\b/g,"自动").replace(/\bRequest\s+Review\b/g,"请求审查").replace(/\s+and\s+/g," 和 ");
+   return presets+" 需要终端沙箱，但当前主机暂不支持。";
+  }
   if(parent&&parent.closest&&!parent.closest("kbd,table,.katex")&&(parent.tagName==="TIME"||parent.closest("nav,aside,[role='navigation'],[aria-label*='Sidebar'],[aria-label*='侧边栏'],[aria-label*='Archive'],[aria-label*='Pin']"))){
    if((m=trimmed.match(/^(\d+)([smhdw])$/))&&TIME_UNITS[m[2]])return m[1]+TIME_UNITS[m[2]];
   }

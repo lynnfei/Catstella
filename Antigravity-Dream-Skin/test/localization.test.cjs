@@ -9,7 +9,7 @@ test("zh-CN dictionary loads cleanly with expanded Antigravity UI coverage", () 
   const dictPath = path.join(__dirname, "../assets/localization/zh-CN.json");
   const raw = JSON.parse(fs.readFileSync(dictPath, "utf8"));
   const keys = Object.keys(raw).filter((k) => !k.startsWith("$"));
-  assert(keys.length >= 2000, `Expected >= 2000 dictionary entries, got ${keys.length}`);
+  assert(keys.length >= 2450, `Expected >= 2450 dictionary entries, got ${keys.length}`);
   for (const k of keys) {
     assert.equal(typeof raw[k], "string", `Non-string value for "${k}"`);
     assert(raw[k].trim().length > 0, `Empty translation for "${k}"`);
@@ -44,7 +44,17 @@ test("zh-CN dictionary loads cleanly with expanded Antigravity UI coverage", () 
     "Graph view",
     "Filters (active)",
     "Compare with now",
-    "Waiting on @coordinator"
+    "Waiting on @coordinator",
+    "Knowledge Work",
+    "Simplified interface for research, writing, and everyday tasks.",
+    "Software Engineering",
+    "Full interface for coding, developer tools, and managing agents.",
+    "Input Box",
+    "App",
+    "Not set",
+    "The voice used in Voice mode. Powered by Gemini Live.",
+    "Bottom Panel",
+    "Side Panel"
   ]) {
     assert.equal(typeof raw[required], "string", `Missing translation for "${required}"`);
     assert(raw[required].length > 0, `Empty translation for "${required}"`);
