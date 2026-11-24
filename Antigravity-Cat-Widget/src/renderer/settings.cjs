@@ -472,7 +472,13 @@
     const isArgon = Boolean(q.modelInfo?.modelName?.toLowerCase().includes("argon"));
     const fiveVal = manual ? data.settings.manualPercent : (isArgon ? (q.argon?.fiveHour ?? gData?.fiveHour) : gData?.fiveHour);
     const weekVal = manual ? data.settings.manualWeeklyPercent : (isArgon ? (q.argon?.weekly ?? gData?.weekly) : gData?.weekly);
-    if ($("dq-agy-model")) $("dq-agy-model").textContent = q.modelInfo?.modelName || (manual ? "手动记录" : "本机读取");
+    if ($("dq-agy-model")) {
+      const rawName = q.modelInfo?.modelName || "";
+      const isOrch = Boolean(q.modelInfo?.orchestrator || /^orchestrator(?:\s+|$)/i.test(rawName) || /^orchestrator(?:\s+|$)/i.test(q.modelInfo?.fullText || ""));
+      const cleanName = isOrch ? (rawName.replace(/^Orchestrator\s*/i, "").replace(/^\(([^()]+)\)$/, "$1").trim() || rawName) : rawName;
+      $("dq-agy-model").textContent = cleanName ? (isOrch ? `编排 · ${cleanName}` : cleanName) : (manual ? "手动记录" : "本机读取");
+      $("dq-agy-model").title = cleanName ? (isOrch ? `编排器模式 · ${cleanName}` : cleanName) : "";
+    }
     if ($("dq-agy-5h")) $("dq-agy-5h").textContent = typeof fiveVal === "number" ? `${Math.round(fiveVal)}%` : "—";
     if ($("dq-agy-week")) $("dq-agy-week").textContent = typeof weekVal === "number" ? `${Math.round(weekVal)}%` : "—";
     if ($("dq-agy-steps")) {

@@ -205,6 +205,13 @@ body[data-theme="onyx"] {
   }
 }
 
+.gauge-root .orch-body { display: none; }
+.gauge-root[data-orchestrator="true"] .star-body { display: none; }
+.gauge-root[data-orchestrator="true"] .orch-body {
+  display: inline;
+  filter: drop-shadow(0 0 3px rgba(92, 242, 180, 0.62));
+}
+
 @keyframes sq-alert-breathe {
   0%, 100% { opacity: 0.48; }
   50% { opacity: 0.96; }
@@ -220,7 +227,7 @@ body[data-theme="onyx"] {
   position: fixed;
   left: 0;
   top: 0;
-  width: 244px;
+  width: 264px;
   max-width: calc(100vw - 16px);
   padding: 10px 12px;
   border-radius: 14px;
@@ -274,13 +281,34 @@ body[data-theme="onyx"] {
 }
 
 .quota-tooltip__model {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11.5px;
   font-weight: 800;
   color: #36245f;
   min-width: 0;
+  flex: 1 1 auto;
+}
+
+.quota-tooltip__model-text {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.orch-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  line-height: 0;
+  filter: drop-shadow(0 0 3px rgba(92, 242, 180, 0.45));
+}
+
+.orch-inline-badge[hidden] {
+  display: none !important;
 }
 
 .quota-tooltip__badge {

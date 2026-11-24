@@ -130,11 +130,20 @@
         weekly: webWeek,
         fiveHourReset: wq?.resetHint || (wc.online ? "实时同步" : "等待同步"),
         weeklyReset: wq?.weeklyResetHint || (wq?.dailyTotal ? `今日 ${wq.dailyTotal} 次` : (wq?.resetHint || "等待同步")),
-        metricMode: mode
+        metricMode: mode,
+        orchestrator: false
       };
     }
 
-    const agyModel = q.modelInfo?.modelName || (manual ? "手动记录" : "Antigravity");
+    const rawAgyModel = q.modelInfo?.modelName || (manual ? "手动记录" : "Antigravity");
+    const isOrchestrator = !manual && Boolean(
+      q.modelInfo?.orchestrator ||
+      /^orchestrator(?:\s+|$)/i.test(rawAgyModel) ||
+      /^orchestrator(?:\s+|$)/i.test(q.modelInfo?.fullText || "")
+    );
+    const agyModel = isOrchestrator
+      ? (rawAgyModel.replace(/^Orchestrator\s*/i, "").replace(/^\(([^()]+)\)$/, "$1").trim() || rawAgyModel)
+      : rawAgyModel;
     const thinkingRaw = q.modelInfo?.thinkingLevel || q.modelInfo?.thinking;
     const thinking = thinkingRaw && thinkingRaw !== "默认" ? ` · ${thinkingRaw}` : "";
     return {
@@ -147,7 +156,8 @@
       weekly: agyWeek,
       fiveHourReset: manual ? "手动额度兜底" : formatResetLabel(agyResets, agyFive === null ? "尚未读取真实额度" : "本机实时窗口"),
       weeklyReset: manual ? "手动额度兜底" : formatResetLabel(agyWeekResets, agyWeek === null ? "尚未读取周周期" : "本机周窗口"),
-      metricMode: mode
+      metricMode: mode,
+      orchestrator: isOrchestrator
     };
   }
 
@@ -250,6 +260,22 @@
     return ["var(--sq-grad-start)", "var(--sq-grad-mid)", "var(--sq-grad-end)"];
   }
 
+  function createOrchestratorDialInner(gradId) {
+    return `
+      <circle cx="0" cy="0" r="8.4" fill="#1b1433" stroke="#d8b263" stroke-width="1.25"/>
+      <circle cx="0" cy="-8.4" r="1.1" fill="#f7e29c"/>
+      <circle cx="0" cy="8.4" r="1.1" fill="#f7e29c"/>
+      <circle cx="-8.4" cy="0" r="1.1" fill="#f7e29c"/>
+      <circle cx="8.4" cy="0" r="1.1" fill="#f7e29c"/>
+      <circle cx="0" cy="0" r="6.2" fill="#120d26" stroke="rgba(116,245,204,0.42)" stroke-width="0.65"/>
+      <path d="M-4.35 -4.9 L4.35 -4.9 L1.25 0 L4.35 4.9 L-4.35 4.9 L-1.25 0 Z" fill="url(#${gradId})" stroke="#0f2f2b" stroke-width="0.55" stroke-linejoin="round"/>
+      <path d="M0 -1.35 L0.95 0 L0 1.35 L-0.95 0 Z" fill="#f5fffb" opacity="0.88"/>`;
+  }
+
+  function createInlineOrchestratorSvg(uid) {
+    return `<svg viewBox="-10.5 -10.5 21 21" width="15" height="15" aria-hidden="true"><defs><linearGradient id="${uid}" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5cf2b4"/><stop offset="52%" stop-color="#84ecff"/><stop offset="100%" stop-color="#e5fff6"/></linearGradient></defs>${createOrchestratorDialInner(uid)}</svg>`;
+  }
+
   function createGaugeMarkup(variant, uid) {
     if (variant === "ring") {
       return `
@@ -270,6 +296,11 @@
                 <stop offset="50%" stop-color="#9ad5ff"/>
                 <stop offset="100%" stop-color="#efb2f5"/>
               </linearGradient>
+              <linearGradient id="${uid}-ring-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#5cf2b4"/>
+                <stop offset="52%" stop-color="#84ecff"/>
+                <stop offset="100%" stop-color="#e5fff6"/>
+              </linearGradient>
               <pattern id="${uid}-stripe" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
                 <rect width="3" height="6" fill="rgba(182, 150, 238, 0.45)"/>
               </pattern>
@@ -285,6 +316,7 @@
             <circle class="gauge-ring-tip" cx="32" cy="8" r="2.7" fill="#fff7d6" stroke="var(--sq-rim)" stroke-width="0.9" opacity="0"/>
             <g class="gauge-star-gem">
               <path class="star-body" d="M32 23.2 34.4 29.6 40.8 32 34.4 34.4 32 40.8 29.6 34.4 23.2 32 29.6 29.6Z" fill="url(#${uid}-star-f)" stroke="#d8b263" stroke-width="1.2" stroke-linejoin="round"/>
+              <g class="orch-body" transform="translate(32 32)">${createOrchestratorDialInner(`${uid}-ring-orch`)}</g>
             </g>
             <g class="gauge-status-pip" opacity="0">
               <rect x="44" y="4" width="16" height="14" rx="7" fill="#23183d" stroke="#ffd88d" stroke-width="1.1"/>
@@ -313,6 +345,11 @@
                 <stop offset="55%" stop-color="#9ad5ff"/>
                 <stop offset="100%" stop-color="#efb2f5"/>
               </linearGradient>
+              <linearGradient id="${uid}-bar-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#5cf2b4"/>
+                <stop offset="52%" stop-color="#84ecff"/>
+                <stop offset="100%" stop-color="#e5fff6"/>
+              </linearGradient>
               <pattern id="${uid}-bar-stripe" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
                 <rect width="3" height="6" fill="rgba(182, 150, 238, 0.45)"/>
               </pattern>
@@ -340,6 +377,7 @@
             <line x1="6.5" y1="64.5" x2="14" y2="64.5" stroke="rgba(255,255,255,0.28)" stroke-width="0.8"/>
             <g class="gauge-star-gem">
               <path class="star-body" d="M14 2.5 16.3 8.2 22 10.5 16.3 12.8 14 18.5 11.7 12.8 6 10.5 11.7 8.2Z" fill="url(#${uid}-bar-star)" stroke="#d8b263" stroke-width="1.2" stroke-linejoin="round"/>
+              <g class="orch-body" transform="translate(14 10.5) scale(0.92)">${createOrchestratorDialInner(`${uid}-bar-orch`)}</g>
             </g>
             <g class="gauge-status-pip" opacity="0">
               <rect x="6" y="73" width="16" height="13" rx="6.5" fill="#23183d" stroke="#ffd88d" stroke-width="1.1"/>
@@ -367,6 +405,11 @@
               <stop offset="55%" stop-color="#9ad5ff"/>
               <stop offset="100%" stop-color="#efb2f5"/>
             </linearGradient>
+            <linearGradient id="${uid}-arc-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#5cf2b4"/>
+              <stop offset="52%" stop-color="#84ecff"/>
+              <stop offset="100%" stop-color="#e5fff6"/>
+            </linearGradient>
             <pattern id="${uid}-arc-stripe" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
               <rect width="3" height="6" fill="rgba(182, 150, 238, 0.48)"/>
             </pattern>
@@ -384,6 +427,7 @@
             <circle class="gauge-arc-tip" cx="13" cy="18" r="2.7" fill="#fff7d6" stroke="var(--sq-rim)" stroke-width="0.9" opacity="0"/>
             <g class="gauge-star-gem">
               <path class="star-body" d="M12 5.5 14.5 12 21 14.5 14.5 17 12 23.5 9.5 17 3 14.5 9.5 12Z" fill="url(#${uid}-arc-star)" stroke="#d8b263" stroke-width="1.2" stroke-linejoin="round"/>
+              <g class="orch-body" transform="translate(12 14.5) scale(0.98)">${createOrchestratorDialInner(`${uid}-arc-orch`)}</g>
             </g>
           </g>
           <g class="gauge-status-pip" opacity="0">
@@ -402,7 +446,7 @@
     const rootEl = mountEl.querySelector(".gauge-root");
     if (!rootEl) return;
 
-    const { fiveHour, weekly, ghost5h, quotaMode, side, draining, surging } = data;
+    const { fiveHour, weekly, ghost5h, quotaMode, side, draining, surging, orchestrator } = data;
     const disp5 = toDisplayPercent(fiveHour, quotaMode);
     const disp1 = toDisplayPercent(weekly, quotaMode);
     const dispG5 = toDisplayPercent(ghost5h, quotaMode);
@@ -416,6 +460,7 @@
     rootEl.dataset.side = side || "left";
     rootEl.dataset.quotaMode = quotaMode || "remaining";
     rootEl.dataset.surging = String(Boolean(surging));
+    rootEl.dataset.orchestrator = String(Boolean(orchestrator));
     rootEl.dataset.level = worst;
     rootEl.dataset.critical = String(worst === "critical");
     rootEl.dataset.normal = String(worst === "normal");
@@ -590,7 +635,10 @@
       tooltip.dataset.open = "false";
       tooltip.innerHTML = `
         <div class="quota-tooltip__head">
-          <strong class="quota-tooltip__model" id="sq-tip-model">Antigravity</strong>
+          <strong class="quota-tooltip__model" id="sq-tip-model" data-orchestrator="false">
+            <span class="orch-inline-badge" id="sq-tip-orch" title="编排器模式 (Orchestrator)" aria-label="编排器模式" hidden>${createInlineOrchestratorSvg("sq-tip-orch-g")}</span>
+            <span class="quota-tooltip__model-text" id="sq-tip-model-text">Antigravity</span>
+          </strong>
           <span class="quota-tooltip__badge" id="sq-tip-badge">AGY · 剩余</span>
         </div>
         <div class="quota-tooltip__rows">
@@ -789,7 +837,7 @@
       if (!placement) return;
       const vpW = window.innerWidth;
       const vpH = window.innerHeight;
-      const tipW = this.tooltip.offsetWidth || 244;
+      const tipW = this.tooltip.offsetWidth || 264;
       const tipH = this.tooltip.offsetHeight || 168;
       const margin = 8;
       const gap = 8;
@@ -832,7 +880,16 @@
       const { metrics, quotaMode } = this.lastState;
       const used = isUsedMode(quotaMode);
       const $ = (id) => this.tooltip.querySelector(`#${id}`);
-      $("sq-tip-model").textContent = metrics.modelLabel;
+      const modelHead = $("sq-tip-model");
+      const orchBadge = $("sq-tip-orch");
+      const modelText = $("sq-tip-model-text");
+      const isOrch = Boolean(metrics.orchestrator);
+      if (modelHead) {
+        modelHead.dataset.orchestrator = String(isOrch);
+        modelHead.title = isOrch ? `编排器模式 · ${metrics.modelLabel}` : metrics.modelLabel;
+      }
+      if (orchBadge) orchBadge.hidden = !isOrch;
+      if (modelText) modelText.textContent = metrics.modelLabel;
       $("sq-tip-badge").textContent = metrics.sourceBadge;
       $("sq-tip-window-5h").textContent = used ? "5 小时已用" : "5 小时剩余";
       $("sq-tip-window-1w").textContent = used ? "1 周已用" : "1 周剩余";
@@ -935,7 +992,8 @@
         quotaMode: this.lastState.quotaMode,
         side: placement.side,
         draining: this.draining,
-        surging: this.surging
+        surging: this.surging,
+        orchestrator: Boolean(this.lastState.metrics.orchestrator)
       });
 
       if (this.tipOpen) this._positionTooltip();
@@ -1006,9 +1064,10 @@
       const disp5 = toDisplayPercent(metrics.fiveHour, quotaMode);
       const disp1 = toDisplayPercent(metrics.weekly, quotaMode);
       const metricWord = used ? "已用" : "剩余";
+      const orchPrefix = metrics.orchestrator ? "编排器 · " : "";
       this.trigger.setAttribute(
         "aria-label",
-        `${metrics.sourceBadge}：5小时${metricWord} ${formatPctText(disp5)}，1周${metricWord} ${formatPctText(disp1)}`
+        `${orchPrefix}${metrics.sourceBadge}：5小时${metricWord} ${formatPctText(disp5)}，1周${metricWord} ${formatPctText(disp1)}`
       );
 
       if (!interactiveActive && (this.tipOpen || !this.tooltip.hidden)) {

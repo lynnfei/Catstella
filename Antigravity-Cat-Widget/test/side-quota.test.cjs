@@ -207,4 +207,44 @@ test('resolveSideQuotaMetrics reads HostQuotaAdapter fiveHourReset/weeklyReset, 
   assert.equal(argonSnap.fiveHourReset, '1小时后重置');
   assert.equal(argonSnap.weeklyReset, '6天20小时后重置');
   assert.equal(argonSnap.modelLabel, 'Gemini 4 Argon');
+  assert.equal(argonSnap.orchestrator, false);
+});
+
+test('resolveSideQuotaMetrics strips Orchestrator prefix and exposes orchestrator flag cleanly', () => {
+  const structured = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'agy' },
+    quotaWindows: {
+      online: true,
+      fiveHour: 100,
+      weekly: 100,
+      modelInfo: { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true }
+    }
+  });
+  assert.equal(structured.orchestrator, true);
+  assert.equal(structured.modelLabel, 'Gemini 4 Neon · Extra High');
+
+  const legacyUnstripped = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'agy' },
+    quotaWindows: {
+      online: true,
+      fiveHour: 90,
+      weekly: 95,
+      modelInfo: { modelName: 'Orchestrator Gemini 4 Neon', thinking: 'Extra High' }
+    }
+  });
+  assert.equal(legacyUnstripped.orchestrator, true);
+  assert.equal(legacyUnstripped.modelLabel, 'Gemini 4 Neon · Extra High');
+
+  const manualFallback = resolveSideQuotaMetrics({
+    settings: { manualQuota: true, manualPercent: 50, manualWeeklyPercent: 75, sideQuotaSource: 'agy' },
+    quotaWindows: { modelInfo: { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true } }
+  });
+  assert.equal(manualFallback.orchestrator, false);
+
+  const webFallback = resolveSideQuotaMetrics({
+    settings: { manualQuota: false, sideQuotaSource: 'web' },
+    quotaWindows: { modelInfo: { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true } },
+    webCompanion: { online: true, quota: { fiveHourRemainingPct: 80, weeklyRemainingPct: 90 } }
+  });
+  assert.equal(webFallback.orchestrator, false);
 });

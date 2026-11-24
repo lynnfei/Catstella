@@ -53,8 +53,12 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent
 
 .quota-label{display:flex;justify-content:space-between;font-size:13px;color:#7753aa;margin-top:5px}
 .quota-reset{display:block;font-size:10px;color:#9b7cc6;font-weight:normal;opacity:0.88;margin:-2px 0 2px 0;text-align:left}
-.agy-model-tag{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:3px 8px;border-radius:10px;background:#f2e6ffb0;border:1px solid #d9c4f5aa;font-size:11px;color:#72429f;font-weight:600;margin-bottom:4px}
-.agy-model-tag .thinking-badge{font-size:9.5px;background:#8b55d3;color:#fff;border-radius:6px;padding:1px 5px;font-weight:normal}.quota-label strong{color:#8851cd}.agy-art .agy-quota__track[data-known="false"]{background:#e6d5ff}.agy-art .agy-quota__track[data-known="false"] .agy-quota__fill{background:repeating-linear-gradient(120deg,#b696ee 0,#b696ee 7px,#d4b6f6 7px,#d4b6f6 14px);opacity:.7;box-shadow:none}.agy-art .agy-quota__track{margin:5px 0 9px}
+.agy-model-tag{display:flex;align-items:center;justify-content:space-between;gap:5px;max-width:100%;padding:3px 8px;border-radius:10px;background:#f2e6ffb0;border:1px solid #d9c4f5aa;font-size:11px;color:#72429f;font-weight:600;margin-bottom:4px}
+.agy-model-tag .model-tag-left{display:inline-flex;align-items:center;gap:4px;min-width:0;flex:1 1 auto}
+.agy-model-tag .model-tag-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agy-model-tag .orch-inline-badge{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:14px;height:14px;line-height:0;filter:drop-shadow(0 0 2px rgba(92,242,180,0.45))}
+.agy-model-tag .orch-inline-badge[hidden]{display:none!important}
+.agy-model-tag .thinking-badge{font-size:9.5px;background:#8b55d3;color:#fff;border-radius:6px;padding:1px 5px;font-weight:normal;flex:0 0 auto;white-space:nowrap}.quota-label strong{color:#8851cd}.agy-art .agy-quota__track[data-known="false"]{background:#e6d5ff}.agy-art .agy-quota__track[data-known="false"] .agy-quota__fill{background:repeating-linear-gradient(120deg,#b696ee 0,#b696ee 7px,#d4b6f6 7px,#d4b6f6 14px);opacity:.7;box-shadow:none}.agy-art .agy-quota__track{margin:5px 0 9px}
 
 .agy-art[data-facing="left"]{--agy-anchor:calc(60% - var(--agy-width) * .116)}
 

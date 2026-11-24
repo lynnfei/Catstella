@@ -268,7 +268,8 @@ else{
       claudeGpt:q?.claudeGpt||null,
       argonWeekly:typeof q?.argon?.weekly==="number"?q.argon.weekly:null,
       argonWeeklyReset:typeof q?.argon?.weeklyReset==="string"?q.argon.weeklyReset:"",
-      modelName:q?.modelInfo?.modelName||""
+      modelName:q?.modelInfo?.modelName||"",
+      orchestrator:Boolean(q?.modelInfo?.orchestrator)
      }
     }
    };

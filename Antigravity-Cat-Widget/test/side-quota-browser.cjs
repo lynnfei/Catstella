@@ -77,6 +77,8 @@ async function closeApp(app) {
     }
     await settingsWin.locator('.nav-item[data-page="quota"]').click();
     await settingsWin.locator('#sideQuotaVariant').waitFor({ timeout: 10000 });
+    const arcOptionText = await settingsWin.locator('#sideQuotaVariant option[value="arc"]').textContent();
+    assert.ok(!arcOptionText.includes('原神'), 'settings variant option must not mention 原神');
     await settingsWin.locator('#sideQuotaVariant').selectOption('ring');
     await settingsWin.locator('#sideQuotaDistance').selectOption('relaxed');
     await settingsWin.locator('#sideQuotaSize').selectOption('lg');
@@ -126,6 +128,88 @@ async function closeApp(app) {
     }
     assert.equal(await widget.locator('#talk-topic-bar').count(), 0, 'talk bubble must not render group badge chip');
     assert.ok((await widget.locator('#value').textContent()).trim().length > 0);
+
+    // Verify Orchestrator Omnitrix-inspired crest toggle across arc/ring/bar & tooltip layout without overflow.
+    const orchCheck = await widget.evaluate(() => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+      const variants = {};
+      for (const variant of ['arc', 'ring', 'bar']) {
+        window.CatstellaSideQuota.updateGaugeMount(mount, variant, `orch-test-${variant}`, {
+          fiveHour: 88,
+          weekly: 92,
+          ghost5h: 88,
+          quotaMode: 'remaining',
+          side: 'left',
+          draining: false,
+          surging: false,
+          orchestrator: true
+        });
+        const root = mount.querySelector('.gauge-root');
+        const orchOn = {
+          attr: root.dataset.orchestrator,
+          orchDisplay: getComputedStyle(root.querySelector('.orch-body')).display,
+          starDisplay: getComputedStyle(root.querySelector('.star-body')).display
+        };
+        window.CatstellaSideQuota.updateGaugeMount(mount, variant, `orch-test-${variant}`, {
+          fiveHour: 88,
+          weekly: 92,
+          ghost5h: 88,
+          quotaMode: 'remaining',
+          side: 'left',
+          draining: false,
+          surging: false,
+          orchestrator: false
+        });
+        const orchOff = {
+          attr: root.dataset.orchestrator,
+          orchDisplay: getComputedStyle(root.querySelector('.orch-body')).display,
+          starDisplay: getComputedStyle(root.querySelector('.star-body')).display
+        };
+        variants[variant] = { orchOn, orchOff };
+      }
+      mount.innerHTML = '';
+      const ctrl = new window.CatstellaSideQuota.SideQuotaController({
+        container: mount,
+        mascot: document.getElementById('mascot')
+      });
+      ctrl.update({
+        snapshot: {
+          settings: { sideQuotaEnabled: true, sideQuotaVariant: 'arc', sideQuotaSource: 'agy', manualQuota: false },
+          quotaWindows: {
+            online: true,
+            fiveHour: 100,
+            weekly: 100,
+            modelInfo: { modelName: 'Gemini 4 Neon', thinking: 'Extra High', orchestrator: true }
+          }
+        },
+        mainBubbleVisible: false,
+        dragging: false,
+        artReady: true
+      });
+      ctrl.tooltip.hidden = false;
+      ctrl.tooltip.dataset.open = 'true';
+      ctrl._syncTooltipContent();
+      const head = ctrl.tooltip.querySelector('.quota-tooltip__head');
+      const tipInfo = {
+        orchHidden: ctrl.tooltip.querySelector('#sq-tip-orch').hidden,
+        modelText: ctrl.tooltip.querySelector('#sq-tip-model-text').textContent,
+        headOverflow: head.scrollWidth > head.clientWidth
+      };
+      mount.remove();
+      return { variants, tipInfo };
+    });
+    for (const v of ['arc', 'ring', 'bar']) {
+      assert.equal(orchCheck.variants[v].orchOn.attr, 'true');
+      assert.notEqual(orchCheck.variants[v].orchOn.orchDisplay, 'none', `${v} orch-body must show`);
+      assert.equal(orchCheck.variants[v].orchOn.starDisplay, 'none', `${v} star-body must hide`);
+      assert.equal(orchCheck.variants[v].orchOff.attr, 'false');
+      assert.equal(orchCheck.variants[v].orchOff.orchDisplay, 'none', `${v} orch-body must hide`);
+      assert.notEqual(orchCheck.variants[v].orchOff.starDisplay, 'none', `${v} star-body must restore`);
+    }
+    assert.equal(orchCheck.tipInfo.orchHidden, false);
+    assert.equal(orchCheck.tipInfo.modelText, 'Gemini 4 Neon · Extra High');
+    assert.equal(orchCheck.tipInfo.headOverflow, false, 'tooltip model header must not overflow horizontally');
 
     // Disabling side quota in settings immediately hides it live.
     await settingsWin.locator('.nav-item[data-page="quota"]').click();

@@ -154,13 +154,32 @@
     if(q?.modelInfo){
      tag.hidden=false;
      if(!tag.firstElementChild){
-      const model=document.createElement("span"),thinking=document.createElement("span");
+      const left=document.createElement("span");
+      left.className="model-tag-left";
+      const orch=document.createElement("span");
+      orch.className="orch-inline-badge";
+      orch.title="编排器模式 (Orchestrator)";
+      orch.setAttribute("aria-label","编排器模式");
+      orch.hidden=true;
+      orch.innerHTML='<svg viewBox="-10.5 -10.5 21 21" width="14" height="14" aria-hidden="true"><defs><linearGradient id="pet-tag-orch-g" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5cf2b4"/><stop offset="52%" stop-color="#84ecff"/><stop offset="100%" stop-color="#e5fff6"/></linearGradient></defs><circle cx="0" cy="0" r="8.4" fill="#1b1433" stroke="#d8b263" stroke-width="1.25"/><circle cx="0" cy="-8.4" r="1.1" fill="#f7e29c"/><circle cx="0" cy="8.4" r="1.1" fill="#f7e29c"/><circle cx="-8.4" cy="0" r="1.1" fill="#f7e29c"/><circle cx="8.4" cy="0" r="1.1" fill="#f7e29c"/><circle cx="0" cy="0" r="6.2" fill="#120d26" stroke="rgba(116,245,204,0.42)" stroke-width="0.65"/><path d="M-4.35 -4.9 L4.35 -4.9 L1.25 0 L4.35 4.9 L-4.35 4.9 L-1.25 0 Z" fill="url(#pet-tag-orch-g)" stroke="#0f2f2b" stroke-width="0.55" stroke-linejoin="round"/><path d="M0 -1.35 L0.95 0 L0 1.35 L-0.95 0 Z" fill="#f5fffb" opacity="0.88"/></svg>';
+      const model=document.createElement("span");
+      model.className="model-tag-name";
+      left.append(orch,model);
+      const thinking=document.createElement("span");
       thinking.className="thinking-badge";
-      tag.replaceChildren(model,thinking);
+      tag.replaceChildren(left,thinking);
      }
-     const model=q.modelInfo.modelName||"";
+     const rawModel=q.modelInfo.modelName||"";
+     const isOrch=Boolean(q.modelInfo.orchestrator||/^orchestrator(?:\s+|$)/i.test(rawModel)||/^orchestrator(?:\s+|$)/i.test(q.modelInfo.fullText||""));
+     const stripped=isOrch?rawModel.replace(/^Orchestrator\s*/i,"").replace(/^\(([^()]+)\)$/,"$1").trim():rawModel;
+     const model=stripped||rawModel;
      const thinking="思考: "+q.modelInfo.thinking;
-     if(tag.firstElementChild.textContent!==model)tag.firstElementChild.textContent=model;
+     const orchEl=tag.firstElementChild?.firstElementChild;
+     const nameEl=tag.firstElementChild?.lastElementChild;
+     tag.dataset.orchestrator=String(isOrch);
+     tag.title=isOrch?`编排器模式 · ${model} · ${thinking}`:`${model} · ${thinking}`;
+     if(orchEl)orchEl.hidden=!isOrch;
+     if(nameEl&&nameEl.textContent!==model)nameEl.textContent=model;
      if(tag.lastElementChild.textContent!==thinking)tag.lastElementChild.textContent=thinking;
     }else{
      tag.hidden=true;

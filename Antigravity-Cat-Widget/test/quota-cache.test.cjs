@@ -168,19 +168,22 @@ test('HostQuotaAdapter reports cdp-disabled when host process runs without CDP a
  const model = extractModelInfo(mockDoc);
  assert.equal(model.modelName, 'Gemini 4 Pro');
  assert.equal(model.thinking, 'Minimal');
+ assert.equal(model.orchestrator, false);
 
  const cases = [
-  ['选择模型，当前：Orchestrator Gemini 4 Neon Extra High', 'Orchestrator Gemini 4 Neon', 'Extra High'],
-  ['Select model, current: Gemini 4 Hydrogen Extra', 'Gemini 4 Hydrogen', 'Extra'],
-  ['Select model, current: Gemini 4 Neon (XHigh)', 'Gemini 4 Neon', 'XHigh'],
-  ['Select model, current: Claude Opus (High thinking)', 'Claude Opus', 'High'],
-  ['Select model, current: Orchestrator (Neon)', 'Orchestrator (Neon)', '默认']
+  ['选择模型，当前：Orchestrator Gemini 4 Neon Extra High', 'Gemini 4 Neon', 'Extra High', true],
+  ['Select model, current: Gemini 4 Hydrogen Extra', 'Gemini 4 Hydrogen', 'Extra', false],
+  ['Select model, current: Gemini 4 Neon (XHigh)', 'Gemini 4 Neon', 'XHigh', false],
+  ['Select model, current: Claude Opus (High thinking)', 'Claude Opus', 'High', false],
+  ['Select model, current: Orchestrator (Neon)', 'Neon', '默认', true],
+  ['Select model, current: Orchestrator', 'Orchestrator', '默认', true]
  ];
- for (const [aria, expectedModel, expectedThinking] of cases) {
+ for (const [aria, expectedModel, expectedThinking, expectedOrch] of cases) {
   const parsed = extractModelInfo({
    querySelector: sel => sel.includes('model-selector-trigger') ? { getAttribute: () => aria, innerText: aria } : null
   });
   assert.equal(parsed.modelName, expectedModel, aria);
   assert.equal(parsed.thinking, expectedThinking, aria);
+  assert.equal(parsed.orchestrator, expectedOrch, aria);
  }
 });

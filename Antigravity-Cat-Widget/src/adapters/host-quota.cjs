@@ -21,8 +21,18 @@ function extractModelInfo(doc=document){
  const wordMatch=parenMatch?null:fullText.match(/\b(Extra\s+High|Very\s+High|XHigh|Extra|High|Medium|Low|Minimal|Max|None|Off|Extended|Auto)\b/i);
  const matched=parenMatch||wordMatch;
  const thinking=matched?matched[1].replace(/\s+/g,' ').trim():null;
- const modelName=matched?(fullText.slice(0,matched.index)+' '+fullText.slice(matched.index+matched[0].length)).replace(/\s{2,}/g,' ').trim():fullText;
- return {modelName,thinking:thinking||"默认",fullText};
+ const rawModelName=matched?(fullText.slice(0,matched.index)+' '+fullText.slice(matched.index+matched[0].length)).replace(/\s{2,}/g,' ').trim():fullText;
+ let orchestrator=false;
+ let modelName=rawModelName;
+ if(/^Orchestrator(?:\s+|$)/i.test(modelName)){
+  orchestrator=true;
+  const rest=modelName.replace(/^Orchestrator\s*/i,'').trim();
+  if(rest){
+   const unwrapped=rest.match(/^\(([^()]+)\)$/);
+   modelName=unwrapped?unwrapped[1].trim():rest;
+  }
+ }
+ return {modelName,thinking:thinking||"默认",orchestrator,fullText};
 }
 const emptyChannel=()=>({fiveHour:null,weekly:null,fiveHourReset:"",weeklyReset:""});
 const clampPercent=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=100?v:null;
