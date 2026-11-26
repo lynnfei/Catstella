@@ -132,6 +132,7 @@ async function main() {
     await gallery.addScriptTag({ path: path.join(source, 'skin.js') });
     await gallery.addScriptTag({ path: path.join(source, 'ambient.js') });
     await gallery.addScriptTag({ path: path.join(source, 'pet-behavior.js') });
+    await gallery.addScriptTag({ path: path.join(source, 'interaction-audio.js') });
     await gallery.addScriptTag({ path: path.join(source, 'usage-viewer.js') });
     await gallery.addScriptTag({ path: path.join(source, 'widget.js') });
     await gallery.waitForFunction(() => {

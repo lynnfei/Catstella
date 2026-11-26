@@ -200,4 +200,4 @@
     root.CatstellaPetBehavior = PetBehavior;
     root.CatstellaHeadPatDialogue = HeadPatDialogue;
   }
-})(globalThis);
+})(typeof window === "object" ? window : globalThis);

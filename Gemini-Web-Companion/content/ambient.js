@@ -35,4 +35,4 @@
   };
   if (typeof module === 'object' && module.exports) module.exports = AmbientChatter;
   else root.CatstellaChatter = AmbientChatter;
-})(globalThis);
+})(typeof window === "object" ? window : globalThis);

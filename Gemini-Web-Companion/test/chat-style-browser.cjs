@@ -136,7 +136,7 @@ async function main() {
         sendMessage: async () => null
       };
     });
-    for (const file of ['ambient.js', 'pet-behavior.js', 'usage-viewer.js', 'widget.js']) {
+    for (const file of ['ambient.js', 'pet-behavior.js', 'interaction-audio.js', 'usage-viewer.js', 'widget.js']) {
       await widgetPage.addScriptTag({ path: path.join(source, file) });
     }
     await widgetPage.waitForTimeout(600);

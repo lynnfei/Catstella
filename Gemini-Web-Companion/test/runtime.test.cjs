@@ -40,15 +40,18 @@ for (const gecko of [false, true]) {
     test(`${target} storage uses one ${gecko ? 'Promise' : 'callback'} invocation and awaits completion`, async () => {
       const calls = [];
       let finish;
-      const runtime = { id: 'fixture', ...(gecko ? { getBrowserInfo() {} } : {}) };
+      // Firefox content scripts expose browser.runtime without getBrowserInfo.
+      const runtime = { id: 'fixture' };
       const api = { runtime, storage: { local: {
         get(keys, callback) {
           calls.push(['get', keys]);
+          if (gecko) assert.equal(callback, undefined);
           if (gecko) return Promise.resolve({ enabled: false });
           callback({ enabled: false });
         },
         set(value, callback) {
           calls.push(['set', value]);
+          if (gecko) assert.equal(callback, undefined);
           if (gecko) return new Promise(resolve => { finish = resolve; });
           finish = callback;
         }
@@ -74,6 +77,23 @@ for (const gecko of [false, true]) {
     });
   }
 }
+
+test('Firefox content heartbeat uses Promise messaging without getBrowserInfo and with both namespaces', async () => {
+  const sent = [];
+  const api = {runtime:{id:'firefox-fixture',
+    sendMessage(message, options) {
+      if (options !== undefined) throw Error('Unexpected argument types for runtime.sendMessage');
+      sent.push(message);
+      return Promise.resolve({ok:true,online:true});
+    }}};
+  const window = {};
+  const ctx = vm.createContext({window,browser:api,chrome:api,console:{log(){}}});
+  vm.runInContext(source('content/shim.js'),ctx);
+  const message = {type:'KG_TAB_HEARTBEAT',active:true,visible:true};
+  const result = await window.KIMINO_API.sendMessage(message);
+  assert.equal(result?.online,true);
+  assert.deepEqual(sent,[message]);
+});
 
 test('wallpaper previews are fetched once per revision, cached, and limited to two workers', async () => {
   let requests = 0, active = 0, peak = 0;

@@ -93,13 +93,13 @@
       "网页周额度重置啦，{user} 快来看看。"
     ],
     exhausted: [
-      "{user:杂鱼君}，当前额度见底了喵！"
+      "{user}，当前额度见底了喵！"
     ],
     highUsage: [
-      "{user:杂鱼君}慢点！当前用量超过八成了喵。"
+      "{user}慢点！当前用量超过八成了喵。"
     ],
     highEstimate: [
-      "{user:杂鱼君}，这段会话的估算用量超过八成了喵。"
+      "{user}，这段会话的估算用量超过八成了喵。"
     ],
     idle: [
       "我才不是美版豆包，哼！",
@@ -127,16 +127,16 @@
     ],
     thinking: [
       "在动脑子了在动脑子了，别催本喵！",
-      "思维链正在运转，{user:杂鱼君}稍安勿躁喵～",
+      "思维链正在运转，{user}稍安勿躁喵～",
       "正在进行高强度推理，本喵耳灯都亮起来了！"
     ],
     warning: [
-      "{user:杂鱼君}慢点！当前用量快到警戒线了，小心被降级喵！",
+      "{user}慢点！当前用量快到警戒线了，小心被降级喵！",
       "会话太长啦！一会儿被限流本喵可不借你额度！"
     ],
     crying: [
       "口牙！当前周期额度见底了喵！(大哭)",
-      "呜哇……当前周期用光了，都怪{user:杂鱼君}问个没完没了！",
+      "呜哇……当前周期用光了，都怪{user}问个没完没了！",
       "彻底被限流了喵！快看倒计时，老老实实等它恢复吧！"
     ]
   };
@@ -1147,31 +1147,26 @@
     previousDialogues.set(category, line);
     return line;
   }
-  const readHonorificMode = mode => ['none', 'zayu', 'custom'].includes(mode) ? mode : 'desktop';
+  const readHonorificMode = mode => mode === 'zayu' ? 'none' : (['none', 'custom'].includes(mode) ? mode : 'desktop');
   const readHonorificName = name => typeof name === 'string' ? name.trim().slice(0, 16) : '';
 
-  const tapSounds = new Map();
-  let currentSound;
+  const interactionAudio = new window.CatstellaInteractionAudio(path => api.getURL(path));
+  const syncAudioVisibility = () => interactionAudio.setVisible(!document.hidden);
+  syncAudioVisibility();
+  document.addEventListener('visibilitychange', syncAudioVisibility);
+  // Unlock silently on normal page interaction, before the first pet sound.
+  // No mousemove listener or polling; blocked resume requests are shared.
+  for (const type of ['pointerdown', 'keydown']) {
+    document.addEventListener(type, () => interactionAudio.unlock(), { capture: true, passive: true });
+  }
+  window.addEventListener('pagehide', () => interactionAudio.setVisible(false));
+  window.addEventListener('pageshow', syncAudioVisibility);
   function stopSound() {
-    currentSound?.pause();
-    currentSound = null;
-    tapSounds.clear();
+    interactionAudio.configure(false);
   }
   function playSound(type = 'press') {
     if (!soundEnabled) return;
-    try {
-      if (!tapSounds.has(type)) {
-        const file = type === 'press' ? 'interaction-press.wav' : 'interaction-release.wav';
-        const audio = new Audio(api.getURL(`assets/audio/${file}`));
-        audio.volume = 0.45;
-        tapSounds.set(type,audio);
-      }
-      const audio = tapSounds.get(type);
-      currentSound?.pause();
-      currentSound = audio;
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    } catch (e) {}
+    interactionAudio.play(type);
   }
 
   function syncedCharacter(mode = syncCharacter, state = bridgeState) {
@@ -1245,6 +1240,7 @@
     localCharacter = config.character || 'gemini-star-v1';
     onlineCharacterPacks = config.onlineCharacterPacks || {};
     soundEnabled = !!config.soundEnabled;
+    interactionAudio.configure(soundEnabled);
     widgetScale = config.widgetScale || 200;
     bubbleVisible = config.bubbleVisible !== false;
     syncAgyUsage = config.syncAgyUsage !== false;
@@ -1494,8 +1490,7 @@
                 <label class="kg-row-label" for="kg-honorific-mode"><span>桌宠互动称呼</span><small>跟随桌面需要同步互动偏好</small></label>
                 <select class="kg-skin-style" id="kg-honorific-mode">
                   <option value="desktop">跟随桌面</option>
-                  <option value="none">台词默认称呼</option>
-                  <option value="zayu">杂鱼君</option>
+                  <option value="none">人类</option>
                   <option value="custom">自定义</option>
                 </select>
               </div>
@@ -1620,8 +1615,7 @@
       currentLine = line;
       const desktop = syncInteraction ? bridgeState?.desktop?.honorific : null;
       const preference = honorificMode === 'desktop' ? desktop : { mode: honorificMode, name: honorificName };
-      const address = preference?.mode === 'zayu' ? '杂鱼君' :
-        preference?.mode === 'custom' ? readHonorificName(preference.name) : '';
+      const address = preference?.mode === 'custom' ? readHonorificName(preference.name) : '';
       dialogueEl.textContent = line.template.replace(/\{user(?::([^{}]+))?\}|\{(count|today|step)\}/g, (token, fallback, key) =>
         key ? (line.fields?.[key] ?? token) : (address || fallback || '人类'));
     }
@@ -2080,9 +2074,9 @@
         startedAt: performance.now(),
         sleeping: pet.rest === 'sleeping', head: x >= .04 && x <= .96 && y >= 0 && y <= .84, headX:x, headY:y };
       charBox.setPointerCapture(event.pointerId);
+      if (!pointer.sleeping) playSound('press');
       pet.activity();
       syncPet();
-      if (!pointer.sleeping) playSound('press');
     });
     charBox.addEventListener('pointermove', event => {
       if (pointer?.id === event.pointerId) {
@@ -2717,6 +2711,11 @@
         cb.addEventListener('change', () => {
           const key = cb.dataset.key;
           const payload = { [key]: cb.checked };
+          if (key === 'soundEnabled') {
+            soundEnabled = cb.checked;
+            interactionAudio.configure(soundEnabled);
+            interactionAudio.unlock();
+          }
           if (key === 'syncAgyUsage') void saveLocal(payload);
           else api.storageSet(payload);
           if (key === 'soundEnabled') {
@@ -3029,6 +3028,7 @@
         if (changes.soundEnabled !== undefined) {
           soundEnabled = !!changes.soundEnabled.newValue;
           if (!soundEnabled) stopSound();
+          else interactionAudio.configure(true);
         }
         if (changes.widgetScale) {
           widgetScale = changes.widgetScale.newValue;

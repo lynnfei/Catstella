@@ -1,5 +1,9 @@
 # Catstella Web · 当前交接说明
 
+2026-11-26 音效追加：已复现并修复“单击无声、快连点后才出声”。撤销上轮的 5 秒闲置暂停和等待 resume 后按 150ms 丢弃点击的方案；输入事件内立即提交音源，普通页面交互提前准备设备，只有隐藏页面或关闭音效才停止/暂停。新原生 Firefox 测试不预热，首次单击及 6 秒可见闲置后单击均检测到真实 PCM，后者约 11ms；全新浏览器音频设备冷启动仍有约 517ms 一次性成本，不等于已消除所有首次出声延迟。旧预热调度的 0–1ms 结果不能作为实际出声速度。29 项单测、Edge 交互及隔离扩展回归通过，两端本地加载目录已热更新，Firefox 需重载扩展并刷新页面。详细现行规则见桌面 `src-tauri/HANDOFF.md` 末尾“单击丢声追加修复”。
+
+2026-11-26 Firefox ↔ Tauri 联动修复追加：按实际 `browser` 命名空间调用 Promise API；随后在真实 Firefox 161 复现内容脚本 `globalThis`/`window` 导出差异造成的 `PetBehavior is undefined`，已修复 `pet-behavior.js` 与 `ambient.js`，用户反馈 Web 恢复。新增 `content/interaction-audio.js`：两个短音效预解码、同步热路径、迟到请求取消、闲置暂停及原播放器降级。29 项 Web 单测、Edge 交互/隔离扩展回归通过；`test/firefox-native.cjs` 使用独立临时 Firefox 配置验证真实设置点击、可见心跳及原生音频解码/连续点击，设备预热后音源内部调度为 0–1ms（非实际出声延迟）。该测试使用隔离 HTTP 桥接夹具，真实 Rust 消息通道由桌面 `src-tauri/scripts/verify-web-bridge.cjs` 验证。Firefox/Chromium 加载目录均已热更新，需重新加载扩展并刷新 Gemini 生效。Firefox 使用 `D:/Catstella/tools/sync-local-runtime.cjs --web --firefox`，Chromium 沿用 `--web`。详细记录和备份位置在桌面 `src-tauri/HANDOFF.md` 第 7 节末尾。未封包、未推送。
+
 > Web 扩展版本：1.5.0 · 更新日期：2026-11-05
 > 当前架构优先于旧版本交接和历史验证记录。
 

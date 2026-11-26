@@ -69,6 +69,7 @@ async function main() {
     });
     await page.addScriptTag({ path: path.join(source, 'ambient.js') });
     await page.addScriptTag({ path: path.join(source, 'pet-behavior.js') });
+    await page.addScriptTag({ path: path.join(source, 'interaction-audio.js') });
     await page.addScriptTag({ path: path.join(source, 'usage-viewer.js') });
     await page.addScriptTag({ path: path.join(source, 'widget.js') });
 

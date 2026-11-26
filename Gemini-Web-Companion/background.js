@@ -26,7 +26,7 @@ const webDisplayMode = value => value === 'prefer-desktop' ? value : 'both';
 const extApi = (typeof browser !== 'undefined' && browser && browser.runtime) ? browser
   : (typeof chrome !== 'undefined' ? chrome : null);
 
-const isGecko = typeof extApi?.runtime?.getBrowserInfo === 'function';
+const isGecko = typeof browser !== 'undefined' && extApi === browser;
 const safeStorageGet = keys => new Promise(resolve => {
   if (!extApi?.storage?.local) { resolve({}); return; }
   try {

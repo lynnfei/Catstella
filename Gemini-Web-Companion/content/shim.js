@@ -34,7 +34,9 @@
   const api = pickApi();
   let isGecko = false;
   try {
-    isGecko = !!(api && typeof api.runtime.getBrowserInfo === 'function');
+    // getBrowserInfo is absent in Firefox content scripts. Select the
+    // Promise contract from the namespace we actually chose.
+    isGecko = !!(api && typeof browser !== 'undefined' && api === browser);
   } catch (e) { isGecko = false; }
 
   const KIMINO_API = {
