@@ -135,7 +135,7 @@ body[data-theme="onyx"] {
 .gauge-svg {
   display: block;
   overflow: visible;
-  filter: drop-shadow(0 3px 10px rgba(18, 12, 36, 0.34));
+  filter: drop-shadow(0 2px 4px rgba(18, 12, 36, 0.3));
 }
 
 .gauge-ring-wrap {
@@ -145,8 +145,8 @@ body[data-theme="onyx"] {
 }
 
 .gauge-bar-wrap {
-  width: calc(26px * var(--gauge-scale, 1));
-  height: calc(82px * var(--gauge-scale, 1));
+  width: calc(20px * var(--gauge-scale, 1));
+  height: calc(96px * var(--gauge-scale, 1));
   position: relative;
 }
 
@@ -209,7 +209,6 @@ body[data-theme="onyx"] {
 .gauge-root[data-orchestrator="true"] .star-body { display: none; }
 .gauge-root[data-orchestrator="true"] .orch-body {
   display: inline;
-  filter: drop-shadow(0 0 3px rgba(92, 242, 180, 0.62));
 }
 
 @keyframes sq-alert-breathe {
@@ -218,8 +217,8 @@ body[data-theme="onyx"] {
 }
 
 @keyframes sq-gem-gleam {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.14); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.86; }
 }
 
 /* Hover / Focus Detail Tooltip (WCAG 1.4.13) */

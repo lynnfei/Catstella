@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-mode="light" data-skin="violet">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; img-src 'self' data: file:;">
@@ -9,34 +9,91 @@
 </head>
 <body>
   <div class="settings-shell">
+    <!-- 顶部无边框拖拽标题栏：Chrome 圆角标签 + 横向频道导航 + 右上角明暗/最小化/关闭 -->
     <header class="custom-titlebar">
-      <div class="titlebar-drag-area">
-        <span class="titlebar-icon">🐾</span>
-        <span class="titlebar-title">Catstella · 设置中心</span>
-        <span class="titlebar-subtitle">Gemini Companion</span>
+      <div class="title-tab">
+        <span class="titlebar-title">Catstella</span>
+        <span class="titlebar-subtitle">SETTINGS</span>
       </div>
+
+      <nav class="side-nav" id="side-nav" aria-label="设置分类">
+        <button type="button" class="nav-item active" data-page="overview" aria-current="page"><span class="nav-ico">◉</span><span>总览</span></button>
+        <button type="button" class="nav-item" data-page="store"><span class="nav-ico">✦</span><span>内容商店</span></button>
+        <button type="button" class="nav-item" data-page="pet"><span class="nav-ico">🐱</span><span>桌宠</span></button>
+        <button type="button" class="nav-item" data-page="wallpaper"><span class="nav-ico">▦</span><span>壁纸</span></button>
+        <button type="button" class="nav-item" data-page="agy"><span class="nav-ico">🪐</span><span>反重力</span></button>
+        <button type="button" class="nav-item" data-page="interact"><span class="nav-ico">💬</span><span>互动</span></button>
+        <button type="button" class="nav-item" data-page="quota"><span class="nav-ico">∿</span><span>用量</span></button>
+        <div class="nav-spacer"></div>
+        <button type="button" class="nav-item" data-page="about"><span class="nav-ico">★</span><span>关于</span></button>
+      </nav>
+
       <div class="titlebar-controls">
-        <button id="win-min-btn" class="titlebar-btn min" type="button" title="最小化">–</button>
-        <button id="win-close-btn" class="titlebar-btn close" type="button" title="关闭">✕</button>
+        <button id="theme-mode-btn" class="titlebar-btn mode" type="button" title="切换明暗模式" aria-label="切换明暗模式">◐</button>
+        <button id="win-min-btn" class="titlebar-btn min" type="button" title="最小化" aria-label="最小化">–</button>
+        <button id="win-close-btn" class="titlebar-btn close" type="button" title="关闭" aria-label="关闭">✕</button>
       </div>
     </header>
 
     <div class="settings-layout">
-      <!-- 左侧导航：新增页面只需在这里加一个 button[data-page] 和一个 section.page[data-page] -->
-      <nav class="side-nav" id="side-nav" aria-label="设置分类">
-        <button type="button" class="nav-item active" data-page="overview"><span class="nav-ico">🏠</span><span>总览</span></button>
-        <button type="button" class="nav-item" data-page="store"><span class="nav-ico">✦</span><span>内容商店</span></button>
-        <button type="button" class="nav-item" data-page="pet"><span class="nav-ico">🐱</span><span>桌宠</span></button>
-        <button type="button" class="nav-item" data-page="wallpaper"><span class="nav-ico">🖼️</span><span>壁纸</span></button>
-        <button type="button" class="nav-item" data-page="agy"><span class="nav-ico">🪐</span><span>反重力</span></button>
-        <button type="button" class="nav-item" data-page="interact"><span class="nav-ico">💬</span><span>互动</span></button>
+      <!-- 左侧常驻 HUD 实时预览舱：当前主题背景 + 桌宠样式 + 实时耐力条 -->
+      <aside class="hud-pod" aria-label="实时效果预览">
+        <div class="hud-viewport" id="hud-viewport">
+          <img class="hud-theme-bg" id="hud-theme-bg" alt="" aria-hidden="true">
+          <div class="hud-theme-scrim" id="hud-theme-scrim" aria-hidden="true"></div>
 
-        <button type="button" class="nav-item" data-page="quota"><span class="nav-ico">📊</span><span>用量</span></button>
-        <div class="nav-spacer"></div>
-        <button type="button" class="nav-item" data-page="about"><span class="nav-ico">✨</span><span>关于</span></button>
-      </nav>
+          <svg class="hud-reticle" viewBox="0 0 300 300" preserveAspectRatio="xMidYMid slice" fill="none" stroke="currentColor" aria-hidden="true">
+            <circle cx="150" cy="150" r="118" stroke-dasharray="2 6"/>
+            <circle cx="150" cy="150" r="88"/>
+            <circle cx="150" cy="150" r="52" stroke-dasharray="4 4"/>
+            <line x1="0" y1="150" x2="300" y2="150" stroke-dasharray="5 5"/>
+            <line x1="150" y1="0" x2="150" y2="300" stroke-dasharray="5 5"/>
+          </svg>
+          <div class="hud-dots tl" aria-hidden="true"></div>
+          <div class="hud-dots tr" aria-hidden="true"></div>
+          <i class="hud-bracket b1" aria-hidden="true"></i>
+          <i class="hud-bracket b2" aria-hidden="true"></i>
+          <i class="hud-bracket b3" aria-hidden="true"></i>
+          <i class="hud-bracket b4" aria-hidden="true"></i>
 
+          <div class="hud-top-badge">
+            <span class="hud-skin-pill" id="hud-skin-pill">紫毛基米</span>
+            <span class="hud-theme-pill" id="hud-theme-pill">星轨紫</span>
+          </div>
+
+          <div class="hud-arena">
+            <div class="hud-side-quota" id="hud-side-quota" aria-label="耐力条实时预览"></div>
+            <div class="hud-pet-wrap">
+              <img id="hud-pet-img" alt="当前桌宠样式预览">
+            </div>
+          </div>
+
+          <div class="hud-bubble" id="hud-bubble">
+            <span class="hud-bubble-model" id="hud-bubble-model">Gemini</span>
+            <p id="hud-bubble-text">点击右侧任意调节项，左侧实时预览同步生效～</p>
+          </div>
+        </div>
+
+        <div class="hud-foot">
+          <div class="hud-score">
+            <b>TODAY STEPS</b>
+            <b id="hud-steps">00000</b>
+          </div>
+          <div class="hud-char-switcher" id="hud-char-switcher" role="group" aria-label="快速切换桌宠形态"></div>
+        </div>
+      </aside>
+
+      <!-- 右侧主内容列 -->
       <div class="content-col">
+        <!-- 紧凑型实时摘要顶栏（无下方的筛选器按钮） -->
+        <div class="hud-summary-bar" aria-label="当前实时状态">
+          <div class="hud-stat"><small>当前桌宠</small><b id="hdr-char">—</b></div>
+          <div class="hud-stat"><small>AGY 5h</small><b id="hdr-agy-5h">—</b></div>
+          <div class="hud-stat"><small>AGY 1w</small><b id="hdr-agy-1w">—</b></div>
+          <div class="hud-stat"><small>Web 5h</small><b id="hdr-web-5h">—</b></div>
+          <div class="hud-stat"><small>活跃模型</small><b id="hdr-model" class="hud-stat-model">—</b></div>
+        </div>
+
         <div class="content-scroll" id="content-scroll">
 
           <!-- 总览 -->
@@ -63,10 +120,10 @@
 
             <div class="card">
               <h3>常用设置</h3>
-              <label class="row"><span class="row-text"><b>应用到 Antigravity</b><small>开启后壁纸与毛玻璃主题会应用到反重力窗口</small></span><input id="dream-enabled" type="checkbox"></label>
-              <label class="row"><span class="row-text"><b>仅在 Antigravity 窗口内显示</b><small>反重力未打开时桌宠自动隐藏或退守桌面</small></span><input id="hostWindowOnly" type="checkbox"></label>
-              <label class="row"><span class="row-text"><b>显示气泡</b></span><input id="bubbleOn" type="checkbox"></label>
-              <label class="row"><span class="row-text"><b>自动碎碎念</b><small>空闲时偶尔冒出一句；无音效。</small></span><input id="ambientChatter" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>应用到 Antigravity</b><small>开启后壁纸与毛玻璃主题会应用到反重力窗口</small></span><input id="dream-enabled" type="checkbox" switch></label>
+              <label class="row"><span class="row-text"><b>仅在 Antigravity 窗口内显示</b><small>反重力未打开时桌宠自动隐藏或退守桌面</small></span><input id="hostWindowOnly" type="checkbox" switch></label>
+              <label class="row"><span class="row-text"><b>显示气泡</b></span><input id="bubbleOn" type="checkbox" switch></label>
+              <label class="row"><span class="row-text"><b>自动碎碎念</b><small>空闲时偶尔冒出一句；无音效。</small></span><input id="ambientChatter" type="checkbox" switch></label>
             </div>
 
             <div class="card">
@@ -97,13 +154,15 @@
               </div>
               <label class="row appearance-mode">
                 <span class="row-text"><b id="desktop-current-character">当前桌面形象</b><small id="desktop-character-mode"></small></span>
-                <span class="appearance-toggle"><span>网页跟随桌面</span><input id="syncCharacter" type="checkbox" aria-label="同步桌宠形象到网页" aria-describedby="desktop-character-mode"></span>
+                <span class="appearance-toggle"><span>网页跟随桌面</span><input id="syncCharacter" type="checkbox" switch aria-label="同步桌宠形象到网页" aria-describedby="desktop-character-mode"></span>
               </label>
               <div class="gallery-container mode-carousel" id="character-gallery"></div>
               <select id="characterPack" style="display:none"></select>
             </div>
 
-            <button type="button" class="btn small" id="online-characters">浏览在线桌宠</button>
+            <div class="inline-store-cta">
+              <button type="button" class="btn small" id="online-characters">✦ 浏览在线桌宠</button>
+            </div>
 
             <div class="card">
               <h3>双端联动与样式同步 <span class="sync-pill offline" id="pet-bridge-pill">⚪ 等待 Web 扩展</span></h3>
@@ -115,33 +174,34 @@
                   <option value="prefer-web">焦点互斥（浏览 Gemini 网页时隐藏桌面猫猫）</option>
                 </select>
               </label>
-              <label class="row"><span class="row-text"><b>同步互动偏好</b><small>同步点击动作，允许网页端跟随本机称呼</small></span><input id="syncInteraction" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>同步互动偏好</b><small>同步点击动作，允许网页端跟随本机称呼</small></span><input id="syncInteraction" type="checkbox" switch></label>
             </div>
 
             <div class="card">
               <h3>外观与行为</h3>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>角色大小</b></span><output id="scale-value"></output></div><input id="scale" type="range" min="140" max="360" step="10"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>角色大小</b></span><output id="scale-value"></output></div><input id="scale" class="hud-range" type="range" min="140" max="360" step="10"></div>
               <label class="row">
                 <span class="row-text"><b>桌宠互动称呼</b><small>设置桌宠台词中对你的称呼</small></span>
-                <div style="display:flex;gap:8px;align-items:center;">
-                  <select id="userHonorificMode" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(189,162,242,0.3);background:rgba(255,255,255,0.7);font-size:13px;">
+                <div class="honorific-row">
+                  <select id="userHonorificMode">
                     <option value="none">台词默认称呼</option>
                     <option value="zayu">杂鱼君</option>
                     <option value="custom">其他（自定义）…</option>
                   </select>
-                  <input id="customHonorific" type="text" placeholder="输入称呼" maxlength="16" style="width:90px;padding:4px 8px;border-radius:8px;border:1px solid rgba(189,162,242,0.3);background:rgba(255,255,255,0.9);font-size:13px;display:none;">
+                  <input id="customHonorific" type="text" placeholder="输入称呼" maxlength="16" style="width:100px;display:none;">
                 </div>
               </label>
-              <label class="row"><span class="row-text"><b>无宿主时退守桌面显示</b><small>反重力未打开时桌宠留在桌面，而不是隐藏</small></span><input id="standaloneDesktopMode" type="checkbox"></label>
-              <label class="row"><span class="row-text"><b>桌面模式始终置顶</b><small>仅在不跟随宿主窗口时生效</small></span><input id="alwaysOnTop" type="checkbox"></label>
-              <label class="row"><span class="row-text"><b>减少动态</b></span><input id="reducedMotion" type="checkbox"></label>
-              <label class="row"><span class="row-text"><b>鼠标穿透</b><small>Ctrl+Alt+Shift+G 可随时恢复</small></span><input id="clickThrough" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>无宿主时退守桌面显示</b><small>反重力未打开时桌宠留在桌面，而不是隐藏</small></span><input id="standaloneDesktopMode" type="checkbox" switch></label>
+              <label class="row"><span class="row-text"><b>桌面模式始终置顶</b><small>仅在不跟随宿主窗口时生效</small></span><input id="alwaysOnTop" type="checkbox" switch></label>
+              <label class="row"><span class="row-text"><b>减少动态</b></span><input id="reducedMotion" type="checkbox" switch></label>
+              <label class="row"><span class="row-text"><b>鼠标穿透</b><small>Ctrl+Alt+Shift+G 可随时恢复</small></span><input id="clickThrough" type="checkbox" switch></label>
             </div>
+
             <div class="card">
               <h3>音效</h3>
-              <label class="row"><span class="row-text"><b>启用互动音效</b></span><input id="sound" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>启用互动音效</b></span><input id="sound" type="checkbox" switch></label>
               <label class="row"><span class="row-text"><b>音色</b></span><select id="soundSet"></select></label>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>音量</b></span><output id="volume-value"></output></div><input id="volume" type="range" min="0" max="100"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>音量</b></span><output id="volume-value"></output></div><input id="volume" class="hud-range" type="range" min="0" max="100"></div>
               <div class="btn-row"><button id="audition" class="btn" type="button">▶ 试听一下</button><span id="audio-note" class="hint inline">默认静音</span></div>
             </div>
           </section>
@@ -157,28 +217,29 @@
                     <button type="button" class="view-btn active" data-mode="carousel">横向</button>
                     <button type="button" class="view-btn" data-mode="grid">网格</button>
                   </div>
-
                   <button id="open-wallpaper-dir" class="btn small" type="button">📁 壁纸</button>
                   <button id="next-wallpaper" class="btn small" type="button">⏭ 下一张</button>
                 </div>
               </div>
               <label class="row appearance-mode">
                 <span class="row-text"><b id="desktop-current-wallpaper">当前桌面壁纸</b><small id="desktop-wallpaper-mode"></small></span>
-                <span class="appearance-toggle"><span>网页跟随桌面</span><input id="syncWallpaper" type="checkbox" aria-label="同步壁纸到网页" aria-describedby="desktop-wallpaper-mode"></span>
+                <span class="appearance-toggle"><span>网页跟随桌面</span><input id="syncWallpaper" type="checkbox" switch aria-label="同步壁纸到网页" aria-describedby="desktop-wallpaper-mode"></span>
               </label>
               <div class="gallery-container mode-carousel" id="wallpaper-gallery"></div>
               <p class="hint">壁纸目录支持放入任意 16:9 壁纸，自动加入轮播与预览。</p>
             </div>
 
-            <button type="button" class="btn small" id="online-wallpapers">浏览在线壁纸</button>
+            <div class="inline-store-cta">
+              <button type="button" class="btn small" id="online-wallpapers">✦ 浏览在线壁纸</button>
+            </div>
 
             <div class="card">
               <h3>自动轮播</h3>
-              <label class="row"><span class="row-text"><b>启用壁纸自动轮播</b></span><input id="slideshow-enabled" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>启用壁纸自动轮播</b></span><input id="slideshow-enabled" type="checkbox" switch></label>
               <div class="row column">
                 <div class="row-head"><span class="row-text"><b>轮播间隔</b><small>1 小时真实时间比例刻度 · 靠近节点自动磁吸阻尼</small></span><output id="slideshow-interval-value">5 分钟</output></div>
                 <div class="damped-slider-wrap">
-                  <input id="slideshow-interval" class="damped-range proportional-1h" type="range" min="1" max="60" step="0.1" value="5">
+                  <input id="slideshow-interval" class="hud-range damped-range proportional-1h" type="range" min="1" max="60" step="0.1" value="5">
                   <div class="damped-ticks proportional-ruler" id="slideshow-ruler">
                     <button type="button" class="ruler-tick" data-val="1" style="--pos:0"><i></i><span>1m</span></button>
                     <button type="button" class="ruler-tick" data-val="5" style="--pos:0.067797"><i></i><span>5m</span></button>
@@ -202,9 +263,9 @@
 
             <div class="card">
               <h3>可读性</h3>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸可见度</b><small>建议 18% ~ 28%；松手应用</small></span><output id="dream-opacity-value">22%</output></div><input id="dream-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="22"></div>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>背景遮罩浓度</b><small>建议 25% ~ 35%，让代码与对话保持最佳可读性</small></span><output id="dream-scrim-value">25%</output></div><input id="dream-scrim" class="damped-range" type="range" min="0" max="60" step="1" value="25"></div>
-              <label class="row"><span class="row-text"><b>磨砂玻璃卡片</b><small>给回复文字加一层高清晰度的毛玻璃底</small></span><input id="dream-output-mode" type="checkbox"></label>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸可见度</b><small>建议 18% ~ 28%；松手应用</small></span><output id="dream-opacity-value">22%</output></div><input id="dream-opacity" class="hud-range damped-range" type="range" min="0" max="100" step="1" value="22"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>背景遮罩浓度</b><small>建议 25% ~ 35%，让代码与对话保持最佳可读性</small></span><output id="dream-scrim-value">25%</output></div><input id="dream-scrim" class="hud-range damped-range" type="range" min="0" max="60" step="1" value="25"></div>
+              <label class="row"><span class="row-text"><b>磨砂玻璃卡片</b><small>给回复文字加一层高清晰度的毛玻璃底</small></span><input id="dream-output-mode" type="checkbox" switch></label>
             </div>
           </section>
 
@@ -222,11 +283,13 @@
               </div>
               <p class="hint" id="agy-host-hint">Antigravity v2.33+ 默认关闭本地调试端口。为快捷方式追加 <code>--remote-debugging-port=0 --remote-debugging-address=127.0.0.1</code> 不修改安装文件、可随时还原；配置后请完全退出并重开 Antigravity，即可恢复皮肤、汉化与实时额度。</p>
             </div>
+
             <div class="card">
               <h3>界面语言</h3>
               <label class="row"><span class="row-text"><b>Antigravity 界面语言</b><small>经本机调试通道注入字典翻译；输入框、代码与终端绝不触碰。切回 English 即完整还原。</small></span>
                 <select id="uiLanguage"><option value="en">English（原版）</option><option value="zh-CN">简体中文 · 实验翻译</option></select></label>
             </div>
+
             <div class="card">
               <h3>主题预设 <span class="chip">实时热切换</span></h3>
               <div class="theme-grid" id="theme-grid">
@@ -237,17 +300,17 @@
               </div>
               <p class="hint">点击即刻热切换反重力毛玻璃色系、边框流光与消息气泡配色，无需重启宿主。</p>
             </div>
+
             <div class="card">
               <h3>主题工坊 <span class="chip">本地创作</span></h3>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸不透明度</b><small>与配色组合保存为主题，可反复应用</small></span><output id="atelier-opacity-value">88%</output></div><input id="atelier-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="88"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>壁纸不透明度</b><small>与配色组合保存为主题，可反复应用</small></span><output id="atelier-opacity-value">88%</output></div><input id="atelier-opacity" class="hud-range damped-range" type="range" min="0" max="100" step="1" value="88"></div>
               <div class="atelier-scene" id="atelier-preview" data-palette="violet" role="img" aria-label="主题预览示意">
                 <div class="atelier-base"><aside>✦</aside><div class="atelier-page"><span class="atelier-brand">Gemini</span><div class="atelier-welcome"><strong>今天想做些什么？</strong><div class="atelier-shortcuts"><span>探索灵感</span><span>整理思路</span><span>润色文字</span></div></div><div class="atelier-user"><span class="atelier-prompt">帮我整理今天的计划</span></div><div class="atelier-reading"><p>先挑一件最重要的事，把它拆成可以马上开始的小步骤。</p><b class="atelier-input">＋  问问 Gemini</b></div></div></div>
                 <span class="atelier-hint" id="atelier-hint">星轨紫 · 壁纸不透明度 88%</span>
-
               </div>
               <div class="row"><span class="row-text"><b>对话气泡颜色</b><small>反重力内用户消息与模型回答的背景，文字保持清晰</small></span><input id="atelier-chat-tint" type="color" value="#181224" aria-label="对话气泡颜色"></div>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>用户气泡不透明度</b><small>拖动预览，松手应用；随主题一起保存</small></span><output id="atelier-chat-opacity-value">100%</output></div><input id="atelier-chat-opacity" class="damped-range" type="range" min="0" max="100" step="1" value="100"></div>
-              <div class="row column"><div class="row-head"><span class="row-text"><b>AI 回复背景不透明度</b><small>拖动预览，松手应用；透明模式默认 0%，毛玻璃模式默认 22%</small></span><output id="atelier-reply-opacity-value">0%</output></div><input id="atelier-reply-opacity" type="range" min="0" max="100" step="1" value="0"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>用户气泡不透明度</b><small>拖动预览，松手应用；随主题一起保存</small></span><output id="atelier-chat-opacity-value">100%</output></div><input id="atelier-chat-opacity" class="hud-range damped-range" type="range" min="0" max="100" step="1" value="100"></div>
+              <div class="row column"><div class="row-head"><span class="row-text"><b>AI 回复背景不透明度</b><small>拖动预览，松手应用；透明模式默认 0%，毛玻璃模式默认 22%</small></span><output id="atelier-reply-opacity-value">0%</output></div><input id="atelier-reply-opacity" class="hud-range" type="range" min="0" max="100" step="1" value="0"></div>
               <div class="row"><span class="row-text"><b>配色</b></span><div class="atelier-swatches" id="atelier-swatches">
                 <button type="button" class="atelier-swatch active" data-palette="violet" data-label="星轨紫" aria-label="星轨紫"><i style="background:linear-gradient(135deg,#8b68e0,#24193c)"></i></button>
                 <button type="button" class="atelier-swatch" data-palette="pink" data-label="梦幻粉" aria-label="梦幻粉"><i style="background:linear-gradient(135deg,#f59cc6,#3b1830)"></i></button>
@@ -272,13 +335,13 @@
               <label class="row"><span class="row-text"><b>点击猫猫时</b></span>
                 <select id="clickCatAction"><option value="talk">切换陪伴 · 对话</option><option value="cyclePages">切换页面（额度页）</option></select></label>
               <p class="hint" id="clickCatAction-hint">选择切换页面：依次查看反重力额度、Web 伴侣用量与陪伴对话。</p>
-              <label class="row"><span class="row-text"><b>显示单轮模型花费提示</b><small>只统计标志性模型的单轮花费</small></span><input id="turnCostOn" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>显示单轮模型花费提示</b><small>只统计标志性模型的单轮花费</small></span><input id="turnCostOn" type="checkbox" switch></label>
               <label class="row"><span class="row-text"><b>提示停留时长</b></span>
                 <select id="turnCostDurationMs"><option value="3000">3 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option><option value="0">直到手动关闭</option></select></label>
             </div>
             <div class="card">
               <h3>表情</h3>
-              <label class="row"><span class="row-text"><b>互动表情</b><small>点击头部有机会触发得意，快速连点会气恼。间隔点按一段时间或点出部分台词时可能害羞。</small></span><input id="easterEggs" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>互动表情</b><small>点击头部有机会触发得意，快速连点会气恼。间隔点按一段时间或点出部分台词时可能害羞。</small></span><input id="easterEggs" type="checkbox" switch></label>
               <p class="hint">空闲时会眨眼。气泡收起后空闲约三分钟会打盹，点击桌宠即可唤醒。</p>
               <div class="btn-row">
                 <button id="preview-proud" class="btn" type="button">✨ 预览「得意」</button>
@@ -289,14 +352,46 @@
             </div>
           </section>
 
-
-
           <!-- 用量 -->
           <section class="page" data-page="quota">
             <h2 class="page-title">用量</h2>
             <div class="card">
               <h3>桌宠旁侧用量挂件（耐力计） <span class="chip">实时热更新</span></h3>
-              <label class="row"><span class="row-text"><b>显示旁侧用量挂件</b><small>像小小耐力计一样贴在桌宠空旷一侧，完整气泡展开时自动让位渐隐。</small></span><input id="sideQuotaEnabled" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>显示旁侧用量挂件</b><small>像小小耐力计一样贴在桌宠空旷一侧，完整气泡展开时自动让位渐隐。</small></span><input id="sideQuotaEnabled" type="checkbox" switch></label>
+
+              <!-- 视觉化三版耐力计风格卡（与下方 select 双向同步） -->
+              <div class="sq-variant-cards" id="sq-variant-cards" role="group" aria-label="挂件样式快速选择">
+                <button type="button" class="sq-var-card active" data-variant="arc">
+                  <svg viewBox="0 0 44 64" width="32" height="44" aria-hidden="true">
+                    <path d="M13 54 Q33 32 13 10" fill="none" stroke="var(--line)" stroke-width="6" stroke-linecap="round"/>
+                    <path d="M13 54 Q33 32 13 10" fill="none" stroke="var(--accent)" stroke-width="4.8" stroke-linecap="round" stroke-dasharray="60" stroke-dashoffset="14"/>
+                    <path d="M13 4 15 9 20 11 15 13 13 18 11 13 6 11 11 9Z" fill="var(--accent-2)"/>
+                  </svg>
+                  <b>星轨弦月弧</b>
+                  <small>默认 · 贴边弧形</small>
+                </button>
+                <button type="button" class="sq-var-card" data-variant="ring">
+                  <svg viewBox="0 0 56 56" width="40" height="40" aria-hidden="true">
+                    <circle cx="28" cy="28" r="20" fill="none" stroke="var(--line)" stroke-width="5"/>
+                    <circle cx="28" cy="28" r="20" fill="none" stroke="var(--accent)" stroke-width="5" stroke-dasharray="126" stroke-dashoffset="26" transform="rotate(-90 28 28)"/>
+                    <circle cx="28" cy="28" r="13" fill="none" stroke="var(--accent-2)" stroke-width="3" stroke-dasharray="82" stroke-dashoffset="18" transform="rotate(-90 28 28)"/>
+                    <circle cx="28" cy="28" r="4.2" fill="#16C784"/>
+                  </svg>
+                  <b>星晶双环</b>
+                  <small>塞尔达风双圈</small>
+                </button>
+                <button type="button" class="sq-var-card" data-variant="bar">
+                  <svg viewBox="0 0 36 60" width="28" height="44" aria-hidden="true">
+                    <rect x="9" y="16" width="8" height="38" rx="4" fill="var(--line)"/>
+                    <rect x="9" y="22" width="8" height="32" rx="4" fill="var(--accent)"/>
+                    <rect x="21" y="16" width="5" height="38" rx="2.5" fill="var(--accent-2)"/>
+                    <path d="M18 3 20 8 25 10 20 12 18 17 16 12 11 10 16 8Z" fill="var(--accent-2)"/>
+                  </svg>
+                  <b>星辉能量柱</b>
+                  <small>超窄省空间</small>
+                </button>
+              </div>
+
               <label class="row"><span class="row-text"><b>挂件样式</b><small>默认星轨弦月弧随左右贴边自动镜像；空间极窄推荐能量柱。</small></span>
                 <select id="sideQuotaVariant">
                   <option value="arc">星轨弦月弧（默认 · 贴边弧形）</option>
@@ -320,13 +415,14 @@
                   <option value="remaining">剩余用量 %（反重力同款 · 泄能感）</option>
                   <option value="used">已用用量 %（Web 正向统计 · 充能感）</option>
                 </select></label>
-              <label class="row"><span class="row-text"><b>挂件数据源</b><small>自动模式会随前台窗口在 Antigravity 与浏览器间智能切换，桌面态回退默认四芒星并在回到反重力时即时刷新编排器徽章</small></span>
+              <label class="row"><span class="row-text"><b>挂件数据源</b><small>自动模式会随前台窗口在 Antigravity 与浏览器间智能切换，桌面态回退四芒星并在回到反重力时即时刷新 Orchestrator 徽章</small></span>
                 <select id="sideQuotaSource">
                   <option value="auto">自动跟随活跃端（反重力 / 浏览器智能切换）</option>
                   <option value="agy">Antigravity 客户端额度</option>
                   <option value="web">Gemini Web 伴侣额度</option>
                 </select></label>
             </div>
+
             <div class="card">
               <h3>双端用量实时看板 <span class="sync-pill offline" id="quota-bridge-pill">⚪ Web 未同步</span></h3>
               <div class="dual-quota-grid">
@@ -345,16 +441,19 @@
               </div>
               <p class="hint">桌宠气泡现已内置「Gemini Web · 伴侣」专页，翻页或连点猫猫即可在同一只桌宠中同屏查看双端额度。</p>
             </div>
+
             <div class="card">
               <h3>手动额度兜底（Antigravity）</h3>
-              <label class="row"><span class="row-text"><b>启用手动额度记录</b><small>打开 Gemini Models 窗口读不到时，以手动记录为准</small></span><input id="manualQuota" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>启用手动额度记录</b><small>打开 Gemini Models 窗口读不到时，以手动记录为准</small></span><input id="manualQuota" type="checkbox" switch></label>
               <label class="row"><span class="row-text"><b>5 小时剩余 %</b></span><input id="manualPercent" type="number" min="0" max="100" step="1"></label>
               <label class="row"><span class="row-text"><b>1 周剩余 %</b></span><input id="manualWeeklyPercent" type="number" min="0" max="100" step="1"></label>
             </div>
           </section>
 
-          <!-- 关于 -->
+          <!-- 内容商店（App Store 新版） -->
           <section class="page" data-page="store"><h2 class="page-title">在线内容商店</h2><div id="content-hub"></div></section>
+
+          <!-- 关于 -->
           <section class="page" data-page="about">
             <h2 class="page-title">关于</h2>
             <div class="card">
@@ -364,7 +463,7 @@
             </div>
             <div class="card">
               <h3>更新与配色</h3>
-              <label class="row"><span class="row-text"><b>自动检查更新</b></span><input id="autoUpdateCheck" type="checkbox"></label>
+              <label class="row"><span class="row-text"><b>自动检查更新</b></span><input id="autoUpdateCheck" type="checkbox" switch></label>
               <div id="online-panel"></div>
             </div>
             <div class="card"><h3>调试</h3><div class="btn-row"><button id="preview-reaction" class="btn" type="button">测试反应</button></div></div>
@@ -377,6 +476,7 @@
           <button id="view-online-updates" type="button" class="btn small">查看更新</button>
           <button id="dismiss-online-notice" type="button" class="btn small" aria-label="关闭提醒">×</button>
         </aside>
+
         <footer class="status-bar">
           <button id="undo" class="btn small" type="button" title="恢复到打开设置时的状态">↶ 撤回本次改动</button>
           <span id="saved" role="status"></span>
@@ -388,7 +488,7 @@
 <!-- @byok-dev-start -->
   <!-- BYOK 条件动态挂载模板：未启用 BYOK 时完全不渲染到 DOM，保持 100% 零侵入 -->
   <template id="byok-nav-template">
-    <button type="button" class="nav-item" data-page="models" id="nav-models"><span class="nav-ico">🔌</span><span>模型网关</span></button>
+    <button type="button" class="nav-item" data-page="models" id="nav-models"><span class="nav-ico" aria-hidden="true">🔌</span><span>模型网关</span></button>
   </template>
 
   <template id="byok-page-template">
@@ -453,7 +553,6 @@
       </details>
 
       <div class="byok-workbench">
-        <!-- 左栏：供应商列表 -->
         <aside class="byok-provider-col" aria-label="模型供应商列表">
           <div class="byok-col-head">
             <button type="button" class="btn small byok-primary-btn" id="byok-add-provider-btn">+ 添加供应商</button>
@@ -462,7 +561,6 @@
           <div class="byok-provider-list" id="byok-provider-list" role="listbox" aria-label="供应商"></div>
         </aside>
 
-        <!-- 右栏：供应商详情与模型卡片列表 -->
         <div class="byok-detail-col" id="byok-detail-col">
           <div class="card byok-detail-card">
             <div class="byok-detail-header">
@@ -525,7 +623,6 @@
         </div>
       </div>
 
-      <!-- 添加供应商原生模态对话框 -->
       <dialog id="byok-provider-dialog" class="byok-dialog" closedby="any" aria-labelledby="byok-provider-dialog-title">
         <form method="dialog" class="byok-dialog-form" id="byok-provider-form">
           <h3 id="byok-provider-dialog-title">添加模型供应商</h3>
@@ -567,7 +664,6 @@
         </form>
       </dialog>
 
-      <!-- 添加 / 编辑模型原生模态对话框 -->
       <dialog id="byok-model-dialog" class="byok-dialog" closedby="any" aria-labelledby="byok-model-dialog-title">
         <form method="dialog" class="byok-dialog-form" id="byok-model-form">
           <h3 id="byok-model-dialog-title">添加模型</h3>
@@ -600,7 +696,6 @@
         </form>
       </dialog>
 
-      <!-- 环境变量 API Key 确认导入原生模态对话框 -->
       <dialog id="byok-env-dialog" class="byok-dialog" closedby="any" aria-labelledby="byok-env-dialog-title">
         <form method="dialog" class="byok-dialog-form" id="byok-env-form">
           <h3 id="byok-env-dialog-title">发现本机环境变量 API Key</h3>
@@ -614,8 +709,8 @@
       </dialog>
     </section>
   </template>
-
 <!-- @byok-dev-end -->
+
   <script src="online-panel.js"></script>
   <script src="content-hub.js"></script>
   <script src="wallpaper-packs.js"></script>

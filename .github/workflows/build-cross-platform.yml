@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       windows_only:
-        description: Validate Windows installer without packaging macOS and Linux
+        description: Build Windows installer without macOS and Linux bundles
         type: boolean
         default: false
 
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-2025
-    timeout-minutes: 25
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: desktop
@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/web-source-v1.5.1
+          ref: refs/tags/web-source-v1.5.2
           path: web
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -39,33 +39,28 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      - run: npm run build:native
+      - run: npm run prepare:frontend
+      - run: npm run test:rust
       - run: npm test
-      - name: Verify tray-only pet window
-        run: node tools/verify-tray-window.cjs
-      - name: Verify appearance release invariants
-        env:
-          WEB_COMPANION_PATH: ${{ github.workspace }}/web/Gemini-Web-Companion
-        run: npm run verify:appearance
-      - run: node --test test/turn-watcher.test.cjs test/runtime.test.cjs
+      - run: npm run verify:hud
+      - run: node --test test/turn-watcher.test.cjs test/runtime.test.cjs test/audio.test.cjs
         working-directory: web/Gemini-Web-Companion
-      - run: npm run verify:cold-start
+      - run: npm run build:tauri
       - run: npm run setup:inno
-      - name: Build and verify the installer and bundled Web extension
+      - name: Build Windows installer (with bundled Web extension)
+        shell: pwsh
         run: |
           $env:WEB_COMPANION_PATH = Join-Path $env:GITHUB_WORKSPACE 'web/Gemini-Web-Companion'
-          node tools/build-installers.cjs
+          node src-tauri/scripts/build-tauri-installer.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tools/verify-installers.cjs
+          $seedDir = Join-Path $env:RUNNER_TEMP 'web-online-seed'
+          node -e "require('./tools/online-seed.cjs').writeOnlineSeed('online-assets', process.argv[1])" $seedDir
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tools/verify-installers.cjs --verify-legacy-log
-        shell: pwsh
-      - if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer-logs
-          path: desktop/dist/安装验证-*/*.log
+          $env:CATSTELLA_ONLINE_SEED = $seedDir
+          node (Join-Path $env:WEB_COMPANION_PATH 'scripts/build.js')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: catstella-windows-x64
@@ -84,10 +79,10 @@ jobs:
             web/Gemini-Web-Companion/dist/kimino-gemini-companion.xpi
 
   unix:
-    name: Build ${{ matrix.platform }} ${{ matrix.arch }} (experimental)
+    name: Build ${{ matrix.platform }} ${{ matrix.arch }} (Tauri experimental)
     if: github.event_name != 'workflow_dispatch' || !inputs.windows_only
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -103,27 +98,32 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
       - if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools xvfb
-          npx playwright install-deps chromium
-      - name: Package experimental desktop builds
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-        run: npx --yes electron-builder@26.18.1 "--$PLATFORM" "--$ARCH" --publish never
-      - name: Launch the packaged desktop app
-        env:
-          ARCH: ${{ matrix.arch }}
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev
+      - run: npm ci
+      - run: npm run prepare:frontend
+      - run: npm run test:rust
+      - name: Build Tauri bundle
+        shell: bash
         run: |
-          if [[ "$RUNNER_OS" == Linux ]]; then
-            xvfb-run -a node tools/verify-packaged-desktop.cjs dist/installers/linux-unpacked/catstella
+          version=$(node -p 'require("./package.json").version')
+          mkdir -p dist/installers
+          if [[ "${{ matrix.platform }}" == "mac" ]]; then
+            npx --yes @tauri-apps/cli@2 build --config '{"bundle":{"active":true}}' --bundles dmg
+            dmg=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -quit)
+            test -n "$dmg"
+            cp "$dmg" "dist/installers/Catstella-$version-mac-${{ matrix.arch }}.dmg"
           else
-            executable=$(find dist/installers -path '*/Catstella.app/Contents/MacOS/Catstella' -type f -print -quit)
-            test -n "$executable"
-            node tools/verify-packaged-desktop.cjs "$executable"
+            APPIMAGE_EXTRACT_AND_RUN=1 npx --yes @tauri-apps/cli@2 build --config '{"bundle":{"active":true}}' --bundles deb,appimage
+            appimg=$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f -print -quit)
+            deb=$(find src-tauri/target/release/bundle/deb -name '*.deb' -type f -print -quit)
+            test -n "$appimg"
+            test -n "$deb"
+            cp "$appimg" "dist/installers/Catstella-$version-linux-x86_64.AppImage"
+            cp "$deb" "dist/installers/Catstella-$version-linux-amd64.deb"
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -131,10 +131,7 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           path: |
-            dist/installers/Catstella-*.dmg
-            dist/installers/Catstella-*.zip
-            dist/installers/Catstella-*.AppImage
-            dist/installers/Catstella-*.tar.gz
+            dist/installers/Catstella-*
 
   release:
     if: github.event_name == 'push'
@@ -154,7 +151,7 @@ jobs:
           merge-multiple: true
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/web-source-v1.5.1
+          ref: refs/tags/web-source-v1.5.2
           path: web-source
           persist-credentials: false
       - name: Check packages and publish desktop and Web releases
@@ -166,11 +163,13 @@ jobs:
           webversion=$(node -p 'require("./web-source/Gemini-Web-Companion/package.json").version')
           [[ "$GITHUB_REF_NAME" == "desktop-v$version" || "$GITHUB_REF_NAME" == "v$version" ]]
           cd release-assets
-          files=("Catstella-Setup-$version-x64.exe")
-          for arch in arm64 x64; do
-            files+=("Catstella-$version-mac-$arch.dmg" "Catstella-$version-mac-$arch.zip")
-          done
-          files+=("Catstella-$version-linux-x86_64.AppImage" "Catstella-$version-linux-x64.tar.gz")
+          files=(
+            "Catstella-Setup-$version-x64.exe"
+            "Catstella-$version-mac-arm64.dmg"
+            "Catstella-$version-mac-x64.dmg"
+            "Catstella-$version-linux-x86_64.AppImage"
+            "Catstella-$version-linux-amd64.deb"
+          )
           webfiles=("kimino-gemini-companion-edge-chrome.zip" "kimino-gemini-companion.xpi")
           files+=("${webfiles[@]}")
           for file in "${files[@]}"; do test -s "$file"; done
@@ -178,17 +177,17 @@ jobs:
           sha256sum "${files[@]}" > SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
           cat > notes.md <<'EOF'
-          - 改善快速摸头性能与台词触发，减少重复存盘和完整状态广播。
-          - 更新后首次打开设置时展示当前版本更新内容，同一版本只展示一次。
-          - 双端内容商店新增分类、最近更新、预览轮播与壁纸包折叠。Web 商店在 Gemini 页内打开，并识别桌面已安装素材。
-          - 联动时跟随桌面壁纸轮播，解除联动后可设置网页独立轮播。
-          - 修复拖动过程中鼠标穿透可能中断拖动的问题，增加跨平台窗口位置恢复与拖动检查。
-          - Windows x64 安装包内含可选 Web 扩展。macOS 和 Linux 用户可另取本页 Web 扩展附件。
-          - macOS 未经 Apple 公证，macOS / Linux 暂不支持 Windows 专用的宿主窗口跟随，完整实机体验仍需反馈。Firefox XPI 未签名。
+          - **Tauri 2 原生底座转正**：桌面端全面迁移至 Rust + WebView2 原生双窗体架构，Windows 安装包与运行时体积大幅精简，旧 Electron 外壳已封存至 `archive/legacy-electron/`。
+          - **设置中心重构 & 系列图包**：5 频道 Bento HUD 设置中心（桌宠 / 外观 / 用量 / 连接 / 商店），支持本地 WAV 采样直听、真实 GitHub 在线商店下载校验以及系列图包堆叠卡片展示。
+          - **用量耐力条实装**：统一桌宠与预览舱的平面四芒星端点、紫红沙漏编排器图标与能量条视觉；打通 Antigravity `Claude / GPT` 配额页并清理 Argon 独立计量。
+          - **跨浏览器伴侣联动**：Web 伴侣 v1.5.2 修复 Firefox 内容脚本联动与零等待互动音效，双端统一默认称呼为“人类”。
+          - **附带平台构建**：Windows x64 安装包内含可选 Web 扩展；macOS（`.dmg`）与 Linux（`.AppImage` / `.deb`）为 Tauri 云端构建实验包，暂不支持 Windows 专用的宿主窗口跟随，Firefox XPI 未签名，macOS 未公证。
           - 使用 `SHA256SUMS.txt` 校验下载文件。
           EOF
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Catstella $version" --notes-file notes.md --latest "${files[@]}" SHA256SUMS.txt
-          sha256sum "${webfiles[@]}" > WEB-SHA256SUMS.txt
-          gh release create "web-v$webversion" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "Catstella Web $webversion" --notes-file notes.md --latest=false "${webfiles[@]}" WEB-SHA256SUMS.txt
+          if ! gh release view "web-v$webversion" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            sha256sum "${webfiles[@]}" > WEB-SHA256SUMS.txt
+            gh release create "web-v$webversion" --repo "$GITHUB_REPOSITORY" --target "web-source-v$webversion" \
+              --title "Catstella Web $webversion" --notes-file notes.md --latest=false "${webfiles[@]}" WEB-SHA256SUMS.txt
+          fi

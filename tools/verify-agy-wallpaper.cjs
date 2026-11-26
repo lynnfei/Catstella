@@ -11,8 +11,9 @@ async function main() {
     await page.setContent('<main id="root" style="width:100vw;height:100vh"><section class="agy-sheet" style="width:900px;height:650px">host fixture</section></main>');
     await page.evaluate(() => {
       window.foreground = true;
-      document.hasFocus = () => window.foreground;
-      window.focusHost = value => { window.foreground = value; window.dispatchEvent(new Event(value ? 'focus' : 'blur')); };
+      document.hasFocus = () => false;
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => !window.foreground });
+      window.focusHost = value => { window.foreground = value; document.dispatchEvent(new Event('visibilitychange')); };
       window.config = { owner: 'test', opacity: 1, scrim: 0, transition: 'fade' };
       window.images = ['red', 'blue', 'lime', 'purple'].map((color, i) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${180 + i * 20}" height="120"><rect width="100%" height="100%" fill="${color}"/></svg>`));
       window.layer = () => document.querySelector('#agy-dream-wallpaper-v2');
@@ -63,12 +64,20 @@ async function main() {
     await page.evaluate(async () => { await update(1); focusHost(false); await update(2); await update(3); });
     assert.equal(await page.evaluate(() => layer().style.backgroundImage.includes(images[0])), true);
     assert.ok(await page.locator('.agy-dream-wallpaper-incoming').count()<=1,'a paused blend may remain visible while a newer background wallpaper is queued');
-    await page.evaluate(() => focusHost(true));
+    await page.evaluate(() => { window.foreground = true; __agyDreamSkinV2.resumeWallpaper(); });
     await page.waitForFunction(() => layer().lastElementChild?.style.backgroundImage.includes(images[3]));
     assert.equal(await page.evaluate(() => layer().style.backgroundImage.includes(images[0])), true, 'the last presented wallpaper stays below the fade');
     await page.waitForFunction(() => layer().style.backgroundImage.includes(images[3]) && !layer().firstElementChild);
     await page.evaluate(async () => { focusHost(false); await __agyDreamSkinV2.update({ ...config, image: images[1], transition: 'none' }); });
     assert.equal(await page.evaluate(() => layer().style.backgroundImage.includes(images[1])), true, 'explicit no-transition settings still apply directly');
+    const firstPaint = await page.evaluate(() => {
+      const fade = document.createElement('div');
+      fade.className = 'absolute bottom-0 pointer-events-none left-4';
+      fade.style.background = 'linear-gradient(to top, var(--background), transparent)';
+      document.querySelector('.agy-sheet').append(fade);
+      return getComputedStyle(fade).backgroundImage;
+    });
+    assert.equal(firstPaint, 'none');
     assert.deepEqual(errors, []);
     console.log('PASS: AGY wallpaper keeps the committed background and fades only the latest queued image on activation.');
   } finally { await browser.close(); }

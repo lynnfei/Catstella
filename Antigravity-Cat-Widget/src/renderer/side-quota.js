@@ -4,7 +4,7 @@
   const VARIANT_BASE_SIZE = {
     arc: { width: 40, height: 94 },
     ring: { width: 60, height: 60 },
-    bar: { width: 26, height: 82 }
+    bar: { width: 20, height: 96 }
   };
 
   const SIDE_DISTANCE_GAPS = {
@@ -272,20 +272,24 @@
     return ["var(--sq-grad-start)", "var(--sq-grad-mid)", "var(--sq-grad-end)"];
   }
 
-  function createOrchestratorDialInner(gradId) {
+  function createOrchestratorDialInner() {
     return `
-      <circle cx="0" cy="0" r="8.4" fill="#1b1433" stroke="#d8b263" stroke-width="1.25"/>
-      <circle cx="0" cy="-8.4" r="1.1" fill="#f7e29c"/>
-      <circle cx="0" cy="8.4" r="1.1" fill="#f7e29c"/>
-      <circle cx="-8.4" cy="0" r="1.1" fill="#f7e29c"/>
-      <circle cx="8.4" cy="0" r="1.1" fill="#f7e29c"/>
-      <circle cx="0" cy="0" r="6.2" fill="#120d26" stroke="rgba(116,245,204,0.42)" stroke-width="0.65"/>
-      <path d="M-4.35 -4.9 L4.35 -4.9 L1.25 0 L4.35 4.9 L-4.35 4.9 L-1.25 0 Z" fill="url(#${gradId})" stroke="#0f2f2b" stroke-width="0.55" stroke-linejoin="round"/>
-      <path d="M0 -1.35 L0.95 0 L0 1.35 L-0.95 0 Z" fill="#f5fffb" opacity="0.88"/>`;
+      <circle r="8.5" fill="var(--sq-glass-bg)" stroke="#a78bfa" stroke-width="1"/>
+      <circle r="6.5" fill="none" stroke="#ce65b5" stroke-opacity="0.55" stroke-width="0.7"/>
+      <path d="M0 -8.5V-7.1 M8.5 0H7.1 M0 8.5V7.1 M-8.5 0H-7.1" stroke="#eee5ff" stroke-width="1.1" stroke-linecap="round"/>
+      <path d="M-4.1 -4.6H4.1L1.15 0 4.1 4.6H-4.1L-1.15 0Z" fill="#ce65b5" stroke="#e8c0e3" stroke-width="0.5" stroke-linejoin="round"/>`;
   }
 
-  function createInlineOrchestratorSvg(uid) {
-    return `<svg viewBox="-10.5 -10.5 21 21" width="15" height="15" aria-hidden="true"><defs><linearGradient id="${uid}" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5cf2b4"/><stop offset="52%" stop-color="#84ecff"/><stop offset="100%" stop-color="#e5fff6"/></linearGradient></defs>${createOrchestratorDialInner(uid)}</svg>`;
+  function createStarGem() {
+    return `<path class="star-body" d="M0 -8.6Q2.5 -2.5 8.6 0 2.5 2.5 0 8.6-2.5 2.5-8.6 0-2.5-2.5 0-8.6Z" fill="#fff" stroke="#a78bfa" stroke-width="1.1" stroke-linejoin="round"/>`;
+  }
+
+  function createInlineOrchestratorSvg() {
+    return `<svg viewBox="-10.5 -10.5 21 21" width="15" height="15" aria-hidden="true">${createOrchestratorDialInner()}</svg>`;
+  }
+
+  function createProgressStar(className) {
+    return `<path class="${className}" d="M0 -4.3Q1.25 -1.25 4.3 0 1.25 1.25 0 4.3-1.25 1.25-4.3 0-1.25-1.25 0-4.3Z" fill="#fff" stroke="#a78bfa" stroke-width="0.9" stroke-linejoin="round" opacity="0"/>`;
   }
 
   function createGaugeMarkup(variant, uid) {
@@ -300,18 +304,8 @@
                 <stop offset="100%" class="g5-s2" stop-color="var(--sq-grad-end)"/>
               </linearGradient>
               <linearGradient id="${uid}-ring-g1" x1="16" y1="16" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" class="g1-s0" stop-color="#87c8ff"/>
-                <stop offset="100%" class="g1-s1" stop-color="#e9a4f2"/>
-              </linearGradient>
-              <linearGradient id="${uid}-star-f" x1="24" y1="24" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#fff8d6"/>
-                <stop offset="50%" stop-color="#9ad5ff"/>
-                <stop offset="100%" stop-color="#efb2f5"/>
-              </linearGradient>
-              <linearGradient id="${uid}-ring-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#5cf2b4"/>
-                <stop offset="52%" stop-color="#84ecff"/>
-                <stop offset="100%" stop-color="#e5fff6"/>
+                <stop offset="0%" class="g1-s0" stop-color="var(--sq-grad-end)"/>
+                <stop offset="100%" class="g1-s1" stop-color="var(--sq-grad-start)"/>
               </linearGradient>
               <pattern id="${uid}-stripe" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
                 <rect width="3" height="6" fill="rgba(182, 150, 238, 0.45)"/>
@@ -325,10 +319,10 @@
             <circle class="gauge-ring-fill" cx="32" cy="32" r="24" fill="none" stroke="url(#${uid}-ring-g5)" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" transform="rotate(-90 32 32)"/>
             <circle cx="32" cy="32" r="16.2" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
             <circle class="gauge-ring-fill-1w" cx="32" cy="32" r="16.2" fill="none" stroke="url(#${uid}-ring-g1)" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" transform="rotate(-90 32 32)"/>
-            <circle class="gauge-ring-tip" cx="32" cy="8" r="2.7" fill="#fff7d6" stroke="var(--sq-rim)" stroke-width="0.9" opacity="0"/>
+            ${createProgressStar("gauge-ring-tip")}
             <g class="gauge-star-gem">
-              <path class="star-body" d="M32 23.2 34.4 29.6 40.8 32 34.4 34.4 32 40.8 29.6 34.4 23.2 32 29.6 29.6Z" fill="url(#${uid}-star-f)" stroke="#d8b263" stroke-width="1.2" stroke-linejoin="round"/>
-              <g class="orch-body" transform="translate(32 32)">${createOrchestratorDialInner(`${uid}-ring-orch`)}</g>
+              <g transform="translate(32 32)">${createStarGem()}</g>
+              <g class="orch-body" transform="translate(32 32)">${createOrchestratorDialInner()}</g>
             </g>
             <g class="gauge-status-pip" opacity="0">
               <rect x="44" y="4" width="16" height="14" rx="7" fill="#23183d" stroke="#ffd88d" stroke-width="1.1"/>
@@ -341,59 +335,39 @@
     if (variant === "bar") {
       return `
         <div class="gauge-root gauge-bar-wrap" data-variant="bar">
-          <svg class="gauge-svg" viewBox="0 0 28 88" width="100%" height="100%" aria-hidden="true">
+          <svg class="gauge-svg" viewBox="0 0 22 100" width="100%" height="100%" aria-hidden="true">
             <defs>
-              <linearGradient id="${uid}-bar-g5" x1="0" y1="78" x2="0" y2="20" gradientUnits="userSpaceOnUse">
+              <linearGradient id="${uid}-bar-g5" x1="0" y1="92" x2="0" y2="6" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" class="g5-s0" stop-color="var(--sq-grad-start)"/>
                 <stop offset="55%" class="g5-s1" stop-color="var(--sq-grad-mid)"/>
                 <stop offset="100%" class="g5-s2" stop-color="var(--sq-grad-end)"/>
               </linearGradient>
-              <linearGradient id="${uid}-bar-g1" x1="0" y1="78" x2="0" y2="20" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" class="g1-s0" stop-color="#87c8ff"/>
-                <stop offset="100%" class="g1-s1" stop-color="#eba5ee"/>
-              </linearGradient>
-              <linearGradient id="${uid}-bar-star" x1="8" y1="3" x2="20" y2="15" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#fff8d6"/>
-                <stop offset="55%" stop-color="#9ad5ff"/>
-                <stop offset="100%" stop-color="#efb2f5"/>
-              </linearGradient>
-              <linearGradient id="${uid}-bar-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#5cf2b4"/>
-                <stop offset="52%" stop-color="#84ecff"/>
-                <stop offset="100%" stop-color="#e5fff6"/>
+              <linearGradient id="${uid}-bar-g1" x1="0" y1="92" x2="0" y2="6" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" class="g1-s0" stop-color="var(--sq-grad-end)"/>
+                <stop offset="100%" class="g1-s1" stop-color="var(--sq-grad-start)"/>
               </linearGradient>
               <pattern id="${uid}-bar-stripe" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-                <rect width="3" height="6" fill="rgba(182, 150, 238, 0.45)"/>
+                <rect width="3" height="6" fill="rgba(182,150,238,0.45)"/>
               </pattern>
-              <clipPath id="${uid}-bar-clip5">
-                <rect x="6.5" y="21" width="7.5" height="58" rx="3.75"/>
-              </clipPath>
-              <clipPath id="${uid}-bar-clip1">
-                <rect x="16.5" y="21" width="4" height="58" rx="2"/>
-              </clipPath>
+              <clipPath id="${uid}-bar-clip5"><rect x="5" y="6" width="6" height="86" rx="3"/></clipPath>
+              <clipPath id="${uid}-bar-clip1"><rect x="13" y="6" width="3.5" height="86" rx="1.75"/></clipPath>
             </defs>
-            <rect class="gauge-critical-halo" x="2.5" y="17" width="23" height="66" rx="11.5" fill="none" stroke="var(--sq-tier-crit-2)" stroke-width="1.8" opacity="0"/>
-            <rect x="3.5" y="18" width="21" height="64" rx="10.5" fill="var(--sq-glass-bg)" stroke="var(--sq-glass-border)" stroke-width="1.35"/>
-            <rect x="6.5" y="21" width="7.5" height="58" rx="3.75" fill="rgba(255,255,255,0.12)"/>
-            <rect class="gauge-bar-stripe" x="6.5" y="21" width="7.5" height="58" rx="3.75" fill="url(#${uid}-bar-stripe)" opacity="0"/>
-            <rect x="16.5" y="21" width="4" height="58" rx="2" fill="rgba(255,255,255,0.1)"/>
+            <rect class="gauge-critical-halo" x="1" y="1" width="20" height="96" rx="9" fill="none" stroke="var(--sq-tier-crit-2)" stroke-width="1.3" opacity="0"/>
+            <rect x="2" y="2" width="18" height="94" rx="8" fill="var(--sq-glass-bg)" stroke="var(--sq-glass-border)" stroke-width="1"/>
+            <rect x="5" y="6" width="6" height="86" rx="3" fill="var(--sq-rim)" fill-opacity="0.65"/>
+            <rect x="13" y="6" width="3.5" height="86" rx="1.75" fill="var(--sq-rim)" fill-opacity="0.65"/>
+            <rect class="gauge-bar-stripe" x="5" y="6" width="6" height="86" rx="3" fill="url(#${uid}-bar-stripe)" opacity="0"/>
             <g clip-path="url(#${uid}-bar-clip5)">
-              <rect class="gauge-bar-ghost" x="6.5" y="21" width="7.5" height="58" fill="#fff3d6" fill-opacity="0.45"/>
-              <rect class="gauge-bar-fill" x="6.5" y="21" width="7.5" height="58" fill="url(#${uid}-bar-g5)"/>
+              <rect class="gauge-bar-ghost" x="5" y="6" width="6" height="86" rx="3" fill="#fff3d6" fill-opacity="0.45"/>
+              <rect class="gauge-bar-fill" x="5" y="6" width="6" height="86" rx="3" fill="url(#${uid}-bar-g5)"/>
             </g>
             <g clip-path="url(#${uid}-bar-clip1)">
-              <rect class="gauge-bar-fill-1w" x="16.5" y="21" width="4" height="58" fill="url(#${uid}-bar-g1)"/>
+              <rect class="gauge-bar-fill-1w" x="13" y="6" width="3.5" height="86" rx="1.75" fill="url(#${uid}-bar-g1)"/>
             </g>
-            <line x1="6.5" y1="35.5" x2="14" y2="35.5" stroke="rgba(255,255,255,0.28)" stroke-width="0.8"/>
-            <line x1="6.5" y1="50" x2="14" y2="50" stroke="rgba(255,255,255,0.34)" stroke-width="0.8"/>
-            <line x1="6.5" y1="64.5" x2="14" y2="64.5" stroke="rgba(255,255,255,0.28)" stroke-width="0.8"/>
-            <g class="gauge-star-gem">
-              <path class="star-body" d="M14 2.5 16.3 8.2 22 10.5 16.3 12.8 14 18.5 11.7 12.8 6 10.5 11.7 8.2Z" fill="url(#${uid}-bar-star)" stroke="#d8b263" stroke-width="1.2" stroke-linejoin="round"/>
-              <g class="orch-body" transform="translate(14 10.5) scale(0.92)">${createOrchestratorDialInner(`${uid}-bar-orch`)}</g>
-            </g>
+            <path d="M2.6 27.5H3.7M2.6 49H3.7M2.6 70.5H3.7M18 27.5H19.2M18 49H19.2M18 70.5H19.2" stroke="var(--sq-accent-soft)" stroke-opacity="0.6" stroke-width="0.6" stroke-linecap="round"/>
             <g class="gauge-status-pip" opacity="0">
-              <rect x="6" y="73" width="16" height="13" rx="6.5" fill="#23183d" stroke="#ffd88d" stroke-width="1.1"/>
-              <text class="gauge-status-glyph" x="14" y="82.3" text-anchor="middle" font-size="9" font-weight="800" fill="#ffe9ad">!</text>
+              <rect x="3" y="84" width="16" height="13" rx="6.5" fill="#23183d" stroke="#ffd88d" stroke-width="1.1"/>
+              <text class="gauge-status-glyph" x="11" y="93.3" text-anchor="middle" font-size="9" font-weight="800" fill="#ffe9ad">!</text>
             </g>
           </svg>
         </div>`;
@@ -409,18 +383,8 @@
               <stop offset="100%" class="g5-s2" stop-color="var(--sq-grad-end)"/>
             </linearGradient>
             <linearGradient id="${uid}-arc-g1" x1="8" y1="84" x2="18" y2="26" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" class="g1-s0" stop-color="#87c8ff"/>
-              <stop offset="100%" class="g1-s1" stop-color="#eba5ee"/>
-            </linearGradient>
-            <linearGradient id="${uid}-arc-star" x1="4" y1="8" x2="18" y2="22" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#fff8d6"/>
-              <stop offset="55%" stop-color="#9ad5ff"/>
-              <stop offset="100%" stop-color="#efb2f5"/>
-            </linearGradient>
-            <linearGradient id="${uid}-arc-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#5cf2b4"/>
-              <stop offset="52%" stop-color="#84ecff"/>
-              <stop offset="100%" stop-color="#e5fff6"/>
+              <stop offset="0%" class="g1-s0" stop-color="var(--sq-grad-end)"/>
+              <stop offset="100%" class="g1-s1" stop-color="var(--sq-grad-start)"/>
             </linearGradient>
             <pattern id="${uid}-arc-stripe" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
               <rect width="3" height="6" fill="rgba(182, 150, 238, 0.48)"/>
@@ -436,10 +400,10 @@
             <path class="gauge-arc-fill" d="M 13 92 Q 35 54 13 18" fill="none" stroke="url(#${uid}-arc-g5)" stroke-width="5.2" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
             <path d="M 8 83 Q 22 54 8 27" fill="none" stroke="rgba(255,255,255,0.11)" stroke-width="2.6" stroke-linecap="round"/>
             <path class="gauge-arc-fill-1w" d="M 8 83 Q 22 54 8 27" fill="none" stroke="url(#${uid}-arc-g1)" stroke-width="2.6" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
-            <circle class="gauge-arc-tip" cx="13" cy="18" r="2.7" fill="#fff7d6" stroke="var(--sq-rim)" stroke-width="0.9" opacity="0"/>
+            ${createProgressStar("gauge-arc-tip")}
             <g class="gauge-star-gem">
-              <path class="star-body" d="M12 5.5 14.5 12 21 14.5 14.5 17 12 23.5 9.5 17 3 14.5 9.5 12Z" fill="url(#${uid}-arc-star)" stroke="#d8b263" stroke-width="1.2" stroke-linejoin="round"/>
-              <g class="orch-body" transform="translate(12 14.5) scale(0.98)">${createOrchestratorDialInner(`${uid}-arc-orch`)}</g>
+              <g transform="translate(12 14.5) scale(0.98)">${createStarGem()}</g>
+              <g class="orch-body" transform="translate(12 14.5) scale(0.98)">${createOrchestratorDialInner()}</g>
             </g>
           </g>
           <g class="gauge-status-pip" opacity="0">
@@ -451,11 +415,12 @@
   }
 
   function updateGaugeMount(mountEl, variant, uid, data) {
-    if (mountEl.dataset.mountedVariant !== variant) {
+    let rootEl = mountEl.querySelector(".gauge-root");
+    if (mountEl.dataset.mountedVariant !== variant || !rootEl) {
       mountEl.dataset.mountedVariant = variant;
       mountEl.innerHTML = createGaugeMarkup(variant, uid);
+      rootEl = mountEl.querySelector(".gauge-root");
     }
-    const rootEl = mountEl.querySelector(".gauge-root");
     if (!rootEl) return;
 
     const { fiveHour, weekly, ghost5h, quotaMode, side, draining, surging, orchestrator } = data;
@@ -486,7 +451,7 @@
       ? ["var(--sq-tier-crit-1)", "var(--sq-tier-crit-2)"]
       : l1 === "low"
         ? ["var(--sq-tier-low-1)", "var(--sq-tier-low-2)"]
-        : ["#87c8ff", "#eba5ee"];
+        : ["var(--sq-grad-end)", "var(--sq-grad-start)"];
     rootEl.querySelector(".g1-s0")?.setAttribute("stop-color", stops1[0]);
     rootEl.querySelector(".g1-s1")?.setAttribute("stop-color", stops1[1]);
 
@@ -529,8 +494,7 @@
           tip.setAttribute("opacity", "0");
         } else {
           const angle = (-90 + (p5 / 100) * 360) * (Math.PI / 180);
-          tip.setAttribute("cx", (32 + Math.cos(angle) * 24).toFixed(2));
-          tip.setAttribute("cy", (32 + Math.sin(angle) * 24).toFixed(2));
+          tip.setAttribute("transform", `translate(${(32 + Math.cos(angle) * 24).toFixed(2)} ${(32 + Math.sin(angle) * 24).toFixed(2)})`);
           tip.setAttribute("opacity", "1");
         }
       }
@@ -578,8 +542,7 @@
         } else {
           const total = fill5.getTotalLength();
           const pt = fill5.getPointAtLength(total * (p5 / 100));
-          tip.setAttribute("cx", pt.x.toFixed(2));
-          tip.setAttribute("cy", pt.y.toFixed(2));
+          tip.setAttribute("transform", `translate(${pt.x.toFixed(2)} ${pt.y.toFixed(2)})`);
           tip.setAttribute("opacity", "1");
         }
       }
@@ -648,7 +611,7 @@
       tooltip.innerHTML = `
         <div class="quota-tooltip__head">
           <strong class="quota-tooltip__model" id="sq-tip-model" data-orchestrator="false">
-            <span class="orch-inline-badge" id="sq-tip-orch" title="编排器模式 (Orchestrator)" aria-label="编排器模式" hidden>${createInlineOrchestratorSvg("sq-tip-orch-g")}</span>
+            <span class="orch-inline-badge" id="sq-tip-orch" title="编排器模式 (Orchestrator)" aria-label="编排器模式" hidden>${createInlineOrchestratorSvg()}</span>
             <span class="quota-tooltip__model-text" id="sq-tip-model-text">Antigravity</span>
           </strong>
           <span class="quota-tooltip__badge" id="sq-tip-badge">AGY · 剩余</span>

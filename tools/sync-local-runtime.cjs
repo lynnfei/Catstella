@@ -9,6 +9,8 @@ const root = path.resolve(__dirname, '..');
 const desktop = process.argv.includes('--desktop');
 const native = process.argv.includes('--native');
 const web = process.argv.includes('--web');
+const firefox = process.argv.includes('--firefox');
+if (firefox && !web) throw Error('--firefox requires --web');
 const storePreviews = process.argv.includes('--store-previews');
 if (!desktop && !web) throw Error('Specify --desktop and/or --web');
 if (native && !desktop) throw Error('--native requires --desktop and a stopped desktop instance');
@@ -78,19 +80,20 @@ if (desktop) {
 }
 if (web) {
   const source = detectWebCompanion({ root });
-  const target = path.join(source.dist, 'chromium');
+  const target = path.join(source.dist, firefox ? 'firefox' : 'chromium');
+  const webKey = firefox ? 'web-firefox' : 'web';
   const manifestPath = path.join(target,'manifest.json');
   const manifestBytes = fs.readFileSync(manifestPath);
   const manifest = JSON.parse(manifestBytes);
   if (fs.realpathSync(target).toLowerCase() !== target.toLowerCase() ||
-      manifest.background?.service_worker !== 'background.js') throw Error('Expected the existing Chromium load directory');
+      (firefox ? !manifest.background?.scripts?.includes('background.js') : manifest.background?.service_worker !== 'background.js')) throw Error('Expected the existing browser load directory');
   for (const area of ['content','popup','online']) {
-    queueTree(path.join(source.base,area),path.join(target,area),path.join('web',area));
+    queueTree(path.join(source.base,area),path.join(target,area),path.join(webKey,area));
   }
-  queueSeed(path.join(target,'online/seed'),'web/online/seed');
+  queueSeed(path.join(target,'online/seed'),webKey+'/online/seed');
   const dst = path.join(target,'background.js');
   const before = fs.readFileSync(dst), after = fs.readFileSync(path.join(source.base,'background.js'));
-  if (!before.equals(after)) changes.push({dst,before,after,key:'web/background.js'});
+  if (!before.equals(after)) changes.push({dst,before,after,key:webKey+'/background.js'});
   const sourceManifest = JSON.parse(fs.readFileSync(path.join(source.base,'manifest.json'),'utf8'));
   const widgetGroup = data => data.content_scripts.find(group => group.js?.includes('content/widget.js'));
   const liveGroup = widgetGroup(manifest), sourceGroup = widgetGroup(sourceManifest);
@@ -112,7 +115,7 @@ if (web) {
     manifestChanged = true;
   }
   if (manifestChanged) {
-    changes.push({ dst:manifestPath, before:manifestBytes, after:Buffer.from(JSON.stringify(manifest,null,2)+'\n'), key:'web/manifest.json' });
+    changes.push({ dst:manifestPath, before:manifestBytes, after:Buffer.from(JSON.stringify(manifest,null,2)+'\n'), key:webKey+'/manifest.json' });
   }
 }
 function replace(file, bytes) {

@@ -23,11 +23,12 @@ Catstella 是面向 Google Antigravity 和 Gemini 网页版的开源桌面增强
 
 ## 🌟 核心特性 (Key Features)
 
-### 🐱 桌面猫娘挂件 (Cat Widget)
+### 🐱 桌面猫娘挂件与 HUD 设置中心 (Cat Widget · Tauri 2)
+- **原生轻量架构**：自 `0.7.0` 起桌面端全面迁移至 **Tauri 2 (Rust + WebView2)** 原生架构，旧 Electron 外壳已封存至 `archive/legacy-electron/`；集成 16ms 鼠标穿透路由、Windows 宿主联动守护与系统托盘左键双击打开设置中心。
+- **5 频道 Bento HUD 与平面耐力计**：提供「桌宠 / 外观 / 用量 / 连接 / 商店」五频道设置中心、左侧居中实时预览舱与 `side-quota.js` 平面四芒星 / 紫红沙漏耐力条。
 - **多模型额度与配额监控**：
-  - 通过宿主后台接口只读提取 **Gemini 基础 5 小时 / 1 周** 配额与刷新倒计时；
-  - 宿主提供 Argon 独立周额度时，显示其 WTU 余量，并保留通用周额度供对照。低额度会触发提醒和表情变化。
-  - 提供用户自定义称呼设置（默认不指定、杂鱼君、或自定义文本）。
+  - 通过宿主后台接口只读提取 **Gemini (5h / 1w)** 与 **Claude / GPT (5h / 1w)** 配额与刷新倒计时；低额度会触发提醒和表情变化。
+  - 提供互动称呼设置（默认“人类”，支持自定义文本）。
 - **交互与状态反馈**：
   - 50+ 句精校中文台词、自然呼吸动效与星轨边缘光晕；
   - 点击桌宠头部触发表情，可通过菜单停靠到屏幕左下角或右下角；
@@ -85,25 +86,27 @@ Windows x64 发行版使用一个安装包，内含桌面套件及可选的 Web 
 [Releases 发布页](https://github.com/lynnfei/Catstella/releases) 提供 macOS（Apple Silicon / Intel，`.dmg` / `.zip`）和 Linux x64（`.AppImage` / `.tar.gz`）实验构建。这些构建尚未完成实机回归，也不包含 Web 扩展。各平台的下载文件都可用同页的 `SHA256SUMS.txt` 校验。
 
 ### 方案 C：源码运行与开发
-环境要求：Windows 10/11 x64、Node.js 22.12 或更新版本、.NET Framework 4.x。
+环境要求：Windows 10/11 x64、Rust 工具链（`cargo`）、Node.js 22.12 或更新版本（以及 Inno Setup 7+ 如需打包安装器）。
 
 ```powershell
 # 1. 克隆代码仓库
 git clone https://github.com/lynnfei/Catstella.git
 cd Catstella
 
-# 2. 安装依赖并编译原生 C# 辅助工具
+# 2. 安装前端打包依赖并同步 Tauri 前端资源
 npm ci
-npm run build:native
+npm run prepare:frontend
 
-# 3. 启动桌面端套件
-npm run start:widget
-
-# 4. 执行自动化测试
+# 3. 执行 Rust 与 Node 自动化测试
+npm run test:rust
 npm test
+
+# 4. 构建桌面端 Release 二进制与 Windows 安装包
+npm run build:tauri
+npm run build:installers
 ```
 
-快捷键：`Ctrl+Alt+G` 唤回挂件；`Ctrl+Alt+Shift+G` 关闭鼠标穿透。托盘图标右键可打开设置中心。
+快捷键：`Ctrl+Alt+G` 唤回挂件；`Ctrl+Alt+Shift+G` 关闭鼠标穿透。左键双击或右键托盘图标可打开设置中心。旧版 Electron 主外壳、C# 启动守护与旧安装脚本位于 `archive/legacy-electron/`（仅供历史参考）。
 
 ### ⚠️ Antigravity v2.33+ 兼容提示
 Antigravity v2.33.0 起默认不再在启动时开启本地 CDP 调试端口（`DevToolsActivePort`），直接启动会导致主题注入、汉化与客户端额度读取处于等待连接状态。

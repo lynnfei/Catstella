@@ -14,9 +14,33 @@
   const pingingKeys = new Set();
 
 /* @byok-dev-end */
-  // 1. 无边框窗口控制
+  // 1. 无边框窗口控制 & 明暗主题切换
   if ($("win-min-btn")) $("win-min-btn").onclick = () => api.command("settings-minimize");
   if ($("win-close-btn")) $("win-close-btn").onclick = () => api.command("settings-close");
+
+  const syncRangePct = (el) => {
+    if (!el || el.type !== "range") return;
+    const min = Number(el.min) || 0;
+    const max = Number(el.max) || 100;
+    const val = Number(el.value);
+    const pct = max > min ? Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100)) : 0;
+    el.style.setProperty("--slider-pct", `${pct.toFixed(2)}%`);
+  };
+
+  try {
+    const savedMode = localStorage.getItem("cat_settings_color_mode");
+    document.documentElement.dataset.mode = savedMode === "dark" ? "dark" : "light";
+  } catch {
+    document.documentElement.dataset.mode = "light";
+  }
+  if ($("theme-mode-btn")) {
+    $("theme-mode-btn").onclick = () => {
+      const next = document.documentElement.dataset.mode === "dark" ? "light" : "dark";
+      document.documentElement.dataset.mode = next;
+      try { localStorage.setItem("cat_settings_color_mode", next); } catch {}
+      $("saved").textContent = next === "dark" ? "已切换至暗色模式" : "已切换至浅色模式";
+    };
+  }
 
   // 1.5 动态条件挂载 BYOK 标签页（严格遵循零侵入：未启用时完全不渲染 DOM）
   let navItems = [];
@@ -476,8 +500,8 @@
       const rawName = q.modelInfo?.modelName || "";
       const isOrch = Boolean(q.modelInfo?.orchestrator || /^orchestrator(?:\s+|$)/i.test(rawName) || /^orchestrator(?:\s+|$)/i.test(q.modelInfo?.fullText || ""));
       const cleanName = isOrch ? (rawName.replace(/^Orchestrator\s*/i, "").replace(/^\(([^()]+)\)$/, "$1").trim() || rawName) : rawName;
-      $("dq-agy-model").textContent = cleanName ? (isOrch ? `编排 · ${cleanName}` : cleanName) : (manual ? "手动记录" : "本机读取");
-      $("dq-agy-model").title = cleanName ? (isOrch ? `编排器模式 · ${cleanName}` : cleanName) : "";
+      $("dq-agy-model").textContent = cleanName ? (isOrch ? `Orchestrator · ${cleanName}` : cleanName) : (isOrch ? "Orchestrator" : (manual ? "手动记录" : "本机读取"));
+      $("dq-agy-model").title = cleanName ? (isOrch ? `Orchestrator · ${cleanName}` : cleanName) : "";
     }
     if ($("dq-agy-5h")) $("dq-agy-5h").textContent = typeof fiveVal === "number" ? `${Math.round(fiveVal)}%` : "—";
     if ($("dq-agy-week")) $("dq-agy-week").textContent = typeof weekVal === "number" ? `${Math.round(weekVal)}%` : "—";
@@ -1336,6 +1360,205 @@
     });
   }
 
+  let hudSwitcherKey = "";
+  let hudPreviewExpr = "idle";
+
+  function createHudOrchDialInner(gradId) {
+    return `
+      <circle cx="0" cy="0" r="8.4" fill="#1b1433" stroke="#d8b263" stroke-width="1.25"/>
+      <circle cx="0" cy="-8.4" r="1.1" fill="#f7e29c"/>
+      <circle cx="0" cy="8.4" r="1.1" fill="#f7e29c"/>
+      <circle cx="-8.4" cy="0" r="1.1" fill="#f7e29c"/>
+      <circle cx="8.4" cy="0" r="1.1" fill="#f7e29c"/>
+      <circle cx="0" cy="0" r="6.2" fill="#120d26" stroke="rgba(116,245,204,0.42)" stroke-width="0.65"/>
+      <path d="M-4.35 -4.9 L4.35 -4.9 L1.25 0 L4.35 4.9 L-4.35 4.9 L-1.25 0 Z" fill="url(#${gradId})" stroke="#0f2f2b" stroke-width="0.55" stroke-linejoin="round"/>
+      <path d="M0 -1.35 L0.95 0 L0 1.35 L-0.95 0 Z" fill="#f5fffb" opacity="0.88"/>`;
+  }
+
+  function renderHudSideQuota(agyFive, agyWeek, webFive, webWeek, isOrch) {
+    const mount = $("hud-side-quota");
+    if (!mount) return;
+    const s = data?.settings || {};
+    const enabled = s.sideQuotaEnabled !== false;
+    mount.hidden = !enabled;
+    if (!enabled) return;
+
+    const variant = ["arc", "ring", "bar"].includes(s.sideQuotaVariant) ? s.sideQuotaVariant : "arc";
+    const sizeScale = { sm: 0.86, md: 1, lg: 1.14 }[s.sideQuotaSize] || 1;
+    const gapPx = { compact: 2, normal: 8, relaxed: 14 }[s.sideQuotaDistance] ?? 8;
+    mount.style.marginRight = `${gapPx}px`;
+    mount.style.transform = `scale(${sizeScale})`;
+
+    const srcPref = s.sideQuotaSource || "auto";
+    const useWeb = srcPref === "web" || (srcPref === "auto" && agyFive === null && webFive !== null);
+    const raw5 = useWeb ? (webFive ?? 72) : (agyFive ?? 84);
+    const raw1 = useWeb ? (webWeek ?? 88) : (agyWeek ?? 91);
+    const p5 = s.sideQuotaMode === "used" ? Math.max(0, 100 - raw5) : raw5;
+    const p1 = s.sideQuotaMode === "used" ? Math.max(0, 100 - raw1) : raw1;
+    const showOrch = !useWeb && isOrch;
+    const emblem = (cx, cy, starPath, uid) => showOrch
+      ? `<g class="orch-body" transform="translate(${cx} ${cy}) scale(0.95)">${createHudOrchDialInner(uid)}</g>`
+      : `<path class="star-body" d="${starPath}" fill="#fff8d6" stroke="#d8b263" stroke-width="1.2" stroke-linejoin="round"/>`;
+
+    if (variant === "ring") {
+      mount.innerHTML = `
+        <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">
+          <defs>
+            <linearGradient id="hud-sq-g5" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--sq-grad-start)"/><stop offset="55%" stop-color="var(--sq-grad-mid)"/><stop offset="100%" stop-color="var(--sq-grad-end)"/></linearGradient>
+            <linearGradient id="hud-sq-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5cf2b4"/><stop offset="52%" stop-color="#84ecff"/><stop offset="100%" stop-color="#e5fff6"/></linearGradient>
+          </defs>
+          <circle cx="32" cy="32" r="28" fill="rgba(26,22,42,0.86)" stroke="rgba(255,255,255,0.28)" stroke-width="1.4"/>
+          <circle cx="32" cy="32" r="23.5" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="5"/>
+          <circle cx="32" cy="32" r="23.5" fill="none" stroke="url(#hud-sq-g5)" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${100 - p5}" transform="rotate(-90 32 32)"/>
+          <circle cx="32" cy="32" r="16" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+          <circle cx="32" cy="32" r="16" fill="none" stroke="#96ccff" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${100 - p1}" transform="rotate(-90 32 32)"/>
+          ${emblem(32, 32, "M32 23.2 34.4 29.6 40.8 32 34.4 34.4 32 40.8 29.6 34.4 23.2 32 29.6 29.6Z", "hud-sq-orch")}
+        </svg>`;
+    } else if (variant === "bar") {
+      const h5 = Math.max(4, Math.round((56 * p5) / 100));
+      const h1 = Math.max(4, Math.round((56 * p1) / 100));
+      mount.innerHTML = `
+        <svg viewBox="0 0 28 88" width="26" height="80" aria-hidden="true">
+          <defs>
+            <linearGradient id="hud-sq-g5" x1="0" y1="78" x2="0" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--sq-grad-start)"/><stop offset="55%" stop-color="var(--sq-grad-mid)"/><stop offset="100%" stop-color="var(--sq-grad-end)"/></linearGradient>
+            <linearGradient id="hud-sq-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5cf2b4"/><stop offset="52%" stop-color="#84ecff"/><stop offset="100%" stop-color="#e5fff6"/></linearGradient>
+          </defs>
+          <rect x="3.5" y="18" width="21" height="64" rx="10.5" fill="rgba(26,22,42,0.86)" stroke="rgba(255,255,255,0.28)" stroke-width="1.35"/>
+          <rect x="6.5" y="21" width="7.5" height="56" rx="3.75" fill="rgba(255,255,255,0.12)"/>
+          <rect x="6.5" y="${21 + (56 - h5)}" width="7.5" height="${h5}" rx="3.75" fill="url(#hud-sq-g5)"/>
+          <rect x="16.5" y="21" width="4" height="56" rx="2" fill="rgba(255,255,255,0.1)"/>
+          <rect x="16.5" y="${21 + (56 - h1)}" width="4" height="${h1}" rx="2" fill="#96ccff"/>
+          ${emblem(14, 10.5, "M14 2.5 16.3 8.2 22 10.5 16.3 12.8 14 18.5 11.7 12.8 6 10.5 11.7 8.2Z", "hud-sq-orch")}
+        </svg>`;
+    } else {
+      mount.innerHTML = `
+        <svg viewBox="0 0 44 104" width="38" height="88" aria-hidden="true">
+          <defs>
+            <linearGradient id="hud-sq-g5" x1="12" y1="92" x2="28" y2="16" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="var(--sq-grad-start)"/><stop offset="55%" stop-color="var(--sq-grad-mid)"/><stop offset="100%" stop-color="var(--sq-grad-end)"/></linearGradient>
+            <linearGradient id="hud-sq-orch" x1="-5" y1="-6" x2="5" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#5cf2b4"/><stop offset="52%" stop-color="#84ecff"/><stop offset="100%" stop-color="#e5fff6"/></linearGradient>
+          </defs>
+          <path d="M 11 94 Q 36 54 11 16" fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="13.5" stroke-linecap="round"/>
+          <path d="M 11 94 Q 36 54 11 16" fill="none" stroke="rgba(26,22,42,0.86)" stroke-width="11" stroke-linecap="round"/>
+          <path d="M 13 92 Q 35 54 13 18" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="5.2" stroke-linecap="round"/>
+          <path d="M 13 92 Q 35 54 13 18" fill="none" stroke="url(#hud-sq-g5)" stroke-width="5.2" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${100 - p5}"/>
+          <path d="M 8 83 Q 22 54 8 27" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M 8 83 Q 22 54 8 27" fill="none" stroke="#96ccff" stroke-width="2.6" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${100 - p1}"/>
+          ${emblem(12, 14.5, "M12 5.5 14.5 12 21 14.5 14.5 17 12 23.5 9.5 17 3 14.5 9.5 12Z", "hud-sq-orch")}
+        </svg>`;
+    }
+  }
+
+  function renderHudPreview() {
+    const s = data?.settings || {};
+    const ds = data?.dreamSkin || {};
+    const packs = data?.characterPacks || [];
+    const activePack = packs.find(p => p.id === s.characterPack) || packs[0];
+    const isPink = activePack?.id === "lin-cat";
+    document.documentElement.dataset.skin = isPink ? "pink" : "violet";
+
+    const skinLabel = isPink ? "粉毛基米" : "紫毛基米";
+    if ($("hud-skin-pill")) $("hud-skin-pill").textContent = skinLabel;
+    const themeNames = { violet: "星轨紫", pink: "梦幻粉", ocean: "深海蓝", onyx: "曜石黑" };
+    if ($("hud-theme-pill")) $("hud-theme-pill").textContent = themeNames[ds.themePreset] || "星轨紫";
+
+    const wall = selectedWallpaper();
+    const bgImg = $("hud-theme-bg");
+    if (bgImg && wall?.preview && bgImg.getAttribute("src") !== wall.preview) {
+      bgImg.src = wall.preview;
+    }
+    if (bgImg) bgImg.style.opacity = ds.enabled === false ? "0" : String(Math.max(0.14, Math.min(0.65, (dreamValue("opacity", 22) / 100) + 0.14)));
+    if ($("hud-theme-scrim")) $("hud-theme-scrim").style.opacity = String(Math.max(0.35, 0.78 - (dreamValue("opacity", 22) / 200) + (dreamValue("scrim", 25) / 200)));
+
+    const petImg = $("hud-pet-img");
+    if (petImg && activePack?.preview) {
+      if (petImg.getAttribute("src") !== activePack.preview) petImg.src = activePack.preview;
+      const scaleVal = settingDrafts.get("scale")?.value ?? s.scale ?? 220;
+      const ratio = (0.76 + ((scaleVal - 140) / 220) * 0.42).toFixed(3);
+      petImg.style.setProperty("--pet-scale-ratio", ratio);
+    }
+
+    const q = data?.quotaWindows || {};
+    const gData = q.gemini || q;
+    const manual = s.manualQuota === true;
+    const isArgon = Boolean(q.modelInfo?.modelName?.toLowerCase().includes("argon"));
+    const agy5 = manual ? Number(s.manualPercent) : (isArgon ? (q.argon?.fiveHour ?? gData?.fiveHour) : gData?.fiveHour);
+    const agy1 = manual ? Number(s.manualWeeklyPercent) : (isArgon ? (q.argon?.weekly ?? gData?.weekly) : gData?.weekly);
+    const wq = data?.webCompanion?.quota || null;
+    const web5 = wq && typeof wq.fiveHourUsedPct === "number" ? Math.max(0, 100 - Math.round(wq.fiveHourUsedPct)) : null;
+    const web1 = wq && typeof wq.weeklyUsedPct === "number" ? Math.max(0, 100 - Math.round(wq.weeklyUsedPct)) : null;
+
+    const rawName = q.modelInfo?.modelName || "";
+    const isOrch = Boolean(q.modelInfo?.orchestrator || /^orchestrator(?:\s+|$)/i.test(rawName) || /^orchestrator(?:\s+|$)/i.test(q.modelInfo?.fullText || ""));
+    const cleanName = isOrch ? (rawName.replace(/^Orchestrator\s*/i, "").replace(/^\(([^()]+)\)$/, "$1").trim() || rawName) : rawName;
+    const modelLabel = cleanName ? (isOrch ? `Orchestrator · ${cleanName}` : cleanName) : (isOrch ? "Orchestrator" : "本机待机");
+
+    if ($("hdr-char")) $("hdr-char").textContent = activePack?.name || skinLabel;
+    if ($("hdr-agy-5h")) $("hdr-agy-5h").textContent = typeof agy5 === "number" && Number.isFinite(agy5) ? `${Math.round(agy5)}%` : "—";
+    if ($("hdr-agy-1w")) $("hdr-agy-1w").textContent = typeof agy1 === "number" && Number.isFinite(agy1) ? `${Math.round(agy1)}%` : "—";
+    if ($("hdr-web-5h")) $("hdr-web-5h").textContent = typeof web5 === "number" ? `${web5}%` : "—";
+    if ($("hdr-model")) $("hdr-model").textContent = modelLabel;
+    if ($("hud-steps")) $("hud-steps").textContent = String(data?.ledger?.todaySteps || 0).padStart(5, "0");
+
+    if ($("hud-bubble")) $("hud-bubble").hidden = s.bubbleOn === false;
+    if ($("hud-bubble-model")) $("hud-bubble-model").textContent = modelLabel;
+    if ($("hud-bubble-text")) {
+      const h = s.userHonorificMode === "zayu" ? "杂鱼君" : (s.userHonorificMode === "custom" ? (s.customHonorific || "你") : "你");
+      const exprText = {
+        idle: `${h}，当前配色与挂件已同步到预览区～`,
+        proud: `哼哼～${h}终于发现本小姐的好品味啦！`,
+        shy: `突、突然夸这么直球干嘛……${h}是大笨蛋！`,
+        angry: `再戳呆毛的话，本小姐要把提示框收起来了！`,
+        nap: `电量有点见底了，先眯一小会儿… zzZ`
+      };
+      $("hud-bubble-text").textContent = exprText[hudPreviewExpr] || exprText.idle;
+    }
+
+    const currentVariant = s.sideQuotaVariant || "arc";
+    document.querySelectorAll("#sq-variant-cards .sq-var-card").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.variant === currentVariant);
+    });
+    renderHudSideQuota(
+      typeof agy5 === "number" && Number.isFinite(agy5) ? Math.round(agy5) : null,
+      typeof agy1 === "number" && Number.isFinite(agy1) ? Math.round(agy1) : null,
+      web5,
+      web1,
+      isOrch
+    );
+
+    const switcher = $("hud-char-switcher");
+    if (switcher && packs.length) {
+      const key = JSON.stringify([packs.map(p => [p.id, p.name, p.preview]), s.characterPack]);
+      if (key !== hudSwitcherKey) {
+        hudSwitcherKey = key;
+        switcher.replaceChildren();
+        for (const p of packs.slice(0, 2)) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "hud-char-btn" + (p.id === s.characterPack ? " active" : "");
+          if (p.preview) {
+            const img = document.createElement("img");
+            img.src = p.preview;
+            img.alt = "";
+            btn.append(img);
+          }
+          const span = document.createElement("span");
+          const b = document.createElement("b");
+          b.textContent = p.name;
+          const sm = document.createElement("small");
+          sm.textContent = p.id === "lin-cat" ? "粉毛基米" : (p.id === "gemini-star-v1" ? "紫毛基米" : (p.description || ""));
+          span.append(b, sm);
+          btn.append(span);
+          btn.onclick = () => {
+            if (p.id !== data.settings.characterPack) {
+              save({ characterPack: p.id }, `已切换为「${p.name}」`);
+            }
+          };
+          switcher.append(btn);
+        }
+      }
+    }
+  }
+
   function render() {
     mountOptionalSettings();
 
@@ -1405,6 +1628,8 @@
     renderDualCompanionStatus();
     renderCharacterGallery();
     renderWallpaperGallery();
+    document.querySelectorAll('input[type="range"].hud-range').forEach(syncRangePct);
+    renderHudPreview();
     if (typeof renderByokPanel === "function") renderByokPanel();
   }
 
@@ -1420,8 +1645,10 @@
       if (el.type === "range") {
         const preview = () => {
           settingDrafts.set(key,{value:Number(el.value),queued:false});
+          syncRangePct(el);
           const label = $(key + "-value");
           if (label) label.textContent = el.value + (key === "scale" ? " px" : key === "volume" ? "%" : "");
+          if (key === "scale") renderHudPreview();
         };
         const commit = () => {
           const entry = settingDrafts.get(key);
@@ -1509,8 +1736,8 @@
     };
   });
 
-  bindDreamAdjustment("dream-opacity","opacity",value => { $("dream-opacity-value").textContent=value+"%"; });
-  bindDreamAdjustment("dream-scrim","scrim",value => { $("dream-scrim-value").textContent=value+"%"; });
+  bindDreamAdjustment("dream-opacity","opacity",value => { $("dream-opacity-value").textContent=value+"%"; syncRangePct($("dream-opacity")); renderHudPreview(); });
+  bindDreamAdjustment("dream-scrim","scrim",value => { $("dream-scrim-value").textContent=value+"%"; syncRangePct($("dream-scrim")); renderHudPreview(); });
 
   $("dream-output-mode").onchange = () => {
     save({ dreamSkin: { outputMode: $("dream-output-mode").checked ? "glass" : "transparent" } });
@@ -1524,10 +1751,20 @@
   for (const [id, name] of [["proud", "得意"], ["shy", "害羞"], ["angry", "气恼"], ["nap", "打盹"]]) {
     const button = $("preview-" + id);
     if (button) button.onclick = () => {
+      hudPreviewExpr = id;
+      renderHudPreview();
       api.command("preview-reaction:" + id);
       $("saved").textContent = "正在预览「" + name + "」";
     };
   }
+  document.querySelectorAll("#sq-variant-cards .sq-var-card").forEach(btn => {
+    btn.onclick = () => {
+      const select = $("sideQuotaVariant");
+      if (!select) return;
+      select.value = btn.dataset.variant;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+  });
   if ($("preview-reaction")) $("preview-reaction").onclick = () => api.command("preview-reaction");
 
   if ($("dream-enabled")) $("dream-enabled").onchange = () => save({ dreamSkin: { enabled: $("dream-enabled").checked } }, $("dream-enabled").checked ? "已应用到 Antigravity" : "已从 Antigravity 还原");
@@ -1612,15 +1849,15 @@
       return wrapper;
     }));
   }
-  $("atelier-opacity").addEventListener("input", () => { atelierDirty = true; atelierPaint(); });
+  $("atelier-opacity").addEventListener("input", () => { atelierDirty = true; syncRangePct($("atelier-opacity")); atelierPaint(); });
   document.querySelectorAll(".atelier-swatch").forEach(swatch => {
     swatch.onclick = () => { atelierDirty = true; atelierPalette = swatch.dataset.palette; atelierPaint(); };
   });
   // 对话阅读面外观：通过皮肤设置更新宿主，旧桌宠外观字段保留但不再由此控件读写。
   $("atelier-chat-tint").value = atelierChatTint;
   bindDreamAdjustment("atelier-chat-tint","chatTint",value => { atelierChatTint=value; atelierPaint(); },"对话气泡颜色已更新",String);
-  bindDreamAdjustment("atelier-chat-opacity","chatOpacity",atelierPaint,"对话气泡透明度已更新");
-  bindDreamAdjustment("atelier-reply-opacity","replyOpacity",atelierPaint,"AI 回复透明度已更新");
+  bindDreamAdjustment("atelier-chat-opacity","chatOpacity",() => { syncRangePct($("atelier-chat-opacity")); atelierPaint(); },"对话气泡透明度已更新");
+  bindDreamAdjustment("atelier-reply-opacity","replyOpacity",() => { syncRangePct($("atelier-reply-opacity")); atelierPaint(); },"AI 回复透明度已更新");
   $("atelier-save").onclick = async () => {
     const value = Number($("atelier-opacity").value);
     const name = ($("atelier-name").value || "").trim() || (atelierLabels[atelierPalette] || atelierPalette) + " · " + value + "%";

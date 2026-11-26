@@ -1,7 +1,7 @@
 // Serialized into the host by its existing local CDP endpoint. No app files are modified.
 async function installTheme(config){
  const key="__agyDreamSkinV2";
- const engineRevision="2026-11-24-agy-233-v7",mountKey="__agyDreamSkinMountV2";
+ const engineRevision="2026-11-26-agy-wall-v10",mountKey="__agyDreamSkinMountV2";
  if(window[key]){if(window[key].owner!==config.owner)throw new Error("皮肤由另一个运行实例管理");if(window[key].engineRevision===engineRevision&&window[key].status().applied){await window[key].update(config);return window[key].status();}window[key].destroy();}
  // Initial image decoding yields to other callers. Keep one initializer and let
  // later calls replace its desired config instead of leaving orphan observers.
@@ -22,7 +22,7 @@ async function installTheme(config){
  if(!root.isConnected)return{applied:false,reason:"detached-root"};
  document.querySelectorAll('#agy-dream-wallpaper-v2').forEach(el => el.remove());
  const saved=[],seen=new WeakSet(),trackedVars=new Set();
- const protect=".monaco-editor,.cm-editor,.xterm,.integrated-terminal,textarea,pre,code,[contenteditable=true],[role=dialog],[role=menu],[role=listbox]";
+ const protect=".monaco-editor,.cm-editor,.xterm,.integrated-terminal,pre";
  const PALETTES={
   violet:{
    dark:{
@@ -116,7 +116,8 @@ async function installTheme(config){
  let layer=document.createElement("div");layer.id="agy-dream-wallpaper-v2";layer.setAttribute("aria-hidden","true");
  Object.assign(layer.style,{position:"fixed",inset:"0",zIndex:"0",pointerEvents:"none",overflow:"hidden",backgroundRepeat:"no-repeat",backgroundPosition:"center",backgroundColor:"#f8f6ff",transition:"opacity 0.4s ease"});
  let wallpaperGen=0,incoming=null,committedImage=image,deferred=null,latest=config,retained=[],pendingDecode=null,presentedId=config.wallpaperId||null;
- const foreground=()=>!document.hidden&&document.hasFocus();
+ // The settings window and tray take keyboard focus while the workbench stays visible.
+ const canPresent=()=>!document.hidden;
  function discardIncoming(){
   for(const el of [...retained,...(incoming?[incoming]:[])]){
    for(const anim of el.getAnimations?.()||[]){anim.onfinish=null;anim.cancel();}
@@ -173,6 +174,7 @@ async function installTheme(config){
  html.agy-dream-active-v2 :is([role=menu],[role=dialog],[role=listbox]) {background-color:var(--agy-ui-surface)!important;border-color:var(--agy-ui-line)!important;box-shadow:0 8px 28px rgba(0,0,0,0.28);}
  html.agy-dream-active-v2 .agy-sheet {border-radius:22px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(var(--agy-ui-accent-rgb),0.16);}
  html.agy-dream-active-v2 [data-agy-dream-welcome] { padding-top:0!important;justify-content:flex-end!important;padding-bottom:28px!important; }
+ html.agy-dream-active-v2 .agy-sheet .absolute.bottom-0.pointer-events-none[style*="linear-gradient"][style*="--background"],
  html.agy-dream-active-v2 [data-agy-dream-fade] {background:none!important;box-shadow:none!important;}
 
  /* Reading & bleed surface transparency without wiping user bubbles, pills or tools */
@@ -183,6 +185,7 @@ async function installTheme(config){
    .agy-user-bubble,.agy-user-bubble *,[data-testid="user-message-bubble"],[data-testid="user-message-bubble"] *,.user-input-buttons-container,.user-input-buttons-container *,
    [data-testid="worked-for-collapsible"],[data-testid="worked-for-collapsible"] *,[data-testid="tool-group-collapsible"],[data-testid="tool-group-collapsible"] *,
    [data-markdown-root],[data-markdown-root] *,
+   [data-agy-dream-surface],[data-agy-dream-surface] *,[role="dialog"],[role="dialog"] *,[role="menu"],[role="menu"] *,[role="listbox"],[role="listbox"] *,[data-radix-popper-content-wrapper],[data-radix-popper-content-wrapper] *,
    button,button *
  ) {background-color:transparent!important;background-image:none!important;backdrop-filter:none!important;}
 
@@ -270,7 +273,7 @@ async function installTheme(config){
    background:transparent!important;
  }
  /* Eliminate black block and internal focus outline inside composer */
- html.agy-dream-active-v2 .surface-composer :is([contenteditable="true"],textarea,[data-lexical-editor="true"],.w-full) {
+ html.agy-dream-active-v2 .surface-composer :is([contenteditable="true"],textarea,[data-lexical-editor="true"],.w-full:not([role="menu"],[role="listbox"],[role="dialog"],[role="combobox"],[data-radix-popper-content-wrapper],[data-agy-dream-surface],[class*="bg-popover"],[class*="popover"],.absolute,.fixed)) {
    background-color:transparent!important;
    background-image:none!important;
    backdrop-filter:none!important;
@@ -406,6 +409,66 @@ async function installTheme(config){
  html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(.scroll-mt-4,[role=article],.scroll-mt-4 div,[role=article] div):has(:is(${aiRole})):not(:where(${roleExcluded},${aiRole},:is(${aiRole}) *)):not(:has(:is(${userRole},form,.surface-composer))) {
   background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;
  }
+ /* Confine wide Markdown tables inside the AI reading card and prevent breakout clipping. */
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) {
+  min-inline-size:0;max-inline-size:100%;box-sizing:border-box;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) :is(div,figure,section):has(> :is(div,figure) > table):not(:has(> p, > h1, > h2, > h3, > ul, > ol)) {
+  max-inline-size:100%!important;inline-size:100%!important;min-inline-size:0!important;
+  margin-left:0!important;margin-right:0!important;margin-inline:0!important;
+  left:auto!important;right:auto!important;inset-inline:auto!important;
+  transform:none!important;box-sizing:border-box!important;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) :is(div,figure):has(> table):not(:has(> p, > h1, > h2, > h3, > ul, > ol)) {
+  max-inline-size:100%!important;inline-size:100%!important;min-inline-size:0!important;
+  margin-left:0!important;margin-right:0!important;margin-inline:0!important;
+  left:auto!important;right:auto!important;inset-inline:auto!important;
+  transform:none!important;box-sizing:border-box!important;
+  overflow-x:auto!important;overflow-y:visible!important;
+  border-radius:12px!important;
+  border:1px solid rgba(var(--agy-ui-accent-rgb),0.22)!important;
+  background-color:rgba(var(--agy-chat-rgb,24,18,36),0.36)!important;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(var(--agy-ui-accent-rgb),0.45) transparent;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) > table {
+  display:block!important;max-inline-size:100%!important;min-inline-size:0!important;
+  margin-left:0!important;margin-right:0!important;margin-inline:0!important;
+  left:auto!important;right:auto!important;inset-inline:auto!important;transform:none!important;
+  overflow-x:auto!important;overflow-y:visible!important;box-sizing:border-box!important;
+  border-radius:12px!important;border:1px solid rgba(var(--agy-ui-accent-rgb),0.22)!important;
+  background-color:rgba(var(--agy-chat-rgb,24,18,36),0.36)!important;
+  scrollbar-width:thin;scrollbar-color:rgba(var(--agy-ui-accent-rgb),0.45) transparent;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) :is(div,figure):has(> table) > table {
+  border-collapse:separate!important;border-spacing:0!important;
+  inline-size:max-content!important;min-inline-size:100%!important;max-inline-size:none!important;
+  margin:0!important;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) table :is(th,td) {
+  padding:8px 12px!important;vertical-align:top;
+  border-bottom:1px solid rgba(var(--agy-ui-accent-rgb),0.12)!important;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) table thead th {
+  white-space:nowrap;font-weight:600;
+  background-color:rgba(var(--agy-ui-accent-rgb),0.14)!important;
+  border-bottom:1px solid rgba(var(--agy-ui-accent-rgb),0.28)!important;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) table tbody td {
+  max-inline-size:280px;white-space:normal;overflow-wrap:anywhere;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) :is(${aiRole}):not(:where(${roleExcluded})) table tbody tr:last-child :is(th,td) {
+  border-bottom:0!important;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) [data-agy-table-scroll] :is(th,td):first-child {
+  position:sticky!important;inset-inline-start:0!important;z-index:2!important;
+  background-color:rgba(var(--agy-chat-rgb,24,18,36),0.92)!important;
+  box-shadow:6px 0 12px -4px rgba(0,0,0,0.35)!important;
+ }
+ html.agy-dream-active-v2 :is(#root,#app,[data-agy-dream-root]) [data-agy-table-scroll] thead th:first-child {
+  z-index:3!important;
+  background-color:color-mix(in srgb,rgba(var(--agy-chat-rgb,24,18,36),0.95) 84%,rgb(var(--agy-ui-accent-rgb)) 16%)!important;
+ }
  /* Editors, Terminals, Code Blocks */
  html.agy-dream-active-v2 [data-agy-dream-protect] { background-color:var(--agy-dream-old-bg)!important;backdrop-filter:none!important;opacity:1!important; }
  html.agy-dream-active-v2 pre,
@@ -418,6 +481,30 @@ async function installTheme(config){
    border-radius:10px!important;
  }
  html.agy-dream-active-v2 :is([role=dialog],[role=menu],[role=listbox]) {border-radius:16px;}
+ html.agy-dream-active-v2 :is([role=menu],[role=dialog],[role=listbox],[data-radix-popper-content-wrapper] > *,[class*="bg-popover"],[data-agy-dream-surface]):not([data-agy-dream-protect]) {
+  background-color:var(--agy-dream-card-bg)!important;
+  background-image:var(--agy-ui-glass)!important;
+  backdrop-filter:blur(24px) saturate(135%)!important;
+  -webkit-backdrop-filter:blur(24px) saturate(135%)!important;
+  border:1px solid var(--agy-ui-glass-border)!important;
+  border-radius:16px!important;
+  box-shadow:0 12px 36px rgba(10,8,20,0.48),inset 0 1px 0 rgba(var(--agy-ui-highlight-rgb),0.22)!important;
+ }
+ html.agy-dream-active-v2 :is([role=menu],[role=dialog],[role=listbox],[data-radix-popper-content-wrapper] > *,[class*="bg-popover"],[data-agy-dream-surface]) :is([role=menu],[role=listbox],[class*="bg-popover"],[data-agy-dream-surface]) {
+  background-color:transparent!important;
+  background-image:none!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  border:0!important;
+  box-shadow:none!important;
+  border-radius:0!important;
+ }
+ html.agy-dream-active-v2 :is([data-agy-dream-surface],[role=dialog]) :is(textarea,input:not([type=checkbox]):not([type=radio]),[contenteditable="true"]) {
+  background-color:var(--agy-ui-pill-bg)!important;
+  background-image:none!important;
+  border-color:var(--agy-ui-pill-border)!important;
+  border-radius:8px!important;
+ }
  `;
  function mark(el,attribute){if(!el.hasAttribute(attribute)){saved.push([el,attribute,null]);el.setAttribute(attribute,"");}}
  function variable(el,key,value){
@@ -530,7 +617,24 @@ async function installTheme(config){
      mark(segment,"data-agy-dream-segment");
    }
   }
+  for(const tbl of area.scope.querySelectorAll("table")){
+   const article=tbl.closest(".scroll-mt-4,[role=article],.prose,.markdown-body,[data-markdown-root],.leading-relaxed.select-text");
+   if(!article||tbl.closest("pre,.monaco-editor,.cm-editor,.xterm,.integrated-terminal,form,[data-testid='tool-group-collapsible'],[data-testid='worked-for-collapsible'],"+userRole))continue;
+   const p=tbl.parentElement;
+   const isWrapper=p&&p!==article&&!p.matches(aiRole)&&(p.tagName==="DIV"||p.tagName==="FIGURE")&&![...p.children].some(c=>c.matches("p,h1,h2,h3,ul,ol"));
+   const scrollHost=isWrapper?p:tbl;
+   const overflowing=scrollHost.scrollWidth>scrollHost.clientWidth+2;
+   if(overflowing){
+    mark(scrollHost,"data-agy-table-scroll");
+    if(!scrollHost.hasAttribute("tabindex")){saved.push([scrollHost,"tabindex",null]);scrollHost.setAttribute("tabindex","0");}
+    if(!scrollHost.hasAttribute("role")&&scrollHost.tagName!=="TABLE"){saved.push([scrollHost,"role",null]);scrollHost.setAttribute("role","region");}
+   }else if(scrollHost.hasAttribute("data-agy-table-scroll")){
+    scrollHost.removeAttribute("data-agy-table-scroll");
+   }
+  }
+  const overlaySelector='[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper],[data-agy-dream-surface]';
   for(const composer of area.scope.querySelectorAll(".surface-composer,form")){
+   if(composer.tagName==="FORM"&&composer.closest(overlaySelector))continue;
    let parent=composer.parentElement;
    while(parent&&parent!==root&&parent!==document.body){
     if(parent.hasAttribute("data-agy-dream-card")){
@@ -541,6 +645,7 @@ async function installTheme(config){
      parent.removeAttribute("data-agy-dream-protect");
      parent.style.removeProperty("--agy-dream-old-bg");
     }
+    if(parent.matches(overlaySelector))break;
     if(!parent.hasAttribute("data-agy-dream-clear"))mark(parent,"data-agy-dream-clear");
     parent=parent.parentElement;
    }
@@ -548,12 +653,20 @@ async function installTheme(config){
   for(const el of root.querySelectorAll("div,main,section,aside,nav,header,form,textarea,pre,code,[contenteditable=true],[role=dialog],[role=menu],[role=listbox]")){
    if(!area.scope.contains(el))continue;
    if(el===layer||el===style||el.closest("#agy-dream-wallpaper-v2"))continue;
-   const alreadyMarked=el.hasAttribute("data-agy-dream-protect")||el.hasAttribute("data-agy-dream-chrome")||el.hasAttribute("data-agy-dream-card")||el.hasAttribute("data-agy-dream-clear");
+   const alreadyMarked=el.hasAttribute("data-agy-dream-protect")||el.hasAttribute("data-agy-dream-chrome")||el.hasAttribute("data-agy-dream-card")||el.hasAttribute("data-agy-dream-clear")||el.hasAttribute("data-agy-dream-surface");
    if(seen.has(el)&&alreadyMarked)continue;
-   if(el.closest(".agy-user-bubble,[data-testid='user-message-bubble'],.agy-user-bubble-frame,[data-testid='user-input-step'],.surface-composer,form"))continue;
+   if(el.closest(".agy-user-bubble,[data-testid='user-message-bubble'],.agy-user-bubble-frame,[data-testid='user-input-step']"))continue;
+   const composerHost=el.closest(".surface-composer,form");
+   if(composerHost&&(!el.matches("div,section")||el===composerHost||el.matches(".surface-composer,.surface-composer-card")||el.closest("[data-agy-dream-surface]")))continue;
+   if(!composerHost&&el.matches("textarea,code,[contenteditable=true]"))continue;
    const rect=el.getBoundingClientRect();if(rect.width<1||rect.height<1)continue;
    const css=getComputedStyle(el),bg=css.backgroundColor;
    nativeBackgrounds.set(el,bg);
+   if(el.matches("div,section")&&(css.position==="absolute"||css.position==="fixed")&&css.pointerEvents!=="none"&&rect.width>=160&&rect.height>=48&&rect.width<innerWidth*.92&&(Number(css.zIndex)>=10||css.boxShadow!=="none"||parseFloat(css.borderTopWidth)>0)&&!el.matches(".surface-composer,.surface-composer-card")&&!el.querySelector(".surface-composer")&&!el.closest("[data-agy-dream-surface],aside,nav,header")){
+    if(el.hasAttribute("data-agy-dream-clear"))el.removeAttribute("data-agy-dream-clear");
+    mark(el,"data-agy-dream-surface");seen.add(el);continue;
+   }
+   if(composerHost)continue;
    if(el.matches(protect)){
     mark(el,"data-agy-dream-protect");variable(el,"--agy-dream-old-bg",surfaceBackground(el));seen.add(el);continue;
    }
@@ -564,18 +677,25 @@ async function installTheme(config){
    if(el.matches(".surface-composer,.surface-composer-card,form")){
     mark(el,"data-agy-dream-card");seen.add(el);continue;
    }
-   if(el.matches("div,main,section")&&rect.width>innerWidth*.42&&rect.height>innerHeight*.36){
+   if(el.matches("div,section")&&!el.closest("[data-agy-dream-surface],aside,nav,header,"+aiRole)&&!el.querySelector(".surface-composer,"+aiRole)&&parseFloat(css.borderTopWidth)>0&&parseFloat(css.borderTopLeftRadius)>=8&&rect.width>=260&&rect.width<=innerWidth*.9&&rect.height>=120&&rect.height<=innerHeight*.85&&(el.querySelector("textarea,input,[role=radiogroup],[role=listbox],[role=checkbox],[role=radio]")||el.querySelectorAll("button").length>=4)){
+    if(el.hasAttribute("data-agy-dream-clear"))el.removeAttribute("data-agy-dream-clear");
+    mark(el,"data-agy-dream-surface");seen.add(el);continue;
+   }
+   if(el.matches("div,main,section")&&rect.width>innerWidth*.42&&rect.height>innerHeight*.36&&css.position!=="absolute"&&css.position!=="fixed"&&!el.closest(overlaySelector)){
     mark(el,"data-agy-dream-clear");seen.add(el);
    }
   }
  }
  function schedule(){clearTimeout(timer);timer=setTimeout(scan,120);}
+ function resumeWallpaper(){
+  if(canPresent()&&(deferred||incoming?.getAnimations?.().some(a=>a.playState==="paused"||a.playState==="finished")))onWindowLifecycle();
+ }
  function onWindowLifecycle(){
   if(!ensureMounted())return;
   schedule();
-  if(!foreground()){
+  if(!canPresent()){
    pauseIncoming();
-  }else if(deferred){void update(deferred);}
+  }else if(deferred){const queued=deferred;void update(queued).catch(()=>{if(active&&latest===queued)deferred=queued;});}
   else if(incoming)for(const anim of incoming.getAnimations?.()||[]){
    if(anim.playState==="finished")anim.onfinish?.();else anim.play();
   }
@@ -620,16 +740,16 @@ async function installTheme(config){
   const thisGen=++wallpaperGen;
   pendingDecode=null;
   const wantsFade=next.transition!=="none"&&Boolean(currentSrc)&&next.image!==currentSrc;
-  if(wantsFade&&!foreground()){deferWallpaper(next);return;}
+  if(wantsFade&&!canPresent()){deferWallpaper(next);return;}
   deferred=null;
   let crossfade=false;
   if(next.image&&next.image!==currentSrc){
    pendingDecode=wallpaperKey(next);
    const fresh=new Image();fresh.src=next.image;
-   try{await fresh.decode();}catch{if(thisGen===wallpaperGen){pendingDecode=null;image=committedImage;}return;}
+   try{await fresh.decode();}catch(error){if(thisGen!==wallpaperGen)return;pendingDecode=null;image=committedImage;throw error;}
    if(thisGen!==wallpaperGen||!active||!root.isConnected)return;
    pendingDecode=null;
-   if(wantsFade&&!foreground()){deferWallpaper(next);return;}
+   if(wantsFade&&!canPresent()){deferWallpaper(next);return;}
    image=fresh;
    crossfade=next.transition!=="none"&&layer.isConnected&&Boolean(currentSrc);
   }else image=committedImage;
@@ -659,7 +779,7 @@ async function installTheme(config){
     const anim=inc.animate([{opacity:0},{opacity:1}],{duration:1200,easing:"cubic-bezier(.4,0,.2,1)",fill:"forwards"});
     anim.onfinish=()=>{
      if(incoming!==inc)return;
-     if(!foreground())return;
+     if(!canPresent())return;
      commitIncoming(next.image,p,factor,next);
     };
    }catch{commitIncoming(config.image,p,factor,config);}
@@ -691,7 +811,7 @@ async function installTheme(config){
  document.addEventListener("visibilitychange",onWindowLifecycle,{passive:true});
  resize=new ResizeObserver(schedule);resize.observe(root);
  const status=()=>({defaultChatTint:dark?"#181224":"#fffaff",applied:Boolean(active&&root.isConnected&&layer.isConnected&&style.isConnected&&document.documentElement.classList.contains("agy-dream-active-v2")),wallpaper:{selected:latest.wallpaperId||null,presented:presentedId,transitioning:!!incoming,deferred:!!deferred,decoding:pendingDecode!==null},themePreset:root.getAttribute("data-agy-theme-preset")||"violet",protected:root.querySelectorAll("[data-agy-dream-protect]").length,surfaces:root.querySelectorAll("[data-agy-dream-clear]").length,trackedChanges:saved.length});
- instance={update,updateAppearance,destroy,status,owner:config.owner,engineRevision};window[key]=instance;
+ instance={update,updateAppearance,resumeWallpaper,destroy,status,owner:config.owner,engineRevision};window[key]=instance;
  await update(config);return status();
  }catch(error){mounting.error=error;throw error;}
  finally{if(window[mountKey]===mounting)delete window[mountKey];finishMount();}

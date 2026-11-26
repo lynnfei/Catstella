@@ -13,13 +13,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      - run: npm run build:native
+      - run: npm run prepare:frontend
+      - run: npm run test:rust
       - run: npm test
-      - name: Verify tray-only pet window
-        run: node tools/verify-tray-window.cjs
-      - name: Verify full-area dragging and artwork docking
-        run: node tools/verify-window-drag.cjs
+      - run: npm run verify:hud
       - uses: actions/checkout@v4
         with:
           ref: feat/browser-extension

@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN" data-mode="light" data-skin="violet">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: http://127.0.0.1:*; media-src 'self'">
+  <title>Catstella · 设置中心</title>
+  <link rel="stylesheet" href="side-quota.css">
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="frame" id="settings-app-root">
+    <!-- 顶部无边框拖拽标题栏：Chrome 圆角标签 + 5 频道胶囊导航 + 右上角明暗/最小化/关闭 -->
+    <header class="top">
+      <div class="title-tab" data-tauri-drag-region>
+        <span class="titlebar-title">Catstella</span>
+        <small>SETTINGS</small>
+      </div>
+
+      <nav class="tabs" id="side-nav" aria-label="设置频道">
+        <button type="button" class="tab on" data-p="pet" aria-current="page"><i>◉</i><span>桌宠</span></button>
+        <button type="button" class="tab" data-p="skin"><i>▦</i><span>外观</span></button>
+        <button type="button" class="tab" data-p="quota"><i>∿</i><span>用量</span></button>
+        <button type="button" class="tab" data-p="link"><i>⌁</i><span>连接</span></button>
+        <button type="button" class="tab" data-p="store"><i>✦</i><span>商店</span></button>
+      </nav>
+
+      <div class="top-drag-spacer" data-tauri-drag-region></div>
+
+      <div class="top-actions">
+        <button type="button" class="mode" id="mode" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
+        <button type="button" class="win-min" id="win-min" title="最小化" aria-label="最小化">–</button>
+        <button type="button" class="close" id="win-close" title="关闭窗口" aria-label="关闭窗口">✕</button>
+      </div>
+    </header>
+
+    <div class="panel">
+      <!-- 左侧：HUD 实时预览舱（壁纸 + 耐力计 + 居中桌宠 + 气泡 + 形态快切） -->
+      <aside class="pod" aria-label="基米实时预览舱">
+        <div class="hud" id="hud-viewport">
+          <img class="hud-wall-bg" id="hudWallBg" alt="" aria-hidden="true">
+          <div class="hud-wall-scrim" id="hudWallScrim" aria-hidden="true"></div>
+
+          <svg class="bg" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid slice" fill="none" stroke="currentColor" aria-hidden="true">
+            <circle cx="160" cy="160" r="126" stroke-dasharray="2 6"/>
+            <circle cx="160" cy="160" r="94"/>
+            <circle cx="160" cy="160" r="56" stroke-dasharray="4 4"/>
+            <line x1="0" y1="160" x2="320" y2="160" stroke-dasharray="6 6"/>
+            <line x1="160" y1="0" x2="160" y2="320" stroke-dasharray="6 6"/>
+            <line x1="20" y1="20" x2="300" y2="300" opacity="0.4"/>
+            <line x1="300" y1="20" x2="20" y2="300" opacity="0.4"/>
+          </svg>
+          <div class="hud-dots tl" aria-hidden="true"></div>
+          <div class="hud-dots tr" aria-hidden="true"></div>
+
+          <div class="hud-top-row">
+            <span class="hud-skin-badge" id="hudSkinBadge">紫毛基米</span>
+            <span class="hud-theme-pill" id="hudThemeBadge">星语紫</span>
+          </div>
+
+          <i class="bracket b1" aria-hidden="true"></i>
+          <i class="bracket b2" aria-hidden="true"></i>
+          <i class="bracket b3" aria-hidden="true"></i>
+          <i class="bracket b4" aria-hidden="true"></i>
+
+          <div class="hud-stage" id="hudStage">
+            <div class="hud-sq" id="hudSq" aria-label="旁侧耐力条实时预览"></div>
+            <button type="button" class="cat" id="cat" aria-label="点击逗弄猫猫">
+              <img id="hud-pet-img" alt="基米乃实时预览">
+            </button>
+          </div>
+
+          <div class="bubble" id="bubble">
+            <span class="bubble-model" id="bubbleModel">Gemini</span>
+            <span id="bubbleText">点击右侧任意调节项，左侧实时预览同步生效～</span>
+          </div>
+        </div>
+
+        <div class="pod-hud-foot">
+          <div class="score"><b>SCORES</b><b id="steps" title="累计摸头次数">00000</b></div>
+          <div class="chars" id="hud-char-switcher" role="group" aria-label="快捷切换形象"></div>
+        </div>
+      </aside>
+
+      <!-- 右侧：5 频道 Bento HUD 画布 -->
+      <main class="main">
+        <div class="head">
+          <div class="stat"><small>当前形象</small><b id="hName" class="head-name">—</b></div>
+          <div class="stat"><small>AGY 5h</small><b id="hAgy5">—</b></div>
+          <div class="stat"><small>AGY 1w</small><b id="hAgy1">—</b></div>
+          <div class="stat"><small>Web 5h</small><b id="hWeb5">—</b></div>
+          <div class="stat"><small>当前模型</small><b id="hModel" class="head-model">本机待机</b></div>
+          <div class="head-right">
+            <span class="status-pill" id="statusPill" role="status"><i aria-hidden="true"></i><span id="dockTxt">已就绪</span></span>
+            <button type="button" class="undo-pill" id="undo" title="恢复到打开设置时的状态">↶ 撤回</button>
+          </div>
+        </div>
+
+        <div class="scroll" id="main-scroll">
+          <!-- 1. 桌宠频道 -->
+          <section class="page on" data-p="pet" aria-label="桌宠设置">
+            <div class="grid">
+              <div class="card">
+                <span class="ico" aria-hidden="true">⤢</span>
+                <h3>角色大小</h3>
+                <p class="desc">实时缩放桌宠与左侧 HUD 预览立绘尺寸</p>
+                <div class="slider">
+                  <span class="float" id="scaleF">220 px</span>
+                  <input class="range" id="scale" type="range" min="140" max="360" step="10" value="220" aria-label="角色大小">
+                </div>
+                <div class="big">范围 140–360 px <span><b id="scaleB">220</b> px</span></div>
+              </div>
+
+              <div class="card">
+                <span class="ico" aria-hidden="true">☰</span>
+                <h3>显示与停靠</h3>
+                <p class="desc">宿主窗口跟随、置顶与快速落点</p>
+                <label class="row"><span>仅在 Antigravity 内显示</span><input class="sw" id="hostWindowOnly" type="checkbox" switch></label>
+                <label class="row"><span>无宿主时退守桌面</span><input class="sw" id="standaloneDesktopMode" type="checkbox" switch></label>
+                <label class="row"><span>桌面模式置顶</span><input class="sw" id="alwaysOnTop" type="checkbox" switch></label>
+                <label class="row"><span>减少动态</span><input class="sw" id="reducedMotion" type="checkbox" switch></label>
+                <label class="row"><span>鼠标穿透<small>Ctrl+Alt+Shift+G 恢复</small></span><input class="sw" id="clickThrough" type="checkbox" switch></label>
+                <div class="row">
+                  <span>停靠</span>
+                  <div class="pillrow">
+                    <button type="button" class="pill" data-cmd="dock-left">↙ 左下</button>
+                    <button type="button" class="pill" data-cmd="dock-right">↘ 右下</button>
+                    <button type="button" class="pill" data-cmd="reset">◎ 重置</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <span class="ico" aria-hidden="true">✎</span>
+                <h3>互动与表情</h3>
+                <p class="desc">称呼、点击行为、角色目录与表情试演</p>
+                <div class="row">
+                  <span>互动称呼</span>
+                  <div class="pillrow" data-group="hon">
+                    <button type="button" class="pill" data-val="none">人类</button>
+                    <button type="button" class="pill" data-val="custom">自定义</button>
+                  </div>
+                </div>
+                <div class="row" id="custom-hon-row" hidden>
+                  <label for="customHonorific">自定义称呼</label>
+                  <input id="customHonorific" class="hud-input" type="text" maxlength="16" placeholder="输入专属称呼">
+                </div>
+                <div class="row">
+                  <span>点击猫猫</span>
+                  <div class="pillrow" data-group="click">
+                    <button type="button" class="pill" data-val="talk">对话</button>
+                    <button type="button" class="pill" data-val="cyclePages">切换额度页</button>
+                  </div>
+                </div>
+                <label class="row"><span>启用互动表情彩蛋</span><input class="sw" id="easterEggs" type="checkbox" switch></label>
+                <div class="row">
+                  <span>表情试演</span>
+                  <div class="pillrow">
+                    <button type="button" class="tag" data-e="proud"><i>✨</i>得意</button>
+                    <button type="button" class="tag" data-e="shy"><i>🌸</i>害羞</button>
+                    <button type="button" class="tag" data-e="angry"><i>💢</i>气恼</button>
+                    <button type="button" class="tag" data-e="nap"><i>💤</i>打盹</button>
+                  </div>
+                </div>
+                <div class="row">
+                  <span>自定义角色目录</span>
+                  <button type="button" class="pill" id="open-char-dir">打开目录…</button>
+                </div>
+              </div>
+
+              <div class="card">
+                <span class="ico" aria-hidden="true">♪</span>
+                <h3>气泡与音效</h3>
+                <p class="desc">碎碎念、花费提示与真实 .wav 试听</p>
+                <label class="row"><span>显示气泡</span><input class="sw" id="bubbleOn" type="checkbox" switch></label>
+                <label class="row"><span>空闲自动碎碎念</span><input class="sw" id="ambientChatter" type="checkbox" switch></label>
+                <div class="row">
+                  <span>单轮花费提示</span>
+                  <div class="pillrow" data-group="dur">
+                    <button type="button" class="pill" data-val="3000">3s</button>
+                    <button type="button" class="pill" data-val="5000">5s</button>
+                    <button type="button" class="pill" data-val="10000">10s</button>
+                    <button type="button" class="pill" data-val="0">手动</button>
+                  </div>
+                </div>
+                <label class="row"><span>启用互动音效</span><input class="sw" id="soundOn" type="checkbox" switch></label>
+                <div class="row">
+                  <span>音色</span>
+                  <div class="pillrow" data-group="snd">
+                    <button type="button" class="pill" data-val="bubble-pop">气泡</button>
+                    <button type="button" class="pill" data-val="soft-spring">弹簧</button>
+                    <button type="button" class="pill" data-val="original">嘟嘟</button>
+                    <button type="button" class="pill" data-val="wood-tap">木鱼</button>
+                  </div>
+                </div>
+                <div class="slider compact-slider">
+                  <span class="float" id="volF">35%</span>
+                  <input class="range" id="vol" type="range" min="0" max="100" value="35" aria-label="互动音量">
+                </div>
+                <div class="row">
+                  <small id="audio-note">已静音 · 35%</small>
+                  <button type="button" class="pill on" id="audition">▶ 试听采样</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 2. 外观频道（壁纸图库 + 1h 等比例磁吸 + 主题工坊） -->
+          <section class="page" data-p="skin" aria-label="外观与主题设置">
+            <div class="card card-full">
+              <div class="card-top-row">
+                <div>
+                  <h3>壁纸图库 <small id="wallpaper-count" class="count-chip"></small></h3>
+                  <p class="desc">点击即时切换，左侧 HUD 与 Antigravity 同步换装</p>
+                </div>
+                <div class="pillrow">
+                  <label class="inline-sw"><span>网页跟随</span><input class="sw" id="syncWallpaper" type="checkbox" switch></label>
+                  <button type="button" class="pill on" id="nextWall">⏭ 下一张</button>
+                  <button type="button" class="pill" id="open-wall-dir">壁纸目录…</button>
+                </div>
+              </div>
+              <div class="walls" id="walls"></div>
+            </div>
+
+            <div class="grid">
+              <div class="card">
+                <span class="ico" aria-hidden="true">☀</span>
+                <h3>可见度与 1h 磁吸轮播</h3>
+                <p class="desc">真实时间距离比例尺（1m–1h 自动阻尼吸附）</p>
+                <div class="slider">
+                  <span class="float" id="opF">22%</span>
+                  <input class="range" id="op" type="range" min="0" max="100" value="22" aria-label="壁纸可见度">
+                </div>
+                <div class="big">壁纸可见度 <span><b id="opB">22</b>%</span></div>
+                <div class="slider">
+                  <span class="float" id="scrimF">25%</span>
+                  <input class="range" id="scrim" type="range" min="0" max="60" value="25" aria-label="背景遮罩浓度">
+                </div>
+                <div class="big">背景遮罩 <span><b id="scrimB">25</b>%</span></div>
+                <div class="slider">
+                  <span class="float" id="ivF">5 分钟</span>
+                  <input class="range" id="iv" type="range" min="1" max="60" step="0.1" value="5" aria-label="轮播间隔">
+                </div>
+                <div class="ticks-track" id="ivTicks" aria-label="轮播间隔刻度">
+                  <button type="button" data-v="1" style="--pos: 0%">1m</button>
+                  <button type="button" data-v="5" style="--pos: 6.78%">5m</button>
+                  <button type="button" data-v="10" style="--pos: 15.25%">10m</button>
+                  <button type="button" data-v="15" style="--pos: 23.73%">15m</button>
+                  <button type="button" data-v="30" style="--pos: 49.15%">30m</button>
+                  <button type="button" data-v="45" style="--pos: 74.58%">45m</button>
+                  <button type="button" data-v="60" style="--pos: 100%">1h</button>
+                </div>
+                <label class="row"><span>启用自动轮播</span><input class="sw" id="slideshow" type="checkbox" switch></label>
+                <label class="row"><span>磨砂玻璃卡片</span><input class="sw" id="glassMode" type="checkbox" switch></label>
+                <label class="row"><span>应用到 Antigravity（皮肤）</span><input class="sw" id="dreamEnabled" type="checkbox" switch></label>
+              </div>
+
+              <div class="card">
+                <span class="ico" aria-hidden="true">◈</span>
+                <h3>主题预设与工坊</h3>
+                <p class="desc">实时预览 Antigravity 对话底色与气泡透明度</p>
+                <div class="pillrow" data-group="theme" style="margin-bottom:10px">
+                  <button type="button" class="pill" data-val="violet">星语紫</button>
+                  <button type="button" class="pill" data-val="pink">霓音粉</button>
+                  <button type="button" class="pill" data-val="ocean">晴空蓝</button>
+                  <button type="button" class="pill" data-val="onyx">夜幕黑</button>
+                </div>
+                <div class="atelier-mini" id="atelier-preview" data-palette="violet">
+                  <img id="atelier-wall-img" alt="">
+                  <div class="atelier-scrim"></div>
+                  <div class="atelier-chat">
+                    <span class="at-user" id="at-user-bubble">帮我整理今天的星轨计划</span>
+                    <p class="at-reply" id="at-reply-box">已同步当前主题配色与气泡透明度，对比度清晰。</p>
+                  </div>
+                </div>
+                <div class="row">
+                  <label for="chatTint">对话气泡色</label>
+                  <div class="pillrow">
+                    <input id="chatTint" type="color" value="#181224" class="color-dot">
+                    <button type="button" class="pill" id="clearTint">重置色相</button>
+                  </div>
+                </div>
+                <div class="slider compact-slider">
+                  <span class="float" id="chatOpF">88%</span>
+                  <input class="range" id="chatOp" type="range" min="0" max="100" value="88" aria-label="用户气泡不透明度">
+                </div>
+                <div class="slider compact-slider">
+                  <span class="float" id="replyOpF">22%</span>
+                  <input class="range" id="replyOp" type="range" min="0" max="100" value="22" aria-label="AI 回复背景不透明度">
+                </div>
+                <div class="row">
+                  <input id="themeName" class="hud-input" type="text" maxlength="20" placeholder="自定义主题名…">
+                  <button type="button" class="pill on" id="saveTheme">保存主题</button>
+                </div>
+                <div class="custom-themes" id="custom-theme-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 3. 用量频道（多模型实况 + 旁侧耐力计三变体卡 + 手动兜底） -->
+          <section class="page" data-p="quota" aria-label="用量与耐力计">
+            <div class="metric-strip">
+              <div><b id="ms-agy5">—</b><small>Gemini 5h</small></div>
+              <div><b id="ms-agy1">—</b><small>Gemini 1w</small></div>
+              <div><b id="ms-claude5">—</b><small>Claude/GPT 5h</small></div>
+              <div><b id="ms-web5">—</b><small>Web 5h</small></div>
+              <div><b id="ms-steps">0</b><small>今日步数</small></div>
+              <button type="button" class="go" id="refreshQuota" title="立即刷新 Antigravity 配额" aria-label="刷新额度">↻</button>
+            </div>
+
+            <div class="grid">
+              <div class="card">
+                <span class="ico" aria-hidden="true">∿</span>
+                <h3>双端与多模型配额详情</h3>
+                <p class="desc">Antigravity 实时通道与本机用量账本（只读统计）</p>
+                <div class="row"><span>Gemini Models (5h)</span><strong id="q-gem-5h">—</strong></div>
+                <div class="row"><span>Gemini Models (1w)</span><strong id="q-gem-1w">—</strong></div>
+                <div class="row"><span>Claude / GPT (5h)</span><strong id="q-cg-5h">—</strong></div>
+                <div class="row"><span>Claude / GPT (1w)</span><strong id="q-cg-1w">—</strong></div>
+                <div class="row"><span>Gemini Web 伴侣</span><strong id="q-web-meta">未联动</strong></div>
+                <div class="row"><span>今日累计 Token</span><strong id="q-today-tokens">0</strong></div>
+              </div>
+
+              <div class="card">
+                <div class="card-top-row">
+                  <div>
+                    <h3>旁侧耐力计</h3>
+                    <p class="desc">点击切换样式，同步反映至左侧 HUD 与桌宠</p>
+                  </div>
+                  <div id="sqPreview" class="sq-preview" aria-label="耐力计大图预览"></div>
+                </div>
+                <label class="row"><span>显示旁侧用量挂件</span><input class="sw" id="sqOn" type="checkbox" switch></label>
+                <div class="sq-cards" id="sqCards" role="group" aria-label="耐力计三款视觉样式">
+                  <button type="button" class="sq-card" data-val="arc">
+                    <svg viewBox="0 0 36 48" width="28" height="36" aria-hidden="true">
+                      <g transform="translate(36 0) scale(-1 1)">
+                        <path d="M10 40 Q26 24 10 8" fill="none" stroke="var(--line)" stroke-width="6" stroke-linecap="round"/>
+                        <path d="M10 40 Q26 24 10 8" fill="none" stroke="var(--accent)" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="46" stroke-dashoffset="10"/>
+                        <circle cx="10" cy="8" r="3" fill="var(--accent-2)"/>
+                      </g>
+                    </svg>
+                    <b>星轨弦月弧</b>
+                    <small>贴边流线</small>
+                  </button>
+                  <button type="button" class="sq-card" data-val="ring">
+                    <svg viewBox="0 0 44 44" width="32" height="32" aria-hidden="true">
+                      <circle cx="22" cy="22" r="15" fill="none" stroke="var(--line)" stroke-width="4.5"/>
+                      <circle cx="22" cy="22" r="15" fill="none" stroke="var(--accent)" stroke-width="4.5" stroke-dasharray="94" stroke-dashoffset="20" transform="rotate(-90 22 22)"/>
+                      <circle cx="22" cy="22" r="9.5" fill="none" stroke="var(--accent-2)" stroke-width="2.6" stroke-dasharray="60" stroke-dashoffset="14" transform="rotate(-90 22 22)"/>
+                      <circle cx="22" cy="22" r="3.5" fill="#16C784"/>
+                    </svg>
+                    <b>星晶双环</b>
+                    <small>双圈精研</small>
+                  </button>
+                  <button type="button" class="sq-card" data-val="bar">
+                    <svg viewBox="0 0 32 46" width="26" height="36" aria-hidden="true">
+                      <rect x="8" y="10" width="6" height="30" rx="3" fill="var(--line)"/>
+                      <rect x="8" y="16" width="6" height="24" rx="3" fill="var(--accent)"/>
+                      <rect x="18" y="10" width="5" height="30" rx="2.5" fill="var(--accent-2)"/>
+                      <path d="M16 2 17.5 5.5 21 7 17.5 8.5 16 12 14.5 8.5 11 7 14.5 5.5Z" fill="var(--accent-2)"/>
+                    </svg>
+                    <b>星辉能量柱</b>
+                    <small>超窄紧凑</small>
+                  </button>
+                </div>
+                <div class="row">
+                  <span>口径</span>
+                  <div class="pillrow" data-group="sqMode">
+                    <button type="button" class="pill" data-val="remaining">剩余 %</button>
+                    <button type="button" class="pill" data-val="used">已用 %</button>
+                  </div>
+                </div>
+                <div class="row">
+                  <span>数据源</span>
+                  <div class="pillrow" data-group="sqSrc">
+                    <button type="button" class="pill" data-val="auto">自动</button>
+                    <button type="button" class="pill" data-val="agy">AGY</button>
+                    <button type="button" class="pill" data-val="web">Web</button>
+                  </div>
+                </div>
+                <div class="row">
+                  <span>尺寸 / 间距</span>
+                  <div class="pillrow">
+                    <div class="pillrow" data-group="sqSize">
+                      <button type="button" class="pill" data-val="sm">小</button>
+                      <button type="button" class="pill" data-val="md">中</button>
+                      <button type="button" class="pill" data-val="lg">大</button>
+                    </div>
+                    <div class="pillrow" data-group="sqDist">
+                      <button type="button" class="pill" data-val="compact">紧</button>
+                      <button type="button" class="pill" data-val="normal">适中</button>
+                      <button type="button" class="pill" data-val="relaxed">松</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card card-full">
+                <span class="ico" aria-hidden="true">✎</span>
+                <h3>手动额度兜底（Antigravity）</h3>
+                <p class="desc">读不到官方模型窗口时以手动数值驱动提示与耐力计预览</p>
+                <label class="row"><span>启用手动额度记录</span><input class="sw" id="manualQuota" type="checkbox" switch></label>
+                <div class="manual-row">
+                  <label>5 小时剩余 % <input id="manual5h" class="hud-input num" type="number" min="0" max="100" value="84"></label>
+                  <label>1 周剩余 % <input id="manual1w" class="hud-input num" type="number" min="0" max="100" value="91"></label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 4. 连接频道（Antigravity 通道 / 自启联动 / Web 桥接 / 关于重置） -->
+          <section class="page" data-p="link" aria-label="宿主连接与档案">
+            <div class="grid">
+              <div class="card">
+                <span class="ico" aria-hidden="true">⌁</span>
+                <h3>Antigravity v2.33+ 通道与自启</h3>
+                <p class="desc" id="host-status-txt">等待检测 Antigravity 调试端口…</p>
+                <div class="pillrow" style="margin-bottom:8px">
+                  <button type="button" class="pill on" id="btnCfgShortcut">配置快捷方式</button>
+                  <button type="button" class="pill" id="btnLaunchDebug">调试启动 AGY</button>
+                  <button type="button" class="pill" id="btnRedetect">重新检测</button>
+                </div>
+                <code class="code-line" id="host-cmd-line">--remote-debugging-port=0 --remote-debugging-address=127.0.0.1</code>
+                <label class="row" style="margin-top:8px"><span>随 Antigravity 自动启动 Catstella</span><input class="sw" id="startupHostLink" type="checkbox" switch></label>
+                <label class="row"><span>Windows 开机自动启动</span><input class="sw" id="startupAutoStart" type="checkbox" switch></label>
+                <div class="row">
+                  <span>界面语言</span>
+                  <div class="pillrow" data-group="lang">
+                    <button type="button" class="pill" data-val="en">English</button>
+                    <button type="button" class="pill" data-val="zh-CN">简体中文</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <span class="ico" aria-hidden="true">⇄</span>
+                <h3>Web 伴侣桥接</h3>
+                <p class="desc" id="web-bridge-status">等待浏览器扩展连接…</p>
+                <label class="row"><span>同步角色形象</span><input class="sw" id="syncCharacter" type="checkbox" switch></label>
+                <label class="row"><span>同步互动偏好</span><input class="sw" id="syncInteraction" type="checkbox" switch></label>
+                <div class="row">
+                  <span>同屏策略</span>
+                  <div class="pillrow" data-group="dm">
+                    <button type="button" class="pill" data-val="both">同显</button>
+                    <button type="button" class="pill" data-val="prefer-desktop">桌面优先</button>
+                    <button type="button" class="pill" data-val="prefer-web">互斥</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card card-full">
+                <span class="ico" aria-hidden="true">★</span>
+                <h3>关于 Catstella 与基线恢复</h3>
+                <p class="desc" id="about-ver">Catstella v0.7.0 · 作者 lynnfei · 原作 Monokumakuki (Antigravity Star Suite)</p>
+                <div class="row">
+                  <label class="inline-sw"><span>自动检查更新</span><input class="sw" id="autoUpdateCheck" type="checkbox" switch></label>
+                  <div class="pillrow">
+                    <button type="button" class="pill" id="btnOpenRepo">GitHub 仓库</button>
+                    <button type="button" class="pill" id="btnOpenUpstream">原作项目</button>
+                    <button type="button" class="pill" id="btnCheckUpdate">检查更新</button>
+                    <button type="button" class="pill" id="btnRestartSuite">重启套件</button>
+                    <button type="button" class="pill" data-action="reset-open">恢复默认配置…</button>
+                  </div>
+                </div>
+                <p class="desc" id="update-status" style="margin:6px 0 0"></p>
+                <div class="reset-box" data-reset-box role="alertdialog" aria-labelledby="reset-title" hidden>
+                  <strong id="reset-title">确认恢复出厂默认配置吗？（Esc 可取消）</strong>
+                  <div class="pillrow">
+                    <button type="button" class="pill on" data-action="reset-yes">确认恢复</button>
+                    <button type="button" class="pill" data-action="reset-no">取消</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 5. 商店频道：App-Store 式内容商城 -->
+          <section class="page" data-p="store" aria-label="内容商店">
+            <div class="store-hero" id="storeHero">
+              <img class="store-hero-bg" id="storeHeroImg" alt="">
+              <div class="store-hero-scrim" aria-hidden="true"></div>
+              <div class="store-hero-content">
+                <span class="store-kicker">WEEKLY FEATURED · 精选资产</span>
+                <h3 id="storeHeroTitle">Catstella 内容商店</h3>
+                <p id="storeHeroDesc">在线壁纸、桌宠形象与主题配色一键安装使用</p>
+                <div class="pillrow">
+                  <button type="button" class="store-cta" id="storeHeroUse">✦ 立即应用</button>
+                  <button type="button" class="pill" id="storeHeroDetail">查看详情</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="store-toolbar">
+              <div class="pillrow" id="storeCats" role="group" aria-label="商店分类">
+                <button type="button" class="pill on" data-cat="all">全部</button>
+                <button type="button" class="pill" data-cat="wallpaper">壁纸</button>
+                <button type="button" class="pill" data-cat="character">桌宠样式</button>
+                <button type="button" class="pill" data-cat="theme">主题配色</button>
+                <button type="button" class="pill" data-cat="recent">最近更新</button>
+              </div>
+              <div class="pillrow">
+                <input id="storeSearch" class="hud-input" type="search" placeholder="搜索壁纸、角色或配色…">
+                <button type="button" class="pill" id="storeRefreshBtn">刷新目录</button>
+              </div>
+            </div>
+
+            <div class="store-grid" id="storeGrid"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="storeDlg" class="hud-dialog" closedby="any" aria-labelledby="dlgTitle">
+    <div class="dlg-head">
+      <div>
+        <span class="store-badge" id="dlgKind">素材详情</span>
+        <h3 id="dlgTitle">素材详情</h3>
+      </div>
+      <button type="button" class="close small" id="dlgClose" aria-label="关闭弹窗">✕</button>
+    </div>
+    <div class="dlg-body">
+      <div class="dlg-media" id="dlgMedia">
+        <img id="dlgImg" src="" alt="">
+      </div>
+      <div class="dlg-pack-nav" id="dlgPackNav" hidden>
+        <div class="pillrow">
+          <button type="button" class="pill" id="dlgPrev" aria-label="上一张">‹</button>
+          <span class="dlg-pack-counter" id="dlgCounter">1 / 1</span>
+          <button type="button" class="pill" id="dlgNext" aria-label="下一张">›</button>
+        </div>
+        <button type="button" class="pill" id="dlgSource" hidden>原作发布页</button>
+      </div>
+      <div class="dlg-strip" id="dlgStrip" hidden></div>
+      <p id="dlgDesc"></p>
+      <p class="dlg-status" id="dlgStatus" role="status"></p>
+      <div class="dlg-foot">
+        <small id="dlgAuthor">By Catstella</small>
+        <div class="pillrow">
+          <button type="button" class="pill" id="dlgUninstall" hidden>卸载</button>
+          <button type="button" class="pill" id="dlgInstallAll" hidden>安装整套</button>
+          <button type="button" class="pill on" id="dlgUse">✦ 立即应用</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="tauri-widget-api.js"></script>
+  <script src="side-quota.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>
