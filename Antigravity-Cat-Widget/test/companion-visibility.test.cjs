@@ -1,7 +1,13 @@
+const fs = require('node:fs');
+const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { CompanionVisibility } = require('../src/domain/companion-visibility.cjs');
 const { ForegroundMonitor, hostPlacement, placeDraggedWidget, facingAt } = require('../src/domain/host-visibility.cjs');
+const nativeDir = path.join(__dirname, '..', 'src', 'native');
+const hasLegacyNativeHelper = process.platform === 'win32'
+  && fs.existsSync(nativeDir)
+  && fs.readdirSync(nativeDir).some((name) => /^ForegroundHost.*\.exe$/i.test(name));
 test('drag facing follows the image center and stays stable in the center dead zone', () => {
   const area = { x:-1280, width:1280 };
   assert.equal(facingAt(-644, area, 'right'), 'right');
@@ -61,7 +67,8 @@ test('mutual visibility uses real foreground and retains the Web owner through a
   assert.equal(policy.hideDesktop('both', web, { foregroundKind: 'browser' }), false);
   assert.equal(policy.hideDesktop('prefer-web', { online: false }, { foregroundKind: 'shell' }), false);
 });
-test('versioned native helper reports actual foreground metadata without controlling a window', async () => {
+test('versioned native helper reports actual foreground metadata without controlling a window', async (t) => {
+  if (!hasLegacyNativeHelper) { t.skip('legacy C# ForegroundHost*.exe helper not built'); return; }
   const monitor = new ForegroundMonitor();
   try {
     const state = await new Promise((resolve, reject) => {

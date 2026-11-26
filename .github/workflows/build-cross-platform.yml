@@ -20,7 +20,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: desktop
@@ -40,6 +40,9 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
       - run: npm ci
       - run: npm run prepare:frontend
       - run: npm run test:rust
@@ -82,7 +85,7 @@ jobs:
     name: Build ${{ matrix.platform }} ${{ matrix.arch }} (Tauri experimental)
     if: github.event_name != 'workflow_dispatch' || !inputs.windows_only
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -99,6 +102,9 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - if: runner.os == 'Linux'
         run: |
           sudo apt-get update

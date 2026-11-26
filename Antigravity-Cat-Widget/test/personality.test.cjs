@@ -1,9 +1,13 @@
+const fs=require('node:fs'),path=require('node:path');
 const test=require('node:test'),assert=require('node:assert/strict');
 const {Personality}=require('../src/renderer/personality.js');
 const {PetBehavior}=require('../src/renderer/pet-behavior.js');
 const {ModelActivity}=require('../src/domain/model-activity.cjs');
 const {hostPlacement,ForegroundMonitor}=require('../src/domain/host-visibility.cjs');
-test('native heartbeat stays live while stationary and stale helper is replaced',async()=>{
+const nativeDir=path.join(__dirname,'..','src','native');
+const hasLegacyNativeHelper=process.platform==='win32'&&fs.existsSync(nativeDir)&&fs.readdirSync(nativeDir).some(name=>/^ForegroundHost.*\.exe$/i.test(name));
+test('native heartbeat stays live while stationary and stale helper is replaced',async t=>{
+ if(!hasLegacyNativeHelper){t.skip('legacy C# ForegroundHost*.exe helper not built');return;}
  const monitor=new ForegroundMonitor();try{
   const next=()=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('heartbeat timeout')),3500);monitor.once('change',s=>{clearTimeout(timer);resolve(s);});});
   let waiting=next();monitor.start();await waiting;
@@ -159,7 +163,8 @@ test('host placement fits negative-coordinate workspaces and hides small or inac
  assert.equal(compact.bounds.height,compactArea.height);
  assert.ok(compact.bounds.height-compact.scale>=245,'leave room for the bubble above the character');
 });
-test('native foreground helper returns bounded metadata without interacting with windows',async()=>{
+test('native foreground helper returns bounded metadata without interacting with windows',async t=>{
+ if(!hasLegacyNativeHelper){t.skip('legacy C# ForegroundHost*.exe helper not built');return;}
  const monitor=new ForegroundMonitor();try{const state=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('helper timeout')),5000);monitor.once('change',s=>{clearTimeout(timer);resolve(s);});monitor.start();});assert(['host','self','other','unknown'].includes(state.kind));}finally{monitor.stop();}
 });
 

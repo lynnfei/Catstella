@@ -153,7 +153,7 @@ function getUserShortcutPaths(){
 function runPowerShellSync(script,extraEnv={}){
  const stdout=execFileSync("powershell.exe",["-NoProfile","-NonInteractive","-Command",script],{
   encoding:"utf8",
-  timeout:3000,
+  timeout:12000,
   windowsHide:true,
   env:{...process.env,...extraEnv}
  });
@@ -162,7 +162,7 @@ function runPowerShellSync(script,extraEnv={}){
 
 async function runPowerShellAsync(script,extraEnv={}){
  const stdout=await execFileAsync("powershell.exe",["-NoProfile","-NonInteractive","-Command",script],{
-  timeout:4000,
+  timeout:12000,
   windowsHide:true,
   env:{...process.env,...extraEnv}
  });

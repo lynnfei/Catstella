@@ -65,6 +65,7 @@
 - [ ] **外观：耐力条进阶自定义。** 支持样式细节与配色颜色自定义。
 - [ ] **全局：通知提示体系。** 覆盖内容商店上新提醒与 App 新版本更新提示。
 - [ ] **全局：性能优化。** 重点优化设置中心打开与首屏渲染速度。
+- [ ] **macOS 宿主窗口零权限跟随（借鉴 PR #1）。** 参考 `ForegroundHost-mac.swift` 的 `CGWindowListCopyWindowInfo` + `NSWorkspace` 零辅助功能权限方案，补齐 `src-tauri/src/foreground.rs` 的 macOS 端宿主探测。
 
 ## 中长期与探索
 
