@@ -32,6 +32,9 @@ const shared = path.join(root, 'Antigravity-Cat-Widget/src/renderer');
           kind: 'wallpaper',
           name: `系列图 ${pos}`,
           description: `Series frame ${pos}`,
+          credit: '原作：森山白月（B站 UID 2146089，授权 Catstella 使用与分发）',
+          size: 1246121,
+          updatedAt: '2026-11-07',
           preview: svg,
           pack: { id: 'series-pack', name: '系列图包测试', position: pos, source: 'https://www.bilibili.com/video/BV17PxC6SERc/' }
         }))
@@ -46,6 +49,7 @@ const shared = path.join(root, 'Antigravity-Cat-Widget/src/renderer');
         subscribe:fn=>{subscriber=fn;},onNavigate:()=>{},command:async()=>{},audio:async()=>null,host:async()=>({}),
         online:async (op,id)=>{
           if(op==='catalog')return {ok:true,items:structuredClone(window.catalog),offline:false};
+          if(op==='preview-theme')return {ok:true,palette:'ocean',opacity:73};
           if(op==='download')downloads.push(id);
           if(op==='install')installs.push(id);
           return {ok:true};
@@ -80,6 +84,16 @@ const shared = path.join(root, 'Antigravity-Cat-Widget/src/renderer');
     await page.locator('#storeDlg[open]').waitFor();
     assert.equal(await page.locator('#dlgStrip .dlg-strip-thumb').count(), 3);
     assert.equal(await page.locator('#dlgCounter').textContent(), '1 / 3');
+    assert.equal(await page.locator('#dlgAuthor').textContent(), 'By 森山白月');
+    assert.equal(await page.locator('#dlgSource').isVisible(), true);
+    assert.ok((await page.locator('#dlgMeta .dlg-meta-chip').count()) >= 3);
+    await page.locator('#dlgImmersive').click();
+    await page.locator('#immersiveDlg[open]').waitFor();
+    await page.locator('#immToggleChat').click();
+    assert.equal(await page.locator('#immMockChat').isVisible(), false);
+    await page.locator('#immNext').click();
+    assert.equal(await page.locator('#immCounter').textContent(), '2 / 3');
+    await page.locator('#immClose').click();
     await page.locator('#dlgStrip .dlg-strip-thumb').nth(1).click();
     assert.equal(await page.locator('#dlgCounter').textContent(), '2 / 3');
     await page.locator('#dlgInstallAll').click();
@@ -146,7 +160,33 @@ const shared = path.join(root, 'Antigravity-Cat-Widget/src/renderer');
       await Promise.resolve();
     });
     assert.equal(await page.evaluate(() => started[0].paused),true);
+    await page.locator('#dlgClose').click();
+    await page.locator('#storeSearch').fill('');
+    await page.locator('[data-detail="asset-2"]').click();
+    await page.locator('#storeDlg[open]').waitFor();
+    await page.waitForSelector('.dlg-theme-compare');
+    await page.locator('#dlgClose').click();
+
+    await page.locator('#side-nav [data-p="quota"]').click();
+    await page.locator('#sqOn').click();
+    await page.locator('[data-group="sqStyle"] [data-val="neon"]').click();
+    await page.locator('#sqPalettes [data-sqp="emerald"]').click();
+    await page.waitForFunction(() => {
+      const sq = document.getElementById('hudSq');
+      return sq?.dataset.sqStyle === 'neon' && sq?.style.getPropertyValue('--sq-accent') === '#16a374';
+    });
+
+    await page.evaluate(() => {
+      publish({ settings: { ...fixture.settings, seenCatalogIds: ['asset-0'] } });
+      window.catalog.push({ id: 'fresh-new-wall', kind: 'wallpaper', name: '全新上新壁纸', preview: window.catalog[1].preview });
+      document.getElementById('storeRefreshBtn').click();
+    });
+    await page.waitForSelector('#hudNoticeBar:not([hidden])');
+    assert.equal(await page.locator('#dot-store').isVisible(), true);
+    await page.locator('[data-notice-dismiss-store]').click();
+    assert.equal(await page.locator('#hudNoticeBar').isVisible(), false);
+
     assert.deepEqual(errors,[]);
-    console.log('PASS: 100 quota snapshots preserve card identity, focus and scroll; install/use labels update in place; catalog refresh, search and details work.');
+    console.log('PASS: 100 quota snapshots preserve card identity, focus and scroll; install/use labels update in place; catalog refresh, search, immersive preview, credits, stamina styling and notices work.');
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

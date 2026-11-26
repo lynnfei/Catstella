@@ -21,8 +21,8 @@
         <button type="button" class="tab on" data-p="pet" aria-current="page"><i>◉</i><span>桌宠</span></button>
         <button type="button" class="tab" data-p="skin"><i>▦</i><span>外观</span></button>
         <button type="button" class="tab" data-p="quota"><i>∿</i><span>用量</span></button>
-        <button type="button" class="tab" data-p="link"><i>⌁</i><span>连接</span></button>
-        <button type="button" class="tab" data-p="store"><i>✦</i><span>商店</span></button>
+        <button type="button" class="tab" data-p="link"><i>⌁</i><span>连接</span><em class="tab-dot" id="dot-link" hidden></em></button>
+        <button type="button" class="tab" data-p="store"><i>✦</i><span>商店</span><em class="tab-dot" id="dot-store" hidden></em></button>
       </nav>
 
       <div class="top-drag-spacer" data-tauri-drag-region></div>
@@ -38,7 +38,7 @@
       <!-- 左侧：HUD 实时预览舱（壁纸 + 耐力计 + 居中桌宠 + 气泡 + 形态快切） -->
       <aside class="pod" aria-label="基米实时预览舱">
         <div class="hud" id="hud-viewport">
-          <img class="hud-wall-bg" id="hudWallBg" alt="" aria-hidden="true">
+          <img class="hud-wall-bg" id="hudWallBg" alt="" aria-hidden="true" decoding="async">
           <div class="hud-wall-scrim" id="hudWallScrim" aria-hidden="true"></div>
 
           <svg class="bg" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid slice" fill="none" stroke="currentColor" aria-hidden="true">
@@ -66,7 +66,7 @@
           <div class="hud-stage" id="hudStage">
             <div class="hud-sq" id="hudSq" aria-label="旁侧耐力条实时预览"></div>
             <button type="button" class="cat" id="cat" aria-label="点击逗弄猫猫">
-              <img id="hud-pet-img" alt="基米乃实时预览">
+              <img id="hud-pet-img" alt="基米乃实时预览" decoding="async">
             </button>
           </div>
 
@@ -95,6 +95,8 @@
             <button type="button" class="undo-pill" id="undo" title="恢复到打开设置时的状态">↶ 撤回</button>
           </div>
         </div>
+
+        <div class="hud-notices" id="hudNoticeBar" hidden aria-live="polite"></div>
 
         <div class="scroll" id="main-scroll">
           <!-- 1. 桌宠频道 -->
@@ -293,6 +295,10 @@
                   <button type="button" class="pill on" id="saveTheme">保存主题</button>
                 </div>
                 <div class="custom-themes" id="custom-theme-list"></div>
+                <div class="row">
+                  <span>旁侧耐力计配色</span>
+                  <button type="button" class="pill" id="jumpSqCustom">耐力条配色 →</button>
+                </div>
               </div>
             </div>
           </section>
@@ -393,6 +399,32 @@
                     </div>
                   </div>
                 </div>
+                <div class="row">
+                  <span>外观风格</span>
+                  <div class="pillrow" data-group="sqStyle">
+                    <button type="button" class="pill" data-val="glass">微晶玻璃</button>
+                    <button type="button" class="pill" data-val="neon">霓虹辉光</button>
+                    <button type="button" class="pill" data-val="minimal">极简无框</button>
+                  </div>
+                </div>
+                <div class="row">
+                  <span>耐力条配色</span>
+                  <div class="sq-palettes" id="sqPalettes" role="group" aria-label="耐力条配色">
+                    <button type="button" class="sq-swatch" data-sqp="theme" title="跟随当前皮肤">皮肤</button>
+                    <button type="button" class="sq-swatch" data-sqp="violet" title="星轨紫" style="--sw-c:#7a52db"></button>
+                    <button type="button" class="sq-swatch" data-sqp="pink" title="霓音粉" style="--sw-c:#e84c93"></button>
+                    <button type="button" class="sq-swatch" data-sqp="ocean" title="晴空蓝" style="--sw-c:#3879d6"></button>
+                    <button type="button" class="sq-swatch" data-sqp="emerald" title="翡翠森" style="--sw-c:#16a374"></button>
+                    <button type="button" class="sq-swatch" data-sqp="sunset" title="晚霞橙" style="--sw-c:#e56a46"></button>
+                    <button type="button" class="sq-swatch" data-sqp="gold" title="星辉金" style="--sw-c:#d69e2e"></button>
+                    <label class="sq-color-pick" title="自定义颜色"><input id="sqColor" type="color" value="#7a52db" aria-label="耐力条自定义色"></label>
+                  </div>
+                </div>
+                <div class="slider compact-slider">
+                  <span class="float" id="sqOpacityF">100%</span>
+                  <input class="range" id="sqOpacity" type="range" min="40" max="100" step="5" value="100" aria-label="耐力条透明度">
+                </div>
+                <div class="big">耐力条透明度 <span><b id="sqOpacityB">100</b>%</span></div>
               </div>
 
               <div class="card card-full">
@@ -451,7 +483,7 @@
               <div class="card card-full">
                 <span class="ico" aria-hidden="true">★</span>
                 <h3>关于 Catstella 与基线恢复</h3>
-                <p class="desc" id="about-ver">Catstella v0.7.0 · 作者 lynnfei · 原作 Monokumakuki (Antigravity Star Suite)</p>
+                <p class="desc" id="about-ver">Catstella v0.7.1 · 作者 lynnfei · 原作 Monokumakuki (Antigravity Star Suite)</p>
                 <div class="row">
                   <label class="inline-sw"><span>自动检查更新</span><input class="sw" id="autoUpdateCheck" type="checkbox" switch></label>
                   <div class="pillrow">
@@ -517,25 +549,36 @@
         <span class="store-badge" id="dlgKind">素材详情</span>
         <h3 id="dlgTitle">素材详情</h3>
       </div>
-      <button type="button" class="close small" id="dlgClose" aria-label="关闭弹窗">✕</button>
+      <div class="pillrow">
+        <button type="button" class="pill" id="dlgImmersive" hidden>⛶ 沉浸预览</button>
+        <button type="button" class="close small" id="dlgClose" aria-label="关闭弹窗">✕</button>
+      </div>
     </div>
     <div class="dlg-body">
       <div class="dlg-media" id="dlgMedia">
         <img id="dlgImg" src="" alt="">
       </div>
+      <div class="dlg-meta-chips" id="dlgMeta" hidden></div>
       <div class="dlg-pack-nav" id="dlgPackNav" hidden>
         <div class="pillrow">
           <button type="button" class="pill" id="dlgPrev" aria-label="上一张">‹</button>
           <span class="dlg-pack-counter" id="dlgCounter">1 / 1</span>
           <button type="button" class="pill" id="dlgNext" aria-label="下一张">›</button>
         </div>
-        <button type="button" class="pill" id="dlgSource" hidden>原作发布页</button>
       </div>
       <div class="dlg-strip" id="dlgStrip" hidden></div>
       <p id="dlgDesc"></p>
+      <div class="dlg-credit-card" id="dlgCreditCard">
+        <div class="dlg-credit-main">
+          <span class="dlg-credit-kicker">CREATOR &amp; CREDITS</span>
+          <strong id="dlgAuthor">By Catstella</strong>
+          <small id="dlgLicense" hidden></small>
+        </div>
+        <button type="button" class="pill on" id="dlgSource" hidden>前往原作页 ↗</button>
+      </div>
       <p class="dlg-status" id="dlgStatus" role="status"></p>
       <div class="dlg-foot">
-        <small id="dlgAuthor">By Catstella</small>
+        <span class="dlg-foot-note" id="dlgFootNote">SHA-256 校验安装</span>
         <div class="pillrow">
           <button type="button" class="pill" id="dlgUninstall" hidden>卸载</button>
           <button type="button" class="pill" id="dlgInstallAll" hidden>安装整套</button>
@@ -543,6 +586,43 @@
         </div>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="immersiveDlg" class="immersive-dialog" closedby="any" aria-labelledby="immTitle">
+    <div class="imm-stage" id="immStage" data-palette="violet">
+      <img class="imm-wall" id="immWall" alt="">
+      <div class="imm-scrim" id="immScrim"></div>
+      <div class="imm-mock-chat" id="immMockChat">
+        <div class="imm-bubble-user" id="immUserBubble">这组壁纸和配色在 Antigravity 里的沉浸感如何？</div>
+        <div class="imm-bubble-ai" id="immAiBubble">对比度、透明度与毛玻璃卡片层次已就绪，拖动下方滑块可即时试看实际效果～</div>
+        <img class="imm-mock-pet" id="immMockPet" alt="" aria-hidden="true">
+      </div>
+    </div>
+    <header class="imm-top">
+      <div class="imm-title-box">
+        <span class="store-badge" id="immKind">沉浸预览</span>
+        <h3 id="immTitle">壁纸预览</h3>
+        <small id="immCredit">By Catstella</small>
+      </div>
+      <div class="pillrow">
+        <button type="button" class="pill" id="immSource" hidden>原作页 ↗</button>
+        <button type="button" class="close" id="immClose" aria-label="退出沉浸预览">✕</button>
+      </div>
+    </header>
+    <footer class="imm-dock">
+      <div class="pillrow" id="immNav" hidden>
+        <button type="button" class="pill" id="immPrev" aria-label="上一张">‹</button>
+        <span class="imm-counter" id="immCounter">1 / 1</span>
+        <button type="button" class="pill" id="immNext" aria-label="下一张">›</button>
+      </div>
+      <div class="imm-controls">
+        <button type="button" class="pill on" id="immToggleChat">模拟对话</button>
+        <button type="button" class="pill" id="immCompare" hidden>对比当前</button>
+        <label class="imm-slider-lbl" id="immOpWrap"><span>可见度 <b id="immOpVal">55%</b></span><input id="immOp" type="range" min="0" max="100" value="55"></label>
+        <label class="imm-slider-lbl" id="immScrimWrap"><span>遮罩 <b id="immScrimVal">25%</b></span><input id="immScrim" type="range" min="0" max="60" value="25"></label>
+      </div>
+      <button type="button" class="store-cta" id="immApply">✦ 立即应用</button>
+    </footer>
   </dialog>
 
   <script src="tauri-widget-api.js"></script>

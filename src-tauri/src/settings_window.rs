@@ -8,6 +8,7 @@ use std::thread;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 static SETTINGS_OPENING: AtomicBool = AtomicBool::new(false);
+static SETTINGS_SHOWN: AtomicBool = AtomicBool::new(false);
 
 struct OpeningGuard;
 
@@ -109,6 +110,7 @@ pub fn open_settings(app: &AppHandle, state: &Arc<SharedApp>, target_page: &str)
             format!("src/renderer/settings.html#{}", normalize_page(&page))
         };
 
+        SETTINGS_SHOWN.store(false, Ordering::Release);
         let mut builder = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App(rel_url.into()))
             .title("Catstella · 设置中心")
             .inner_size(pw, ph)
@@ -117,6 +119,7 @@ pub fn open_settings(app: &AppHandle, state: &Arc<SharedApp>, target_page: &str)
             .decorations(false)
             .shadow(true)
             .resizable(true)
+            .visible(false)
             .center();
         #[cfg(windows)]
         {
@@ -132,13 +135,17 @@ pub fn open_settings(app: &AppHandle, state: &Arc<SharedApp>, target_page: &str)
         match builder.build()
         {
             Ok(win) => {
-                let _ = win.unminimize();
-                let _ = win.show();
-                let _ = win.set_focus();
                 // Close MUST destroy the WebView2 instance so idle memory drops back to ~77 MB.
                 win.on_window_event(|event| {
                     if let WindowEvent::Destroyed = event {
-                        // Destroyed natively without keeping a hidden resident WebView2 instance.
+                        SETTINGS_SHOWN.store(false, Ordering::Release);
+                    }
+                });
+                let app_fallback = app.clone();
+                thread::spawn(move || {
+                    thread::sleep(std::time::Duration::from_millis(450));
+                    if !SETTINGS_SHOWN.load(Ordering::Acquire) {
+                        show_ready_settings(&app_fallback);
                     }
                 });
             }
@@ -147,6 +154,15 @@ pub fn open_settings(app: &AppHandle, state: &Arc<SharedApp>, target_page: &str)
             }
         }
     });
+}
+
+pub fn show_ready_settings(app: &AppHandle) {
+    SETTINGS_SHOWN.store(true, Ordering::Release);
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
 }
 
 pub fn close_settings(app: &AppHandle) {

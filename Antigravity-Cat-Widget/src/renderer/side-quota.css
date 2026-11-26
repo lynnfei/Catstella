@@ -130,6 +130,28 @@ body[data-theme="onyx"] {
 
 .side-widget-visual {
   display: block;
+  opacity: var(--sq-opacity, 1);
+  transition: opacity 160ms ease-out;
+}
+
+.hud-sq,
+.sq-preview {
+  opacity: var(--sq-opacity, 1);
+}
+
+[data-sq-style="neon"] .gauge-svg {
+  filter:
+    drop-shadow(0 0 8px var(--sq-glow, rgba(164, 120, 255, 0.55)))
+    drop-shadow(0 2px 6px rgba(18, 12, 36, 0.38));
+}
+
+[data-sq-style="minimal"] {
+  --sq-glass-bg: rgba(18, 16, 30, 0.34);
+  --sq-glass-border: rgba(255, 255, 255, 0.14);
+}
+
+[data-sq-style="minimal"] .gauge-svg {
+  filter: none;
 }
 
 .gauge-svg {

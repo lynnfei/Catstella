@@ -90,9 +90,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: mac, runner: macos-15, arch: arm64 }
-          - { platform: mac, runner: macos-15-intel, arch: x64 }
-          - { platform: linux, runner: ubuntu-24.04, arch: x64 }
+          - { platform: mac, runner: macos-15-intel, arch: arm64, target: aarch64-apple-darwin }
+          - { platform: mac, runner: macos-15-intel, arch: x64, target: "" }
+          - { platform: linux, runner: ubuntu-24.04, arch: x64, target: "" }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,9 +102,12 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.platform }}-${{ matrix.arch }}
       - if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -118,8 +121,13 @@ jobs:
           version=$(node -p 'require("./package.json").version')
           mkdir -p dist/installers
           if [[ "${{ matrix.platform }}" == "mac" ]]; then
-            npx --yes @tauri-apps/cli@2 build --config '{"bundle":{"active":true}}' --bundles dmg
-            dmg=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -quit)
+            if [[ -n "${{ matrix.target }}" ]]; then
+              npx --yes @tauri-apps/cli@2 build --target "${{ matrix.target }}" --config '{"bundle":{"active":true}}' --bundles dmg
+              dmg=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name '*.dmg' -type f -print -quit)
+            else
+              npx --yes @tauri-apps/cli@2 build --config '{"bundle":{"active":true}}' --bundles dmg
+              dmg=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f -print -quit)
+            fi
             test -n "$dmg"
             cp "$dmg" "dist/installers/Catstella-$version-mac-${{ matrix.arch }}.dmg"
           else
@@ -183,10 +191,10 @@ jobs:
           sha256sum "${files[@]}" > SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
           cat > notes.md <<'EOF'
-          - **Tauri 2 原生底座转正**：桌面端全面迁移至 Rust + WebView2 原生双窗体架构，Windows 安装包与运行时体积大幅精简，旧 Electron 外壳已封存至 `archive/legacy-electron/`。
-          - **设置中心重构 & 系列图包**：5 频道 Bento HUD 设置中心（桌宠 / 外观 / 用量 / 连接 / 商店），支持本地 WAV 采样直听、真实 GitHub 在线商店下载校验以及系列图包堆叠卡片展示。
-          - **用量耐力条实装**：统一桌宠与预览舱的平面四芒星端点、紫红沙漏编排器图标与能量条视觉；打通 Antigravity `Claude / GPT` 配额页并清理 Argon 独立计量。
-          - **跨浏览器伴侣联动**：Web 伴侣 v1.5.2 修复 Firefox 内容脚本联动与零等待互动音效，双端统一默认称呼为“人类”。
+          - **内容商店体验升级**：新增全屏「沉浸式壁纸 / 主题预览」（支持模拟对话叠加、可见度/遮罩试调与系列切换）、规格/状态 Chips 详情页以及醒目的原作者 Credits 署名与原作发布页直达按钮。
+          - **耐力条高阶自定义**：旁侧耐力计新增三种外观风格（微晶玻璃 / 霓虹辉光 / 极简无框）、6 套独立配色与任意自定义色盘，以及 40–100% 透明度调节，桌面端与设置预览舱实时同步。
+          - **全局通知与性能提速**：新增应用更新横幅与内容商店上新角标检测；设置中心改用先渲染后显窗、按当前页签按需更新与图片懒加载，大幅压缩冷启动显窗耗时。
+          - **Tauri 2 底座与跨端联动**：沿用 `0.7.0` 正式 Tauri 2 + WebView2 架构、5 频道 Bento HUD 与 Web 伴侣 v1.5.2 联动；`macOS arm64` 与 `x64` 已改为稳定交叉编译出包。
           - **附带平台构建**：Windows x64 安装包内含可选 Web 扩展；macOS（`.dmg`）与 Linux（`.AppImage` / `.deb`）为 Tauri 云端构建实验包，暂不支持 Windows 专用的宿主窗口跟随，Firefox XPI 未签名，macOS 未公证。
           - 使用 `SHA256SUMS.txt` 校验下载文件。
           EOF

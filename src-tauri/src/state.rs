@@ -29,6 +29,8 @@ const ALLOWED_SIDE_DISTANCES: &[&str] = &["compact", "normal", "relaxed"];
 const ALLOWED_SIDE_SIZES: &[&str] = &["sm", "md", "lg"];
 const ALLOWED_SIDE_MODES: &[&str] = &["remaining", "used"];
 const ALLOWED_SIDE_SOURCES: &[&str] = &["auto", "agy", "web"];
+const ALLOWED_SIDE_PALETTES: &[&str] = &["theme", "violet", "pink", "ocean", "emerald", "sunset", "gold", "custom"];
+const ALLOWED_SIDE_STYLES: &[&str] = &["glass", "neon", "minimal"];
 const VALID_PERSISTENT_STATES: &[&str] = &["idle", "thinking", "warning", "error", "offline"];
 const VALID_TRANSIENT_STATES: &[&str] = &["pressed", "release", "petting", "success", "error"];
 pub const ALLOWED_SETTINGS_KEYS: &[&str] = &[
@@ -59,6 +61,10 @@ pub const ALLOWED_SETTINGS_KEYS: &[&str] = &[
     "sideQuotaSize",
     "sideQuotaMode",
     "sideQuotaSource",
+    "sideQuotaPalette",
+    "sideQuotaColor",
+    "sideQuotaStyle",
+    "sideQuotaOpacity",
     "easterEggs",
     "ambientChatter",
     "autoUpdateCheck",
@@ -72,6 +78,8 @@ pub const ALLOWED_SETTINGS_KEYS: &[&str] = &[
     "bubbleTint",
     "bubbleOpacity",
     "seenReleaseNotes",
+    "seenCatalogIds",
+    "dismissedUpdateVersion",
     "x",
     "y",
     "desktopArtShiftX",
@@ -226,6 +234,10 @@ pub fn default_settings() -> Map<String, Value> {
         "sideQuotaSize": "md",
         "sideQuotaMode": "remaining",
         "sideQuotaSource": "auto",
+        "sideQuotaPalette": "theme",
+        "sideQuotaColor": "",
+        "sideQuotaStyle": "glass",
+        "sideQuotaOpacity": 100,
         "characterPack": "gemini-star-v1",
         "syncCharacter": true,
         "syncWallpaper": true,
@@ -240,6 +252,8 @@ pub fn default_settings() -> Map<String, Value> {
         "customHonorific": "",
         "customThemes": [],
         "seenReleaseNotes": [],
+        "seenCatalogIds": [],
+        "dismissedUpdateVersion": "",
         "bubbleTint": "",
         "bubbleOpacity": 98,
         "headPatTotal": 0,
@@ -339,6 +353,26 @@ fn sanitize_themes(input: Option<&Value>) -> Value {
     Value::Array(out)
 }
 
+fn sanitize_seen_catalog_ids(input: Option<&Value>) -> Value {
+    let Some(arr) = input.and_then(|v| v.as_array()) else {
+        return json!([]);
+    };
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for val in arr {
+        let Some(s) = val.as_str().map(|st| st.trim()).filter(|st| is_valid_slug(st)) else {
+            continue;
+        };
+        if seen.insert(s.to_string()) {
+            out.push(json!(s));
+            if out.len() >= 128 {
+                break;
+            }
+        }
+    }
+    Value::Array(out)
+}
+
 fn sanitize_seen_release_notes(input: Option<&Value>) -> Value {
     let Some(arr) = input.and_then(|v| v.as_array()) else {
         return json!([]);
@@ -432,6 +466,17 @@ pub fn sanitize_settings(input: &Map<String, Value>) -> Map<String, Value> {
     s.insert("sideQuotaSize".into(), json!(as_enum(s.get("sideQuotaSize"), ALLOWED_SIDE_SIZES, "md")));
     s.insert("sideQuotaMode".into(), json!(as_enum(s.get("sideQuotaMode"), ALLOWED_SIDE_MODES, "remaining")));
     s.insert("sideQuotaSource".into(), json!(as_enum(s.get("sideQuotaSource"), ALLOWED_SIDE_SOURCES, "auto")));
+    s.insert("sideQuotaPalette".into(), json!(as_enum(s.get("sideQuotaPalette"), ALLOWED_SIDE_PALETTES, "theme")));
+    let side_color = match s.get("sideQuotaColor").and_then(|v| v.as_str()) {
+        Some(c) if is_hex_color(c) => c.to_ascii_lowercase(),
+        _ => String::new(),
+    };
+    s.insert("sideQuotaColor".into(), json!(side_color));
+    s.insert("sideQuotaStyle".into(), json!(as_enum(s.get("sideQuotaStyle"), ALLOWED_SIDE_STYLES, "glass")));
+    s.insert(
+        "sideQuotaOpacity".into(),
+        json!(as_finite_f64(s.get("sideQuotaOpacity"), 100.0, 40.0, 100.0).round() as i64),
+    );
     s.insert("manualPercent".into(), as_opt_finite_f64(s.get("manualPercent"), 0.0, 100.0));
     s.insert("manualWeeklyPercent".into(), as_opt_finite_f64(s.get("manualWeeklyPercent"), 0.0, 100.0));
 
@@ -464,6 +509,14 @@ pub fn sanitize_settings(input: &Map<String, Value>) -> Map<String, Value> {
 
     let seen_notes = sanitize_seen_release_notes(s.get("seenReleaseNotes"));
     s.insert("seenReleaseNotes".into(), seen_notes);
+    let seen_catalog = sanitize_seen_catalog_ids(s.get("seenCatalogIds"));
+    s.insert("seenCatalogIds".into(), seen_catalog);
+    let dismissed_ver = s
+        .get("dismissedUpdateVersion")
+        .and_then(|v| v.as_str())
+        .map(|st| st.trim().chars().take(32).collect::<String>())
+        .unwrap_or_default();
+    s.insert("dismissedUpdateVersion".into(), json!(dismissed_ver));
 
     let tint = match s.get("bubbleTint").and_then(|v| v.as_str()) {
         Some(c) if is_hex_color(c) => c.to_ascii_lowercase(),
@@ -1461,6 +1514,20 @@ mod tests {
         raw.insert("userHonorificMode".into(), json!("custom"));
         raw.insert("customHonorific".into(), json!("朋友"));
         assert_eq!(sanitize_settings(&raw)["customHonorific"], "朋友");
+
+        raw.insert("sideQuotaPalette".into(), json!("bogus"));
+        raw.insert("sideQuotaColor".into(), json!("#FF66AA"));
+        raw.insert("sideQuotaStyle".into(), json!("bad-style"));
+        raw.insert("sideQuotaOpacity".into(), json!(12));
+        raw.insert("seenCatalogIds".into(), json!(["bad/../id", "pack-1", "pack-1", "pack-2"]));
+        raw.insert("dismissedUpdateVersion".into(), json!("  0.8.0  "));
+        let s2 = sanitize_settings(&raw);
+        assert_eq!(s2["sideQuotaPalette"], "theme");
+        assert_eq!(s2["sideQuotaColor"], "#ff66aa");
+        assert_eq!(s2["sideQuotaStyle"], "glass");
+        assert_eq!(s2["sideQuotaOpacity"], 40);
+        assert_eq!(s2["seenCatalogIds"], json!(["pack-1", "pack-2"]));
+        assert_eq!(s2["dismissedUpdateVersion"], "0.8.0");
     }
 
     #[test]

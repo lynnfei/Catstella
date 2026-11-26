@@ -28,10 +28,20 @@
   let startup = { supported: false, autoStart: false, hostLink: false, watcherRegistered: false };
   let catalogItems = [];
   let catalogOffline = true;
+  let newCatalogIds = new Set();
+  let storeNoticeDismissed = false;
+  let updateNotice = null;
+  let themePreviewCache = new Map();
   let activePage = "pet";
   let activeStoreCat = "all";
   let activeDlgEntry = null;
   let activeDlgIndex = 0;
+  let immEntry = null;
+  let immIndex = 0;
+  let immChatVisible = true;
+  let immCompareCurrent = false;
+  let immCustomOp = null;
+  let immCustomScrim = null;
   let storeGridSignature = null;
   let storeHeroSignature = null;
   let faceTimer = 0;
@@ -56,7 +66,7 @@
     return "pet";
   }
 
-  function showPage(rawPage) {
+  function showPage(rawPage, { renderPage = true } = {}) {
     const p = normalizePage(rawPage);
     activePage = p;
     $$("#side-nav .tab").forEach((t) => {
@@ -67,6 +77,7 @@
     });
     $$(".page").forEach((pg) => pg.classList.toggle("on", pg.dataset.p === p));
     if ($("#main-scroll")) $("#main-scroll").scrollTop = 0;
+    if (renderPage) renderActivePage(p);
   }
 
   function initSwitchFallback() {
@@ -127,10 +138,18 @@
 
   // Reuse the live gauge geometry, palette, unknown state and fill direction.
   function renderStamina(mount, pct5, pct1, variant, orch, scale = 1) {
+    const s = data?.settings || {};
     mount.style.setProperty("--gauge-scale", String(scale));
+    window.CatstellaSideQuota.applyGaugeAppearance(mount, {
+      themePreset: data?.dreamSkin?.themePreset || "violet",
+      palette: s.sideQuotaPalette || "theme",
+      color: s.sideQuotaColor || "",
+      style: s.sideQuotaStyle || "glass",
+      opacity: s.sideQuotaOpacity ?? 100
+    });
     window.CatstellaSideQuota.updateGaugeMount(mount, variant, mount.id, {
       fiveHour: pct5, weekly: pct1, ghost5h: pct5,
-      quotaMode: data?.settings?.sideQuotaMode === "used" ? "used" : "remaining",
+      quotaMode: s.sideQuotaMode === "used" ? "used" : "remaining",
       side: "left", orchestrator: orch, draining: false, surging: false
     });
   }
@@ -376,7 +395,7 @@
       if (wallGrid.dataset.sig !== sig) {
         wallGrid.dataset.sig = sig;
         wallGrid.innerHTML = walls.map((w) =>
-          `<button type="button" class="wall" data-wid="${esc(w.id)}" data-fp="${encodeURIComponent(w.filePath || "")}" title="${esc(w.title || w.id)}"><img src="${esc(w.preview || "")}" alt="${esc(w.title || w.id)}"><span>${esc(w.title || w.fileName || w.id)}</span></button>`
+          `<button type="button" class="wall" data-wid="${esc(w.id)}" data-fp="${encodeURIComponent(w.filePath || "")}" title="${esc(w.title || w.id)}"><img loading="lazy" decoding="async" src="${esc(w.preview || "")}" alt="${esc(w.title || w.id)}"><span>${esc(w.title || w.fileName || w.id)}</span></button>`
         ).join("");
         $$("#walls .wall").forEach((btn) => {
           btn.onclick = () => {
@@ -447,32 +466,36 @@
     const customList = $("#custom-theme-list");
     if (customList) {
       const themes = Array.isArray(s.customThemes) ? s.customThemes : [];
-      customList.innerHTML = themes.map((t) =>
-        `<span class="custom-theme-pill"><button type="button" data-use-ct="${esc(t.id)}">${esc(t.name)}</button><button type="button" data-del-ct="${esc(t.id)}" aria-label="删除">×</button></span>`
-      ).join("");
-      customList.querySelectorAll("[data-use-ct]").forEach((b) => {
-        b.onclick = () => {
-          const item = themes.find((t) => t.id === b.dataset.useCt);
-          if (!item) return;
-          void save({
-            bubbleTint: item.bubbleTint || "",
-            bubbleOpacity: item.bubbleOpacity ?? 98,
-            dreamSkin: {
-              themePreset: item.palette || "violet",
-              opacity: item.opacity ?? 55,
-              chatTint: item.chatTint || "",
-              chatOpacity: item.chatOpacity ?? null,
-              replyOpacity: item.replyOpacity ?? null
-            }
-          }, `已应用主题「${item.name}」`);
-        };
-      });
-      customList.querySelectorAll("[data-del-ct]").forEach((b) => {
-        b.onclick = () => {
-          const next = themes.filter((t) => t.id !== b.dataset.delCt);
-          void save({ customThemes: next }, "已删除自定义主题");
-        };
-      });
+      const ctSig = JSON.stringify(themes.map((t) => [t.id, t.name, t.palette, t.opacity]));
+      if (customList.dataset.sig !== ctSig) {
+        customList.dataset.sig = ctSig;
+        customList.innerHTML = themes.map((t) =>
+          `<span class="custom-theme-pill"><button type="button" data-use-ct="${esc(t.id)}">${esc(t.name)}</button><button type="button" data-del-ct="${esc(t.id)}" aria-label="删除">×</button></span>`
+        ).join("");
+        customList.querySelectorAll("[data-use-ct]").forEach((b) => {
+          b.onclick = () => {
+            const item = themes.find((t) => t.id === b.dataset.useCt);
+            if (!item) return;
+            void save({
+              bubbleTint: item.bubbleTint || "",
+              bubbleOpacity: item.bubbleOpacity ?? 98,
+              dreamSkin: {
+                themePreset: item.palette || "violet",
+                opacity: item.opacity ?? 55,
+                chatTint: item.chatTint || "",
+                chatOpacity: item.chatOpacity ?? null,
+                replyOpacity: item.replyOpacity ?? null
+              }
+            }, `已应用主题「${item.name}」`);
+          };
+        });
+        customList.querySelectorAll("[data-del-ct]").forEach((b) => {
+          b.onclick = () => {
+            const next = themes.filter((t) => t.id !== b.dataset.delCt);
+            void save({ customThemes: next }, "已删除自定义主题");
+          };
+        });
+      }
     }
   }
 
@@ -513,6 +536,21 @@
     setGroupActive("sqSrc", s.sideQuotaSource || "auto");
     setGroupActive("sqSize", s.sideQuotaSize || "md");
     setGroupActive("sqDist", s.sideQuotaDistance || "normal");
+    setGroupActive("sqStyle", s.sideQuotaStyle || "glass");
+
+    const sqPalette = s.sideQuotaPalette || "theme";
+    $$("#sqPalettes .sq-swatch").forEach((sw) => sw.classList.toggle("on", sw.dataset.sqp === sqPalette));
+    const sqPick = $(".sq-color-pick");
+    if (sqPick) sqPick.classList.toggle("on", sqPalette === "custom");
+    if ($("#sqColor") && document.activeElement !== $("#sqColor")) {
+      $("#sqColor").value = /^#[0-9a-f]{6}$/i.test(s.sideQuotaColor || "") ? s.sideQuotaColor : "#7a52db";
+    }
+    const sqOp = Number.isFinite(Number(s.sideQuotaOpacity)) ? Number(s.sideQuotaOpacity) : 100;
+    if ($("#sqOpacity") && document.activeElement !== $("#sqOpacity")) {
+      $("#sqOpacity").value = String(sqOp);
+      syncSliderVisual($("#sqOpacity"), (v) => `${Math.round(v)}%`);
+    }
+    if ($("#sqOpacityB")) $("#sqOpacityB").textContent = String(Math.round(sqOp));
 
     syncSwitchState($("#manualQuota"), s.manualQuota === true);
     if ($("#manual5h") && document.activeElement !== $("#manual5h")) $("#manual5h").value = String(s.manualPercent ?? 84);
@@ -670,6 +708,121 @@
     return { installedCount, total, allInstalled, partial, active, activeFrame, badgeTxt, stateClass, btnTxt };
   }
 
+  function formatBytes(bytes) {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    if (n < 1024) return `${Math.round(n)} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function parseCreditInfo(item, entry) {
+    const raw = String(item?.credit || entry?.lead?.credit || item?.author || entry?.author || "Catstella").trim();
+    const paren = raw.match(/^([^（(]+)[（(]([^）)]+)[）)](.*)$/);
+    if (paren) {
+      const author = paren[1].replace(/^原作[:：]\s*/, "").trim() || "Catstella";
+      const license = [paren[2].trim(), paren[3].trim()].filter(Boolean).join(" · ");
+      return { raw, author, short: author, license };
+    }
+    const author = raw.replace(/^原作[:：]\s*/, "").trim() || "Catstella";
+    const parts = raw.split("·").map((x) => x.trim()).filter(Boolean);
+    return {
+      raw,
+      author: parts[0] || author,
+      short: parts[0] || author,
+      license: parts.length > 1 ? parts.slice(1).join(" · ") : ""
+    };
+  }
+
+  function resolveThemeSpec(item) {
+    if (!item) return { palette: data?.dreamSkin?.themePreset || "violet", opacity: 75, live: false };
+    const cached = themePreviewCache.get(item.id);
+    if (cached) return { ...cached, live: true };
+    if (item.id === "midnight-blue") return { palette: "ocean", opacity: 75, live: false };
+    if (item.id === "violet-default") return { palette: "violet", opacity: 88, live: false };
+    return { palette: item.palette || "violet", opacity: Number.isFinite(Number(item.opacity)) ? Number(item.opacity) : 75, live: false };
+  }
+
+  function ensureThemePreview(item, onLoaded) {
+    if (!item || item.kind !== "theme" || themePreviewCache.has(item.id)) return;
+    void api.online("preview-theme", item.id).then((res) => {
+      if (res?.ok && res.palette) {
+        themePreviewCache.set(item.id, {
+          palette: res.palette,
+          opacity: Number.isFinite(Number(res.opacity)) ? Number(res.opacity) : 75
+        });
+        onLoaded?.();
+      }
+    }).catch(() => {});
+  }
+
+  function renderNoticeBar() {
+    const bar = $("#hudNoticeBar");
+    const dismissedVer = String(data?.settings?.dismissedUpdateVersion || "").trim();
+    const showUpdate = Boolean(updateNotice?.latest && updateNotice.latest !== dismissedVer);
+    const newCount = storeNoticeDismissed ? 0 : newCatalogIds.size;
+
+    if ($("#dot-link")) $("#dot-link").hidden = !showUpdate;
+    if ($("#dot-store")) $("#dot-store").hidden = newCatalogIds.size === 0;
+    if (!bar) return;
+
+    const sig = JSON.stringify([showUpdate ? updateNotice.latest : "", newCount]);
+    if (bar.dataset.sig === sig) return;
+    bar.dataset.sig = sig;
+
+    const pieces = [];
+    if (showUpdate) {
+      pieces.push(`
+        <div class="hud-notice-item">
+          <div><strong>✨ 发现新版本 v${esc(updateNotice.latest)}</strong><span>当前运行 v${esc(updateNotice.current || "")}</span></div>
+          <div class="pillrow">
+            <button type="button" class="pill on" data-notice-download>前往下载 ↗</button>
+            <button type="button" class="pill" data-notice-dismiss-upd>忽略此版</button>
+          </div>
+        </div>`);
+    }
+    if (newCount > 0) {
+      pieces.push(`
+        <div class="hud-notice-item">
+          <div><strong>🎁 内容商店上新 ${newCount} 项素材</strong><span>可一键试看与 SHA-256 校验安装</span></div>
+          <div class="pillrow">
+            <button type="button" class="pill on" data-notice-store>去看看</button>
+            <button type="button" class="pill" data-notice-dismiss-store>知道了</button>
+          </div>
+        </div>`);
+    }
+    bar.innerHTML = pieces.join("");
+    bar.hidden = pieces.length === 0;
+
+    bar.querySelector("[data-notice-download]")?.addEventListener("click", () => {
+      void api.online("release");
+    });
+    bar.querySelector("[data-notice-dismiss-upd]")?.addEventListener("click", () => {
+      const ver = updateNotice?.latest;
+      updateNotice = null;
+      if (ver) void save({ dismissedUpdateVersion: ver }, `已忽略 v${ver} 提醒`);
+      else renderNoticeBar();
+    });
+    bar.querySelector("[data-notice-store]")?.addEventListener("click", () => {
+      showPage("store");
+    });
+    bar.querySelector("[data-notice-dismiss-store]")?.addEventListener("click", () => {
+      void markCatalogSeen();
+    });
+  }
+
+  async function markCatalogSeen() {
+    storeNoticeDismissed = true;
+    const allIds = catalogItems.map((i) => i.id).filter(Boolean).slice(0, 128);
+    newCatalogIds.clear();
+    renderNoticeBar();
+    storeGridSignature = null;
+    if (activePage === "store") renderStore();
+    if (allIds.length) {
+      await api.save({ seenCatalogIds: allIds }).then((u) => { if (u) data = u; }).catch(() => {});
+    }
+  }
+
   function renderStore() {
     const q = ($("#storeSearch")?.value || "").trim().toLowerCase();
     const kindLabels = { wallpaper: "壁纸", character: "桌宠样式", theme: "主题配色" };
@@ -701,10 +854,13 @@
       }
       return true;
     });
+    if (activeStoreCat === "recent") {
+      list.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    }
 
     const grid = $("#storeGrid");
     if (!grid) return;
-    const signature = JSON.stringify([catalogOffline, activeStoreCat, q,
+    const signature = JSON.stringify([catalogOffline, activeStoreCat, q, [...newCatalogIds].sort(),
       list.map((entry) => [entry.id, entry.kind, entry.title, entry.description, entry.preview, entry.frames.map((f) => f.id)])]);
     if (storeGridSignature !== signature) {
       const focused = grid.contains(document.activeElement) ? document.activeElement : null;
@@ -721,20 +877,29 @@
         const st = getEntryInstallState(entry);
         const kindLbl = entry.isPack ? "系列图包" : (kindLabels[entry.kind] || entry.kind);
         const previewUrl = entry.preview || "";
+        const credit = parseCreditInfo(entry.lead, entry);
+        const isNew = entry.frames.some((f) => newCatalogIds.has(f.id));
+        const zoomBtn = entry.kind === "wallpaper" || entry.kind === "theme"
+          ? `<button type="button" class="store-cover-zoom" data-zoom="${esc(entry.id)}" title="沉浸预览" aria-label="沉浸预览">⛶</button>`
+          : "";
         const coverInner = entry.kind === "theme"
-          ? `<div class="store-cover"><div class="store-theme-swatch" style="background:linear-gradient(135deg,#1d1730,#382a5a)"><div class="store-swatch-pills"><span style="width:42px;background:var(--accent)"></span><span style="width:24px;background:var(--accent-2)"></span></div><small style="color:rgba(255,255,255,0.88);font-weight:700">${esc(entry.title)}</small></div></div>`
-          : `<div class="store-cover${entry.kind === "character" ? " is-char" : ""}"><img src="${esc(previewUrl)}" alt="${esc(entry.title)}">${entry.isPack ? `<span class="store-pack-count">${entry.frames.length} 张合集</span>` : ""}</div>`;
+          ? `<div class="store-cover"><div class="store-theme-swatch" style="background:linear-gradient(135deg,#1d1730,#382a5a)"><div class="store-swatch-pills"><span style="width:42px;background:var(--accent)"></span><span style="width:24px;background:var(--accent-2)"></span></div><small style="color:rgba(255,255,255,0.88);font-weight:700">${esc(entry.title)}</small></div>${zoomBtn}</div>`
+          : `<div class="store-cover${entry.kind === "character" ? " is-char" : ""}"><img loading="lazy" decoding="async" src="${esc(previewUrl)}" alt="${esc(entry.title)}">${entry.isPack ? `<span class="store-pack-count">${entry.frames.length} 张合集</span>` : ""}${zoomBtn}</div>`;
         return `
           <article class="store-card${entry.isPack ? " is-pack" : ""}${st.active ? " active" : ""}" data-sid="${esc(entry.id)}">
             <div class="store-card-inner">
               ${coverInner}
               <div class="store-card-body">
                 <div class="store-meta">
-                  <span class="store-badge">${esc(kindLbl)}</span>
+                  <div class="pillrow">
+                    <span class="store-badge">${esc(kindLbl)}</span>
+                    ${isNew ? '<span class="store-new-pill">NEW</span>' : ""}
+                  </div>
                   <span class="store-state-pill${st.stateClass ? " " + st.stateClass : ""}">${esc(st.badgeTxt)}</span>
                 </div>
                 <h4>${esc(entry.title)}</h4>
                 <p>${esc(entry.description)}</p>
+                <div class="store-credit-line" title="${esc(credit.raw)}">✦ ${esc(credit.short)}</div>
                 <div class="store-actions">
                   <button type="button" class="pill" data-detail="${esc(entry.id)}">详情</button>
                   <button type="button" class="pill on" data-apply="${esc(entry.id)}">${esc(st.btnTxt)}</button>
@@ -754,6 +919,13 @@
         b.onclick = () => {
           const entry = entryById.get(b.dataset.detail);
           if (entry) openStoreDialog(entry);
+        };
+      });
+      grid.querySelectorAll("[data-zoom]").forEach((b) => {
+        b.onclick = (e) => {
+          e.stopPropagation();
+          const entry = entryById.get(b.dataset.zoom);
+          if (entry) openImmersivePreview(entry, 0);
         };
       });
       if (focusedId) {
@@ -859,30 +1031,88 @@
     if (activeDlgIndex < 0 || activeDlgIndex >= entry.frames.length) activeDlgIndex = 0;
     const item = entry.frames[activeDlgIndex] || entry.lead;
     const kindLabels = { wallpaper: "壁纸", character: "桌宠样式", theme: "主题配色" };
+    const credit = parseCreditInfo(item, entry);
+    const srcUrl = item.source || entry.source || "";
+    const installed = isStoreItemInstalled(item);
+    const active = isStoreItemActive(item);
+
     if ($("#dlgKind")) $("#dlgKind").textContent = entry.isPack ? `系列图包 · ${kindLabels[entry.kind] || entry.kind}` : (kindLabels[entry.kind] || "素材详情");
     if ($("#dlgTitle")) $("#dlgTitle").textContent = entry.isPack ? `${entry.title} · ${item.name || item.id}` : (item.name || item.id);
     if ($("#dlgDesc")) $("#dlgDesc").textContent = item.description || entry.description || "Catstella 扩展内容资产";
-    if ($("#dlgAuthor")) $("#dlgAuthor").textContent = `By ${item.credit || item.author || "Catstella"}`;
+    if ($("#dlgAuthor")) $("#dlgAuthor").textContent = `By ${credit.author}`;
+    if ($("#dlgLicense")) {
+      $("#dlgLicense").textContent = credit.license;
+      $("#dlgLicense").hidden = !credit.license;
+    }
+    if ($("#dlgImmersive")) {
+      $("#dlgImmersive").hidden = entry.kind !== "wallpaper" && entry.kind !== "theme";
+    }
 
     const media = $("#dlgMedia");
     if (media) {
-      media.innerHTML = item.preview
-        ? `<img id="dlgImg" src="${esc(item.preview)}" alt="${esc(item.name || "")}">`
-        : `<small style="padding:24px;color:var(--soft)">主题配色方案</small>`;
+      if (entry.kind === "theme") {
+        const targetSpec = resolveThemeSpec(item);
+        const curWall = selectedWallpaper();
+        const wallSrc = curWall?.preview || "";
+        const curPalette = data?.dreamSkin?.themePreset || "violet";
+        const curOpacity = Number.isFinite(Number(data?.dreamSkin?.opacity)) ? Number(data.dreamSkin.opacity) : 55;
+        media.innerHTML = `
+          <div class="dlg-theme-compare">
+            <div class="dlg-compare-pane" data-palette="${esc(curPalette)}" style="--cmp-op:${(curOpacity / 100).toFixed(2)}">
+              ${wallSrc ? `<img src="${esc(wallSrc)}" alt="">` : ""}
+              <div class="dlg-cmp-scrim"></div>
+              <div class="dlg-compare-head"><span>当前搭配</span><span>${esc(THEME_NAMES[curPalette] || curPalette)} · ${Math.round(curOpacity)}%</span></div>
+              <div class="dlg-compare-chat"><span>提问气泡预览</span><p>当前 Antigravity 回复底色效果</p></div>
+            </div>
+            <div class="dlg-compare-pane" data-palette="${esc(targetSpec.palette)}" style="--cmp-op:${(targetSpec.opacity / 100).toFixed(2)}">
+              ${wallSrc ? `<img src="${esc(wallSrc)}" alt="">` : ""}
+              <div class="dlg-cmp-scrim"></div>
+              <div class="dlg-compare-head"><span>✦ 此主题效果</span><span>${esc(THEME_NAMES[targetSpec.palette] || targetSpec.palette)} · ${Math.round(targetSpec.opacity)}%</span></div>
+              <div class="dlg-compare-chat"><span>提问气泡预览</span><p>应用后对比效果${targetSpec.live ? "（已实时加载）" : ""}</p></div>
+            </div>
+          </div>`;
+        ensureThemePreview(item, () => {
+          if ($("#storeDlg")?.open && activeDlgEntry?.id === entry.id) renderStoreDialog();
+        });
+      } else {
+        media.innerHTML = item.preview
+          ? `<img id="dlgImg" src="${esc(item.preview)}" alt="${esc(item.name || "")}">`
+          : `<small style="padding:24px;color:var(--soft)">无预览图像</small>`;
+        $("#dlgImg")?.addEventListener("click", () => {
+          if (entry.kind === "wallpaper") openImmersivePreview(entry, activeDlgIndex);
+        });
+      }
+    }
+
+    const meta = $("#dlgMeta");
+    if (meta) {
+      const chips = [];
+      chips.push(active ? "✓ 使用中" : (installed ? "已安装本地" : "在线待下载"));
+      const sz = formatBytes(item.size);
+      if (sz) chips.push(sz);
+      if (item.updatedAt) chips.push(`更新 ${item.updatedAt}`);
+      if (entry.isPack) chips.push(`合集 ${activeDlgIndex + 1}/${entry.frames.length}`);
+      if (item.sha256) chips.push(`SHA-256 ${item.sha256.slice(0, 8)}…`);
+      meta.innerHTML = chips.map((c) => `<span class="dlg-meta-chip">${esc(c)}</span>`).join("");
+      meta.hidden = chips.length === 0;
     }
 
     const packNav = $("#dlgPackNav");
     const strip = $("#dlgStrip");
     if (packNav) packNav.hidden = !entry.isPack;
     if ($("#dlgCounter")) $("#dlgCounter").textContent = `${activeDlgIndex + 1} / ${entry.frames.length}`;
-    if ($("#dlgSource")) $("#dlgSource").hidden = !entry.source;
+    if ($("#dlgSource")) {
+      $("#dlgSource").hidden = !srcUrl;
+      $("#dlgSource").dataset.url = srcUrl;
+    }
 
     if (strip) {
       strip.hidden = !entry.isPack;
       if (entry.isPack) {
         strip.innerHTML = entry.frames.map((frame, i) => `
           <button type="button" class="dlg-strip-thumb${i === activeDlgIndex ? " on" : ""}" data-frame-idx="${i}" aria-label="${esc(frame.name || frame.id)}">
-            <img src="${esc(frame.preview || "")}" alt="">
+            <img loading="lazy" decoding="async" src="${esc(frame.preview || "")}" alt="">
+            ${isStoreItemInstalled(frame) ? '<span class="dlg-strip-done">✓</span>' : ""}
           </button>`).join("");
         strip.querySelectorAll("[data-frame-idx]").forEach((btn) => {
           btn.onclick = () => {
@@ -895,8 +1125,6 @@
       }
     }
 
-    const installed = isStoreItemInstalled(item);
-    const active = isStoreItemActive(item);
     const missingCount = entry.isPack ? entry.frames.filter((f) => !isStoreItemInstalled(f)).length : 0;
     if ($("#dlgUninstall")) $("#dlgUninstall").hidden = !installed;
     if ($("#dlgInstallAll")) {
@@ -908,6 +1136,84 @@
     }
   }
 
+  function renderImmersivePreview() {
+    const entry = immEntry;
+    const dlg = $("#immersiveDlg");
+    if (!entry || !dlg) return;
+    if (immIndex < 0 || immIndex >= entry.frames.length) immIndex = 0;
+    const item = entry.frames[immIndex] || entry.lead;
+    const credit = parseCreditInfo(item, entry);
+    const srcUrl = item.source || entry.source || "";
+    const curWall = selectedWallpaper();
+    const curPack = (data?.characterPacks || []).find((p) => p.id === data?.settings?.characterPack) || data?.characterPacks?.[0];
+
+    const isTheme = entry.kind === "theme";
+    const themeSpec = isTheme ? resolveThemeSpec(item) : null;
+    const curPalette = data?.dreamSkin?.themePreset || "violet";
+    const curOp = Number.isFinite(Number(data?.dreamSkin?.opacity)) ? Number(data.dreamSkin.opacity) : 55;
+    const curScrim = Number.isFinite(Number(data?.dreamSkin?.scrim)) ? Number(data.dreamSkin.scrim) : 25;
+
+    const activePalette = isTheme ? (immCompareCurrent ? curPalette : themeSpec.palette) : curPalette;
+    const defaultOp = isTheme ? (immCompareCurrent ? curOp : themeSpec.opacity) : 100;
+    const opVal = immCustomOp !== null ? immCustomOp : defaultOp;
+    const scrimVal = immCustomScrim !== null ? immCustomScrim : (isTheme ? curScrim : 18);
+
+    const stage = $("#immStage");
+    if (stage) {
+      stage.dataset.palette = activePalette;
+      stage.style.setProperty("--imm-op", (opVal / 100).toFixed(2));
+      stage.style.setProperty("--imm-scrim", (scrimVal / 100).toFixed(2));
+    }
+    if ($("#immWall")) {
+      const src = isTheme ? (curWall?.preview || "") : (item.preview || "");
+      if ($("#immWall").getAttribute("src") !== src) $("#immWall").src = src;
+    }
+    if ($("#immMockPet") && curPack?.preview && $("#immMockPet").getAttribute("src") !== curPack.preview) {
+      $("#immMockPet").src = curPack.preview;
+    }
+    if ($("#immMockChat")) $("#immMockChat").hidden = !immChatVisible;
+    if ($("#immToggleChat")) $("#immToggleChat").classList.toggle("on", immChatVisible);
+    if ($("#immCompare")) {
+      $("#immCompare").hidden = !isTheme;
+      $("#immCompare").classList.toggle("on", immCompareCurrent);
+      $("#immCompare").textContent = immCompareCurrent ? "查看目标主题" : "对比当前搭配";
+    }
+    if ($("#immKind")) $("#immKind").textContent = isTheme ? "主题沉浸预览" : (entry.isPack ? `系列图包 · ${immIndex + 1}/${entry.frames.length}` : "壁纸沉浸预览");
+    if ($("#immTitle")) $("#immTitle").textContent = entry.isPack ? `${entry.title} · ${item.name || item.id}` : (item.name || item.id);
+    if ($("#immCredit")) $("#immCredit").textContent = `By ${credit.author}${credit.license ? ` · ${credit.license}` : ""}`;
+    if ($("#immSource")) {
+      $("#immSource").hidden = !srcUrl;
+      $("#immSource").dataset.url = srcUrl;
+    }
+    if ($("#immNav")) $("#immNav").hidden = !entry.isPack;
+    if ($("#immCounter")) $("#immCounter").textContent = `${immIndex + 1} / ${entry.frames.length}`;
+    if ($("#immOp")) $("#immOp").value = String(Math.round(opVal));
+    if ($("#immOpVal")) $("#immOpVal").textContent = `${Math.round(opVal)}%`;
+    if ($("#immScrim")) $("#immScrim").value = String(Math.round(scrimVal));
+    if ($("#immScrimVal")) $("#immScrimVal").textContent = `${Math.round(scrimVal)}%`;
+    if ($("#immApply")) {
+      const installed = isStoreItemInstalled(item);
+      const active = isStoreItemActive(item);
+      $("#immApply").textContent = active ? "✓ 已应用" : (installed ? "✦ 立即应用" : "✦ 安装并应用");
+    }
+    if (isTheme) {
+      ensureThemePreview(item, () => {
+        if ($("#immersiveDlg")?.open && immEntry?.id === entry.id) renderImmersivePreview();
+      });
+    }
+  }
+
+  function openImmersivePreview(entry, frameIdx = 0) {
+    immEntry = entry;
+    immIndex = frameIdx;
+    immCompareCurrent = false;
+    immCustomOp = null;
+    immCustomScrim = null;
+    immChatVisible = true;
+    renderImmersivePreview();
+    if (!$("#immersiveDlg")?.open) $("#immersiveDlg")?.showModal();
+  }
+
   function openStoreDialog(entry, frameIdx = 0) {
     activeDlgEntry = entry;
     activeDlgIndex = frameIdx;
@@ -916,19 +1222,25 @@
     $("#storeDlg")?.showModal();
   }
 
+  function renderActivePage(page = activePage) {
+    if (page === "pet") renderPetPage();
+    else if (page === "skin") renderSkinPage();
+    else if (page === "quota") renderQuotaPage();
+    else if (page === "link") renderLinkPage();
+    else if (page === "store") renderStore();
+  }
+
   function render() {
     if (data.settings?.volume === 0) stopPreview();
     renderHudAndHeader();
-    renderPetPage();
-    renderSkinPage();
-    renderQuotaPage();
-    renderLinkPage();
-    renderStore();
+    renderNoticeBar();
+    renderActivePage(activePage);
   }
 
   function bindAll() {
     initSwitchFallback();
     attachDialogLightDismiss($("#storeDlg"));
+    attachDialogLightDismiss($("#immersiveDlg"));
 
     $$("#side-nav .tab").forEach((t) => {
       t.onclick = () => showPage(t.dataset.p);
@@ -1109,6 +1421,8 @@
             void save({ sideQuotaSize: val });
           } else if (grp === "sqDist") {
             void save({ sideQuotaDistance: val });
+          } else if (grp === "sqStyle") {
+            void save({ sideQuotaStyle: val });
           } else if (grp === "lang") {
             void save({ dreamSkin: { uiLanguage: val } }, `宿主语言已切换为 ${btn.textContent}`);
           } else if (grp === "dm") {
@@ -1168,6 +1482,33 @@
 
     $$("#sqCards .sq-card").forEach((c) => {
       c.onclick = () => void save({ sideQuotaVariant: c.dataset.val }, `耐力计已切换为 ${c.querySelector("b")?.textContent}`);
+    });
+    $$("#sqPalettes .sq-swatch").forEach((sw) => {
+      sw.onclick = () => void save({ sideQuotaPalette: sw.dataset.sqp }, `耐力条配色已更新`);
+    });
+    $("#sqColor")?.addEventListener("input", () => {
+      if (!data.settings) data.settings = {};
+      data.settings.sideQuotaPalette = "custom";
+      data.settings.sideQuotaColor = $("#sqColor").value;
+      renderHudAndHeader();
+      renderQuotaPage();
+    });
+    $("#sqColor")?.addEventListener("change", () => {
+      void save({ sideQuotaPalette: "custom", sideQuotaColor: $("#sqColor").value }, "已更新耐力条自定义配色");
+    });
+    $("#sqOpacity")?.addEventListener("input", () => {
+      const v = Number($("#sqOpacity").value);
+      syncSliderVisual($("#sqOpacity"), (x) => `${Math.round(x)}%`);
+      if ($("#sqOpacityB")) $("#sqOpacityB").textContent = String(Math.round(v));
+      $("#hudSq")?.style.setProperty("--sq-opacity", (v / 100).toFixed(2));
+      $("#sqPreview")?.style.setProperty("--sq-opacity", (v / 100).toFixed(2));
+    });
+    $("#sqOpacity")?.addEventListener("change", () => {
+      void save({ sideQuotaOpacity: Number($("#sqOpacity").value) }, `耐力条透明度 ${$("#sqOpacity").value}%`);
+    });
+    $("#jumpSqCustom")?.addEventListener("click", () => {
+      showPage("quota");
+      $("#sqCards")?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
 
     const bindNum = (id, key) => {
@@ -1272,7 +1613,58 @@
       renderStoreDialog();
     });
     $("#dlgSource")?.addEventListener("click", () => {
-      if (activeDlgEntry?.source) void api.online("source", activeDlgEntry.source);
+      const url = $("#dlgSource")?.dataset.url || activeDlgEntry?.source;
+      if (url) void api.online("source", url);
+    });
+    $("#dlgImmersive")?.addEventListener("click", () => {
+      if (activeDlgEntry) openImmersivePreview(activeDlgEntry, activeDlgIndex);
+    });
+    $("#immClose")?.addEventListener("click", () => $("#immersiveDlg")?.close());
+    $("#immPrev")?.addEventListener("click", () => {
+      if (!immEntry?.isPack) return;
+      immIndex = (immIndex - 1 + immEntry.frames.length) % immEntry.frames.length;
+      renderImmersivePreview();
+    });
+    $("#immNext")?.addEventListener("click", () => {
+      if (!immEntry?.isPack) return;
+      immIndex = (immIndex + 1) % immEntry.frames.length;
+      renderImmersivePreview();
+    });
+    $("#immToggleChat")?.addEventListener("click", () => {
+      immChatVisible = !immChatVisible;
+      renderImmersivePreview();
+    });
+    $("#immCompare")?.addEventListener("click", () => {
+      immCompareCurrent = !immCompareCurrent;
+      renderImmersivePreview();
+    });
+    $("#immOp")?.addEventListener("input", () => {
+      immCustomOp = Number($("#immOp").value);
+      renderImmersivePreview();
+    });
+    $("#immScrim")?.addEventListener("input", () => {
+      immCustomScrim = Number($("#immScrim").value);
+      renderImmersivePreview();
+    });
+    $("#immSource")?.addEventListener("click", () => {
+      const url = $("#immSource")?.dataset.url;
+      if (url) void api.online("source", url);
+    });
+    $("#immApply")?.addEventListener("click", async () => {
+      const item = immEntry?.frames?.[immIndex] || immEntry?.lead;
+      if (!item) return;
+      await applyOnlineItem(item, { refreshDialog: true });
+      renderImmersivePreview();
+    });
+    $("#immersiveDlg")?.addEventListener("keydown", (e) => {
+      if (!immEntry?.isPack || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        $("#immPrev")?.click();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        $("#immNext")?.click();
+      }
     });
     $("#storeDlg")?.addEventListener("keydown", (e) => {
       if (!activeDlgEntry?.isPack || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -1313,7 +1705,18 @@
       if (res?.ok && Array.isArray(res.items)) {
         catalogItems = res.items;
         catalogOffline = Boolean(res.offline);
-        renderStore();
+        const allIds = catalogItems.map((i) => i.id).filter(Boolean).slice(0, 128);
+        const seenList = Array.isArray(data.settings?.seenCatalogIds) ? data.settings.seenCatalogIds : [];
+        if (!seenList.length && allIds.length) {
+          newCatalogIds.clear();
+          void api.save({ seenCatalogIds: allIds }).then((u) => { if (u) data = u; }).catch(() => {});
+        } else {
+          const seenSet = new Set(seenList);
+          newCatalogIds = new Set(allIds.filter((id) => !seenSet.has(id)));
+          storeNoticeDismissed = false;
+        }
+        renderNoticeBar();
+        if (activePage === "store") renderStore();
         if (force) {
           say(catalogOffline ? `离线目录缓存（${catalogItems.length} 项）` : `已刷新在线目录（${catalogItems.length} 项）`);
         }
@@ -1324,10 +1727,10 @@
   }
 
   bindAll();
-  render();
   if (window.location.hash) {
-    showPage(window.location.hash);
+    showPage(window.location.hash, { renderPage: false });
   }
+  render();
 
   api.subscribe((next) => {
     if (!next) return;
@@ -1336,18 +1739,33 @@
   });
   api.onNavigate((page) => showPage(page));
 
-  // Async background queries after first paint
-  void loadCatalog();
-  void api.host("diagnose").then((res) => {
-    if (res?.diagnostic) {
-      data.hostDiagnostic = res.diagnostic;
-      renderLinkPage();
-    }
-  }).catch(() => {});
-  void api.host("get-startup").then((res) => {
-    if (res?.startup) {
-      startup = res.startup;
-      renderLinkPage();
-    }
-  }).catch(() => {});
+  // Reveal painted window immediately, then stagger background IPC cleanly.
+  requestAnimationFrame(() => {
+    void api.command("settings-ready");
+    setTimeout(() => {
+      void loadCatalog();
+      void api.host("diagnose").then((res) => {
+        if (res?.diagnostic) {
+          data.hostDiagnostic = res.diagnostic;
+          if (activePage === "link") renderLinkPage();
+        }
+      }).catch(() => {});
+      void api.host("get-startup").then((res) => {
+        if (res?.startup) {
+          startup = res.startup;
+          if (activePage === "link") renderLinkPage();
+        }
+      }).catch(() => {});
+      if (data.settings?.autoUpdateCheck !== false) {
+        setTimeout(() => {
+          void api.online("check", false).then((res) => {
+            if (res?.status === "available" && res.latest) {
+              updateNotice = res;
+              renderNoticeBar();
+            }
+          }).catch(() => {});
+        }, 250);
+      }
+    }, 0);
+  });
 })();

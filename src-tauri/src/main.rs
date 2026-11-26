@@ -1269,6 +1269,7 @@ async fn widget_command(
     };
     match action.as_str() {
         "settings" => settings_window::open_settings(&app, &state, ""),
+        "settings-ready" => settings_window::show_ready_settings(&app),
         "settings-close" => settings_window::close_settings(&app),
         "settings-minimize" => settings_window::minimize_settings(&app),
         "next-wallpaper" => rotate_wallpaper(&app, &state),

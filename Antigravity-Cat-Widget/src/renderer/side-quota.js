@@ -19,8 +19,166 @@
     lg: 1.14
   };
 
+  const SIDE_PALETTE_PRESETS = {
+    violet: {
+      accent: "#7a52db",
+      soft: "#efe7fe",
+      start: "#6d79f7",
+      mid: "#a873f8",
+      end: "#eea0e8",
+      rim: "#2d2252",
+      glassBg: "rgba(28, 22, 52, 0.84)",
+      glassBorder: "rgba(214, 194, 255, 0.64)",
+      glow: "rgba(164, 120, 255, 0.44)"
+    },
+    pink: {
+      accent: "#d85a97",
+      soft: "#fdecf5",
+      start: "#ff77b7",
+      mid: "#cf86ff",
+      end: "#9ce0ff",
+      rim: "#441f3b",
+      glassBg: "rgba(44, 22, 42, 0.85)",
+      glassBorder: "rgba(255, 198, 228, 0.66)",
+      glow: "rgba(245, 144, 198, 0.45)"
+    },
+    ocean: {
+      accent: "#3879d6",
+      soft: "#e9f3fe",
+      start: "#47a3ff",
+      mid: "#7388ff",
+      end: "#9eedff",
+      rim: "#172a4a",
+      glassBg: "rgba(16, 28, 50, 0.86)",
+      glassBorder: "rgba(162, 212, 255, 0.64)",
+      glow: "rgba(102, 180, 255, 0.45)"
+    },
+    emerald: {
+      accent: "#16a374",
+      soft: "#e7fbf3",
+      start: "#2dd4bf",
+      mid: "#22c55e",
+      end: "#a7f3d0",
+      rim: "#12382c",
+      glassBg: "rgba(15, 38, 32, 0.86)",
+      glassBorder: "rgba(167, 243, 208, 0.64)",
+      glow: "rgba(52, 211, 153, 0.45)"
+    },
+    sunset: {
+      accent: "#e56a46",
+      soft: "#fff1ea",
+      start: "#fb7185",
+      mid: "#f97316",
+      end: "#fde047",
+      rim: "#43201b",
+      glassBg: "rgba(46, 22, 24, 0.86)",
+      glassBorder: "rgba(253, 186, 116, 0.66)",
+      glow: "rgba(251, 146, 60, 0.46)"
+    },
+    gold: {
+      accent: "#d69e2e",
+      soft: "#fef9e7",
+      start: "#f59e0b",
+      mid: "#fbbf24",
+      end: "#fef08a",
+      rim: "#3b2c12",
+      glassBg: "rgba(40, 30, 14, 0.86)",
+      glassBorder: "rgba(253, 224, 71, 0.64)",
+      glow: "rgba(251, 191, 36, 0.45)"
+    }
+  };
+
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function hexToRgb(hex) {
+    if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
+    return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  }
+
+  function mixHex(a, b, t) {
+    const ra = hexToRgb(a);
+    const rb = hexToRgb(b);
+    if (!ra || !rb) return a;
+    const ratio = clamp(t, 0, 1);
+    return "#" + ra.map((ch, idx) =>
+      Math.round(ch + (rb[idx] - ch) * ratio).toString(16).padStart(2, "0")
+    ).join("");
+  }
+
+  function resolveGaugeAppearance({
+    themePreset = "violet",
+    palette = "theme",
+    color = "",
+    style = "glass",
+    opacity = 100
+  } = {}) {
+    const cleanStyle = ["glass", "neon", "minimal"].includes(style) ? style : "glass";
+    const cleanOpacity = Math.round(clamp(Number.isFinite(Number(opacity)) ? Number(opacity) : 100, 40, 100));
+    const cleanPalette = palette === "custom" || Object.hasOwn(SIDE_PALETTE_PRESETS, palette) ? palette : "theme";
+    const cleanColor = typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "";
+
+    let vars = null;
+    if (cleanPalette === "custom" && cleanColor) {
+      const rgb = hexToRgb(cleanColor).join(", ");
+      vars = {
+        "--sq-accent": cleanColor,
+        "--sq-accent-soft": mixHex(cleanColor, "#ffffff", 0.82),
+        "--sq-grad-start": mixHex(cleanColor, "#1a1430", 0.16),
+        "--sq-grad-mid": cleanColor,
+        "--sq-grad-end": mixHex(cleanColor, "#ffffff", 0.36),
+        "--sq-rim": mixHex(cleanColor, "#100c1c", 0.72),
+        "--sq-glass-bg": `rgba(${hexToRgb(mixHex(cleanColor, "#120e1e", 0.82)).join(", ")}, 0.86)`,
+        "--sq-glass-border": `rgba(${hexToRgb(mixHex(cleanColor, "#ffffff", 0.56)).join(", ")}, 0.66)`,
+        "--sq-glow": `rgba(${rgb}, 0.48)`
+      };
+    } else if (cleanPalette !== "theme" && SIDE_PALETTE_PRESETS[cleanPalette]) {
+      const p = SIDE_PALETTE_PRESETS[cleanPalette];
+      vars = {
+        "--sq-accent": p.accent,
+        "--sq-accent-soft": p.soft,
+        "--sq-grad-start": p.start,
+        "--sq-grad-mid": p.mid,
+        "--sq-grad-end": p.end,
+        "--sq-rim": p.rim,
+        "--sq-glass-bg": p.glassBg,
+        "--sq-glass-border": p.glassBorder,
+        "--sq-glow": p.glow
+      };
+    }
+
+    if (vars && cleanStyle === "minimal") {
+      vars["--sq-glass-bg"] = "rgba(18, 16, 30, 0.34)";
+      vars["--sq-glass-border"] = "rgba(255, 255, 255, 0.14)";
+    }
+
+    return {
+      themePreset,
+      palette: cleanPalette,
+      color: cleanColor,
+      style: cleanStyle,
+      opacity: cleanOpacity,
+      opacityAlpha: Number((cleanOpacity / 100).toFixed(2)),
+      vars
+    };
+  }
+
+  function applyGaugeAppearance(el, opts = {}) {
+    if (!el || !el.style) return resolveGaugeAppearance(opts);
+    const resolved = resolveGaugeAppearance(opts);
+    const varNames = [
+      "--sq-accent", "--sq-accent-soft", "--sq-grad-start", "--sq-grad-mid",
+      "--sq-grad-end", "--sq-rim", "--sq-glass-bg", "--sq-glass-border", "--sq-glow"
+    ];
+    for (const k of varNames) {
+      if (resolved.vars && resolved.vars[k]) el.style.setProperty(k, resolved.vars[k]);
+      else el.style.removeProperty(k);
+    }
+    el.dataset.sqStyle = resolved.style;
+    el.dataset.sqPalette = resolved.palette;
+    el.style.setProperty("--sq-opacity", String(resolved.opacityAlpha));
+    return resolved;
   }
 
   function finitePct(value) {
@@ -993,6 +1151,14 @@
       }
       document.body.dataset.reducedMotion = String(Boolean(s.reducedMotion));
 
+      applyGaugeAppearance(this.slot, {
+        themePreset: theme || "violet",
+        palette: s.sideQuotaPalette || "theme",
+        color: s.sideQuotaColor || "",
+        style: s.sideQuotaStyle || "glass",
+        opacity: s.sideQuotaOpacity ?? 100
+      });
+
       const metrics = resolveSideQuotaMetrics(snapshot);
       const sourceKey = `${metrics.source}:${quotaMode}`;
       if (this.prevSourceKey !== sourceKey) {
@@ -1076,10 +1242,13 @@
     VARIANT_BASE_SIZE,
     SIDE_DISTANCE_GAPS,
     SIDE_SIZE_FACTORS,
+    SIDE_PALETTE_PRESETS,
     levelForPercent,
     worstLevel,
     toDisplayPercent,
     formatPctText,
+    resolveGaugeAppearance,
+    applyGaugeAppearance,
     resolveSideQuotaMetrics,
     computeSidePlacement,
     updateGaugeMount,

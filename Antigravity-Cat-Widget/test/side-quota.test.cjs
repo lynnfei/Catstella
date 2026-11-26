@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   computeSidePlacement,
   resolveSideQuotaMetrics,
+  resolveGaugeAppearance,
   toDisplayPercent,
   levelForPercent,
   worstLevel
@@ -307,4 +308,28 @@ test('resolveSideQuotaMetrics switches source and Orchestrator crest cleanly acr
   });
   assert.equal(unknownFg.source, 'agy');
   assert.equal(unknownFg.orchestrator, true);
+});
+
+test('resolveGaugeAppearance supports named presets, custom hex gradients, style and opacity clamping', () => {
+  const themeDefault = resolveGaugeAppearance({ themePreset: 'pink', palette: 'theme', style: 'glass', opacity: 100 });
+  assert.equal(themeDefault.palette, 'theme');
+  assert.equal(themeDefault.vars, null);
+  assert.equal(themeDefault.opacityAlpha, 1);
+
+  const emerald = resolveGaugeAppearance({ palette: 'emerald', style: 'neon', opacity: 75 });
+  assert.equal(emerald.style, 'neon');
+  assert.equal(emerald.opacity, 75);
+  assert.equal(emerald.opacityAlpha, 0.75);
+  assert.equal(emerald.vars['--sq-accent'], '#16a374');
+
+  const custom = resolveGaugeAppearance({ palette: 'custom', color: '#FF6B9D', style: 'invalid', opacity: 12 });
+  assert.equal(custom.palette, 'custom');
+  assert.equal(custom.style, 'glass');
+  assert.equal(custom.opacity, 40);
+  assert.equal(custom.vars['--sq-grad-mid'], '#ff6b9d');
+  assert.ok(custom.vars['--sq-glow'].startsWith('rgba(255, 107, 157,'));
+
+  const minimalSunset = resolveGaugeAppearance({ palette: 'sunset', style: 'minimal', opacity: 150 });
+  assert.equal(minimalSunset.opacity, 100);
+  assert.equal(minimalSunset.vars['--sq-glass-border'], 'rgba(255, 255, 255, 0.14)');
 });
