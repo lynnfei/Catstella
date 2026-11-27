@@ -1,8 +1,9 @@
 use crate::layout::{DisplayInfo, Rect};
 use crate::state::SharedApp;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicIsize, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForegroundUpdate {
@@ -43,12 +44,64 @@ mod win {
         WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     };
 
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmGetWindowAttribute(
+            hwnd: HWND,
+            dw_attribute: u32,
+            pv_attribute: *mut core::ffi::c_void,
+            cb_attribute: u32,
+        ) -> i32;
+    }
+
+    #[link(name = "winmm")]
+    extern "system" {
+        fn timeBeginPeriod(u_period: u32) -> u32;
+        fn timeEndPeriod(u_period: u32) -> u32;
+    }
+
+    const DWMWA_CLOAKED: u32 = 14;
+    const GW_HWNDPREV: u32 = 3;
+    const SWP_NOOWNERZORDER: u32 = 0x0200;
+    const EVENT_OBJECT_REORDER: u32 = 0x8004;
+    const EVENT_SYSTEM_MOVESIZESTART: u32 = 0x000A;
+    const EVENT_SYSTEM_MOVESIZEEND: u32 = 0x000B;
+
     static FOLLOW_HOST: AtomicIsize = AtomicIsize::new(0);
     static FOLLOW_PET: AtomicIsize = AtomicIsize::new(0);
     static FOLLOW_LAST: AtomicI64 = AtomicI64::new(i64::MAX);
     static FOLLOW_ACTIVE: AtomicBool = AtomicBool::new(false);
     static DRAGGING_FLAG: AtomicBool = AtomicBool::new(false);
+    static HOST_MOVING: AtomicBool = AtomicBool::new(false);
+    static LAST_HOST_MOVE_MS: AtomicU64 = AtomicU64::new(0);
     static WAKE_CHECK: AtomicBool = AtomicBool::new(false);
+
+    fn now_epoch_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    unsafe fn is_topmost(hwnd: HWND) -> bool {
+        !hwnd.is_null()
+            && IsWindow(hwnd) != 0
+            && (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST as isize) != 0
+    }
+
+    unsafe fn is_window_available(hwnd: HWND) -> bool {
+        if hwnd.is_null() || IsWindow(hwnd) == 0 || IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 {
+            return false;
+        }
+        let mut cloaked: i32 = 0;
+        let hr = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAKED,
+            (&mut cloaked as *mut i32).cast(),
+            std::mem::size_of::<i32>() as u32,
+        );
+        !(hr == 0 && cloaked != 0)
+    }
 
     pub fn set_dragging_flag(dragging: bool) {
         DRAGGING_FLAG.store(dragging, Ordering::Relaxed);
@@ -495,7 +548,7 @@ mod win {
         }
         let host = FOLLOW_HOST.load(Ordering::Relaxed) as HWND;
         let pet = FOLLOW_PET.load(Ordering::Relaxed) as HWND;
-        if host.is_null() || pet.is_null() || IsIconic(host) != 0 {
+        if !is_window_available(host) || pet.is_null() || IsWindow(pet) == 0 {
             return;
         }
         let mut next = POINT { x: 0, y: 0 };
@@ -521,101 +574,81 @@ mod win {
                     widget_rect.top + dy,
                     0,
                     0,
-                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
+                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
                 );
+                LAST_HOST_MOVE_MS.store(now_epoch_ms(), Ordering::Relaxed);
             }
         }
     }
 
-    unsafe fn manage_z(
-        host: HWND,
-        pet: HWND,
-        foreground: HWND,
-        fg_pid: u32,
-        foreground_kind: &str,
-        available: bool,
-        last_want_top: &mut bool,
-    ) {
-        if pet.is_null() || IsWindow(pet) == 0 || foreground.is_null() {
+    unsafe fn stack_with_host(pet: HWND, host: HWND) {
+        if pet.is_null() || IsWindow(pet) == 0 {
             return;
         }
-        let mut host_pid = 0u32;
-        if available && !host.is_null() {
-            GetWindowThreadProcessId(host, &mut host_pid);
+        // Keep the pet in the normal Z-band right above the host rather than toggling WS_EX_TOPMOST.
+        if is_topmost(pet) {
+            SetWindowPos(
+                pet,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            );
         }
-        let want_top = available && (fg_pid == host_pid || foreground == pet);
-        let pet_topmost = (GetWindowLongPtrW(pet, GWL_EXSTYLE) & WS_EX_TOPMOST as isize) != 0;
-        let foreground_changed = WAKE_CHECK.swap(false, Ordering::Relaxed);
-
-        if (foreground_kind != "shell" || !available)
-            && (want_top != *last_want_top
-                || pet_topmost != want_top
-                || (foreground_changed && !want_top))
-        {
-            if want_top {
-                SetWindowPos(
-                    pet,
-                    HWND_TOPMOST,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
-                );
-            } else {
-                if pet_topmost {
-                    SetWindowPos(
-                        pet,
-                        HWND_NOTOPMOST,
-                        0,
-                        0,
-                        0,
-                        0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
-                    );
-                }
-                if foreground != pet {
-                    let mut after = foreground;
-                    while !after.is_null()
-                        && (GetWindowLongPtrW(after, GWL_EXSTYLE) & WS_EX_TOPMOST as isize) != 0
-                    {
-                        after = GetWindow(after, GW_HWNDNEXT);
-                    }
-                    SetWindowPos(
-                        pet,
-                        if after.is_null() { HWND_BOTTOM } else { after },
-                        0,
-                        0,
-                        0,
-                        0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
-                    );
-                }
-            }
-            *last_want_top = want_top;
+        if !is_window_available(host) {
+            return;
         }
+        let mut above = GetWindow(host, GW_HWNDPREV);
+        if above == pet {
+            return;
+        }
+        if !above.is_null() && is_topmost(above) {
+            above = std::ptr::null_mut();
+        }
+        SetWindowPos(
+            pet,
+            above,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+        );
     }
 
-    unsafe extern "system" fn on_host_moved(
+    unsafe extern "system" fn on_host_event(
         _hook: HWINEVENTHOOK,
-        _event: u32,
+        event: u32,
         window: HWND,
         object: i32,
         _child: i32,
         _thread: u32,
         _time: u32,
     ) {
-        if object == 0
-            && FOLLOW_ACTIVE.load(Ordering::Relaxed)
-            && window as isize == FOLLOW_HOST.load(Ordering::Relaxed)
-        {
-            follow_tick();
+        if !FOLLOW_ACTIVE.load(Ordering::Relaxed) || window as isize != FOLLOW_HOST.load(Ordering::Relaxed) {
+            return;
+        }
+        match event {
+            EVENT_SYSTEM_MOVESIZESTART => {
+                HOST_MOVING.store(true, Ordering::Relaxed);
+            }
+            EVENT_SYSTEM_MOVESIZEEND => {
+                HOST_MOVING.store(false, Ordering::Relaxed);
+                LAST_HOST_MOVE_MS.store(now_epoch_ms(), Ordering::Relaxed);
+                follow_tick();
+            }
+            EVENT_OBJECT_LOCATIONCHANGE if object == 0 => {
+                follow_tick();
+            }
+            _ => {}
         }
     }
 
-    unsafe extern "system" fn on_foreground_changed(
+    unsafe extern "system" fn on_global_event(
         _hook: HWINEVENTHOOK,
-        _event: u32,
+        event: u32,
         _window: HWND,
         _object: i32,
         _child: i32,
@@ -623,6 +656,13 @@ mod win {
         _time: u32,
     ) {
         WAKE_CHECK.store(true, Ordering::Relaxed);
+        if (event == EVENT_SYSTEM_FOREGROUND || event == EVENT_OBJECT_REORDER)
+            && FOLLOW_ACTIVE.load(Ordering::Relaxed)
+        {
+            let pet = FOLLOW_PET.load(Ordering::Relaxed) as HWND;
+            let host = FOLLOW_HOST.load(Ordering::Relaxed) as HWND;
+            stack_with_host(pet, host);
+        }
     }
 
     pub fn spawn_foreground_monitor<F>(app_state: Arc<SharedApp>, on_change: F)
@@ -636,9 +676,11 @@ mod win {
             let mut tracked_host: HWND = std::ptr::null_mut();
             let mut previous_foreground: HWND = std::ptr::null_mut();
             let mut location_hook: HWINEVENTHOOK = std::ptr::null_mut();
+            let mut drag_hook: HWINEVENTHOOK = std::ptr::null_mut();
             let mut focus_hook: HWINEVENTHOOK = std::ptr::null_mut();
+            let mut reorder_hook: HWINEVENTHOOK = std::ptr::null_mut();
+            let mut precise_timer = false;
             let mut host_was_available = false;
-            let mut last_want_top = false;
             let mut restore_generation = 0u32;
             let mut foreground_kind = "unknown".to_string();
             let mut last_validation = std::time::Instant::now()
@@ -658,10 +700,23 @@ mod win {
                         UnhookWinEvent(location_hook);
                         location_hook = std::ptr::null_mut();
                     }
+                    if !drag_hook.is_null() {
+                        UnhookWinEvent(drag_hook);
+                        drag_hook = std::ptr::null_mut();
+                    }
                     if !focus_hook.is_null() {
                         UnhookWinEvent(focus_hook);
                         focus_hook = std::ptr::null_mut();
                     }
+                    if !reorder_hook.is_null() {
+                        UnhookWinEvent(reorder_hook);
+                        reorder_hook = std::ptr::null_mut();
+                    }
+                    if precise_timer {
+                        timeEndPeriod(1);
+                        precise_timer = false;
+                    }
+                    HOST_MOVING.store(false, Ordering::Relaxed);
                     FOLLOW_ACTIVE.store(false, Ordering::Relaxed);
                     FOLLOW_PET.store(0, Ordering::Relaxed);
                     FOLLOW_HOST.store(0, Ordering::Relaxed);
@@ -675,7 +730,18 @@ mod win {
                         EVENT_SYSTEM_FOREGROUND,
                         EVENT_SYSTEM_FOREGROUND,
                         std::ptr::null_mut(),
-                        Some(on_foreground_changed),
+                        Some(on_global_event),
+                        0,
+                        0,
+                        WINEVENT_OUTOFCONTEXT,
+                    );
+                }
+                if reorder_hook.is_null() {
+                    reorder_hook = SetWinEventHook(
+                        EVENT_OBJECT_REORDER,
+                        EVENT_OBJECT_REORDER,
+                        std::ptr::null_mut(),
+                        Some(on_global_event),
                         0,
                         0,
                         WINEVENT_OUTOFCONTEXT,
@@ -728,6 +794,11 @@ mod win {
                             UnhookWinEvent(location_hook);
                             location_hook = std::ptr::null_mut();
                         }
+                        if !drag_hook.is_null() {
+                            UnhookWinEvent(drag_hook);
+                            drag_hook = std::ptr::null_mut();
+                        }
+                        HOST_MOVING.store(false, Ordering::Relaxed);
                         tracked_host = last_host;
                         FOLLOW_LAST.store(i64::MAX, Ordering::Relaxed);
                         restore_generation = restore_generation.wrapping_add(1);
@@ -739,7 +810,16 @@ mod win {
                                     EVENT_OBJECT_LOCATIONCHANGE,
                                     EVENT_OBJECT_LOCATIONCHANGE,
                                     std::ptr::null_mut(),
-                                    Some(on_host_moved),
+                                    Some(on_host_event),
+                                    h_pid,
+                                    h_tid,
+                                    WINEVENT_OUTOFCONTEXT,
+                                );
+                                drag_hook = SetWinEventHook(
+                                    EVENT_SYSTEM_MOVESIZESTART,
+                                    EVENT_SYSTEM_MOVESIZEEND,
+                                    std::ptr::null_mut(),
+                                    Some(on_host_event),
                                     h_pid,
                                     h_tid,
                                     WINEVENT_OUTOFCONTEXT,
@@ -752,18 +832,10 @@ mod win {
                         SetWindowLongPtrW(pet_hwnd, -8, 0);
                     }
                     previous_foreground = fg_win;
-                    let available = !last_host.is_null()
-                        && IsWindowVisible(last_host) != 0
-                        && IsIconic(last_host) == 0;
-                    manage_z(
-                        last_host,
-                        pet_hwnd,
-                        fg_win,
-                        fg_pid,
-                        &foreground_kind,
-                        available,
-                        &mut last_want_top,
-                    );
+                    let available = is_window_available(last_host);
+                    if !available {
+                        HOST_MOVING.store(false, Ordering::Relaxed);
+                    }
                     if available && !host_was_available {
                         FOLLOW_LAST.store(i64::MAX, Ordering::Relaxed);
                         restore_generation = restore_generation.wrapping_add(1);
@@ -772,6 +844,8 @@ mod win {
                     if available {
                         follow_tick();
                     }
+                    stack_with_host(pet_hwnd, last_host);
+                    let _ = WAKE_CHECK.swap(false, Ordering::Relaxed);
                     let bounds = if available {
                         client_bounds_phys(last_host)
                     } else {
@@ -794,15 +868,24 @@ mod win {
                         UnhookWinEvent(location_hook);
                         location_hook = std::ptr::null_mut();
                     }
+                    if !drag_hook.is_null() {
+                        UnhookWinEvent(drag_hook);
+                        drag_hook = std::ptr::null_mut();
+                    }
+                    HOST_MOVING.store(false, Ordering::Relaxed);
                     tracked_host = std::ptr::null_mut();
                     FOLLOW_ACTIVE.store(false, Ordering::Relaxed);
                     FOLLOW_PET.store(0, Ordering::Relaxed);
                     FOLLOW_HOST.store(0, Ordering::Relaxed);
                     host_was_available = false;
-                    last_want_top = false;
                     previous_foreground = fg_win;
 
-                    let bounds = client_bounds_phys(last_host);
+                    let available = is_window_available(last_host);
+                    let bounds = if available {
+                        client_bounds_phys(last_host)
+                    } else {
+                        None
+                    };
                     let update = ForegroundUpdate {
                         foreground_kind: foreground_kind.clone(),
                         host_bounds_phys: bounds,
@@ -820,23 +903,40 @@ mod win {
                 if app_state.quitting.load(Ordering::Relaxed) {
                     break;
                 }
+                let fast = HOST_MOVING.load(Ordering::Relaxed)
+                    || now_epoch_ms().saturating_sub(LAST_HOST_MOVE_MS.load(Ordering::Relaxed)) < 120;
+                if fast && !precise_timer {
+                    precise_timer = timeBeginPeriod(1) == 0;
+                } else if !fast && precise_timer {
+                    timeEndPeriod(1);
+                    precise_timer = false;
+                }
                 let waited = MsgWaitForMultipleObjectsEx(
                     0,
                     std::ptr::null(),
-                    100,
+                    if fast { 2 } else { 32 },
                     QS_ALLINPUT,
                     4, // MWMO_INPUTAVAILABLE
                 );
                 if waited == 0xFFFF_FFFF {
-                    thread::sleep(std::time::Duration::from_millis(100));
+                    thread::sleep(std::time::Duration::from_millis(if fast { 2 } else { 32 }));
                 }
             }
 
             if !location_hook.is_null() {
                 UnhookWinEvent(location_hook);
             }
+            if !drag_hook.is_null() {
+                UnhookWinEvent(drag_hook);
+            }
             if !focus_hook.is_null() {
                 UnhookWinEvent(focus_hook);
+            }
+            if !reorder_hook.is_null() {
+                UnhookWinEvent(reorder_hook);
+            }
+            if precise_timer {
+                timeEndPeriod(1);
             }
             let pet_hwnd = FOLLOW_PET.load(Ordering::Relaxed) as HWND;
             if !pet_hwnd.is_null() && IsWindow(pet_hwnd) != 0 {

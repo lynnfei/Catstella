@@ -32,6 +32,8 @@
   let storeNoticeDismissed = false;
   let updateNotice = null;
   let themePreviewCache = new Map();
+  let hdPreviewCache = new Map();
+  let hdPreviewPending = new Set();
   let activePage = "pet";
   let activeStoreCat = "all";
   let activeDlgEntry = null;
@@ -756,6 +758,34 @@
     }).catch(() => {});
   }
 
+  function resolveBestWallpaperSrc(item) {
+    if (!item) return "";
+    const alt = "online-" + item.id;
+    const local = (data?.wallpapers || []).find((w) => w.id === item.id || w.id === alt);
+    if (local?.preview) return { src: local.preview, badge: "✓ 本地原图", hd: true };
+    const cachedUrl = hdPreviewCache.get(item.id);
+    if (cachedUrl) return { src: cachedUrl, badge: "✦ HD 原图", hd: true };
+    if (hdPreviewPending.has(item.id)) return { src: item.preview || "", badge: "◌ 加载高清…", hd: false };
+    return { src: item.preview || "", badge: "缩略图", hd: false };
+  }
+
+  function ensureHdPreview(item, onLoaded) {
+    if (!item || item.kind !== "wallpaper") return;
+    const alt = "online-" + item.id;
+    if ((data?.wallpapers || []).some((w) => (w.id === item.id || w.id === alt) && w.preview)) return;
+    if (hdPreviewCache.has(item.id) || hdPreviewPending.has(item.id)) return;
+    hdPreviewPending.add(item.id);
+    void api.online("preview-image", item.id).then((res) => {
+      hdPreviewPending.delete(item.id);
+      if (res?.ok && res.url) {
+        hdPreviewCache.set(item.id, res.url);
+      }
+      onLoaded?.();
+    }).catch(() => {
+      hdPreviewPending.delete(item.id);
+    });
+  }
+
   function renderNoticeBar() {
     const bar = $("#hudNoticeBar");
     const dismissedVer = String(data?.settings?.dismissedUpdateVersion || "").trim();
@@ -1047,6 +1077,11 @@
     if ($("#dlgImmersive")) {
       $("#dlgImmersive").hidden = entry.kind !== "wallpaper" && entry.kind !== "theme";
     }
+    const wallBest = entry.kind === "wallpaper" ? resolveBestWallpaperSrc(item) : null;
+    if ($("#dlgHdBadge")) {
+      $("#dlgHdBadge").hidden = entry.kind !== "wallpaper";
+      if (wallBest) $("#dlgHdBadge").textContent = wallBest.badge;
+    }
 
     const media = $("#dlgMedia");
     if (media) {
@@ -1075,12 +1110,18 @@
           if ($("#storeDlg")?.open && activeDlgEntry?.id === entry.id) renderStoreDialog();
         });
       } else {
-        media.innerHTML = item.preview
-          ? `<img id="dlgImg" src="${esc(item.preview)}" alt="${esc(item.name || "")}">`
+        const imgSrc = wallBest ? wallBest.src : (item.preview || "");
+        media.innerHTML = imgSrc
+          ? `<img id="dlgImg" src="${esc(imgSrc)}" alt="${esc(item.name || "")}">`
           : `<small style="padding:24px;color:var(--soft)">无预览图像</small>`;
         $("#dlgImg")?.addEventListener("click", () => {
           if (entry.kind === "wallpaper") openImmersivePreview(entry, activeDlgIndex);
         });
+        if (entry.kind === "wallpaper") {
+          ensureHdPreview(item, () => {
+            if ($("#storeDlg")?.open && activeDlgEntry?.id === entry.id) renderStoreDialog();
+          });
+        }
       }
     }
 
@@ -1164,9 +1205,19 @@
       stage.style.setProperty("--imm-op", (opVal / 100).toFixed(2));
       stage.style.setProperty("--imm-scrim", (scrimVal / 100).toFixed(2));
     }
+    const wallBest = isTheme ? null : resolveBestWallpaperSrc(item);
+    if ($("#immHdBadge")) {
+      $("#immHdBadge").hidden = isTheme;
+      if (wallBest) $("#immHdBadge").textContent = wallBest.badge;
+    }
     if ($("#immWall")) {
-      const src = isTheme ? (curWall?.preview || "") : (item.preview || "");
+      const src = isTheme ? (curWall?.preview || "") : (wallBest ? wallBest.src : (item.preview || ""));
       if ($("#immWall").getAttribute("src") !== src) $("#immWall").src = src;
+    }
+    if (!isTheme) {
+      ensureHdPreview(item, () => {
+        if ($("#immersiveDlg")?.open && immEntry?.id === entry.id) renderImmersivePreview();
+      });
     }
     if ($("#immMockPet") && curPack?.preview && $("#immMockPet").getAttribute("src") !== curPack.preview) {
       $("#immMockPet").src = curPack.preview;

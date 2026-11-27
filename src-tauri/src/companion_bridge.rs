@@ -399,6 +399,25 @@ where
         return;
     }
 
+    if req.method == "GET" && path == "/companion/online-preview" {
+        let id = parsed
+            .query_pairs()
+            .find(|(k, _)| k == "id")
+            .map(|(_, v)| v.to_string())
+            .unwrap_or_default();
+        let Some(file_path) = crate::online::resolve_online_preview_file(&state, &id) else {
+            send_json(
+                &mut stream,
+                404,
+                origin,
+                &json!({ "ok": false, "error": "preview_not_found" }),
+            );
+            return;
+        };
+        serve_image_file(&mut stream, origin, &file_path);
+        return;
+    }
+
     if req.method == "GET" && path == "/companion/character-frame" {
         let mut pack_id = String::new();
         let mut frame = String::new();

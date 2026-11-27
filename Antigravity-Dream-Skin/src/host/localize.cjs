@@ -40,6 +40,11 @@ async function installLocalization(config){
 
  function resolveDynamic(trimmed,parent){
   let m;
+  if(trimmed==="New"||trimmed==="NEW"){
+   if(parent&&parent.closest&&parent.closest('[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper],[data-testid="model-selector-trigger"]'))return"新";
+   if(trimmed==="New"&&parent&&parent.closest&&parent.closest('button,a,nav,aside,header,[role="button"]'))return"新建";
+   return undefined;
+  }
   if((m=trimmed.match(/^Version\s+([0-9.]+)$/i)))return"版本 "+m[1];
   if((m=trimmed.match(/^Show\s+(\d+)\s+earlier\s+steps?$/i)))return"显示 "+m[1]+" 个较早步骤";
   if((m=trimmed.match(/^Worked\s+for\s+(<?\d+[a-z]+(?:\s+\d+[a-z]+)*)$/i)))return"已工作 "+m[1];

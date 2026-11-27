@@ -30,15 +30,15 @@ Name: "chinese"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Types]
-Name: "full"; Description: "完整安装（桌面桌宠 + 皮肤 + Web 插件引导）"
+Name: "full"; Description: "完整安装（桌面桌宠 + 皮肤 + 按需下载 Web 扩展）"
 Name: "compact"; Description: "仅桌面端（桌面桌宠 + 皮肤）"
 Name: "custom"; Description: "自定义"
 
 [Components]
 Name: "core"; Description: "Catstella 桌面桌宠 + Dream Skin（必装核心）"; Types: full compact custom; Flags: fixed
-#if IncludeWebExt == "1"
-Name: "webext"; Description: "Web 端插件包与安装指引（Firefox / Edge / Chrome）"; Types: full custom
-#endif
+Name: "webext"; Description: "浏览器伴侣扩展（安装时直连 GitHub 按需下载）"; Types: full custom
+Name: "webext\chromium"; Description: "Chrome / Edge 扩展包（.zip）"; Types: full custom
+Name: "webext\firefox"; Description: "Firefox 扩展包（.xpi）"; Types: full custom
 
 [Tasks]
 Name: "hostlink"; Description: "打开 Antigravity 时自动联动启动 Catstella（推荐）"
@@ -51,10 +51,10 @@ Source: "{#StageDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion; Component
 Source: "{#StageDir}\NOTICE.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Components: core
 Source: "{#StageDir}\ASSETS.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Components: core
 Source: "{#StageDir}\icons\*.ico"; DestDir: "{app}\icons"; Flags: ignoreversion; Components: core
+Source: "{#StageDir}\web-plugin-guide.html"; DestDir: "{app}\web-extension"; Flags: ignoreversion skipifsourcedoesntexist; Components: webext
 #if IncludeWebExt == "1"
-Source: "{#StageDir}\web-plugin-guide.html"; DestDir: "{app}\web-extension"; Flags: ignoreversion; Components: webext
-Source: "{#WebExtFiles}\kimino-gemini-companion.xpi"; DestDir: "{app}\web-extension"; Flags: ignoreversion; Components: webext
-Source: "{#WebExtFiles}\kimino-gemini-companion-edge-chrome.zip"; DestDir: "{app}\web-extension"; Flags: ignoreversion; Components: webext
+Source: "{#WebExtFiles}\kimino-gemini-companion.xpi"; DestDir: "{app}\web-extension"; Flags: ignoreversion; Components: webext\firefox
+Source: "{#WebExtFiles}\kimino-gemini-companion-edge-chrome.zip"; DestDir: "{app}\web-extension"; Flags: ignoreversion; Components: webext\chromium
 #endif
 
 [Icons]
@@ -65,27 +65,76 @@ Name: "{autoprograms}\Catstella\卸载"; Filename: "{uninstallexe}"; IconFilenam
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "立即启动 Catstella"; Flags: postinstall nowait skipifsilent skipifdoesntexist; Check: CoreSelected
-#if IncludeWebExt == "1"
 Filename: "{app}\web-extension\web-plugin-guide.html"; Description: "查看 Web 插件安装指引"; Flags: postinstall shellexec skipifsilent skipifdoesntexist unchecked; Check: WebExtSelected
-#endif
 
 [Code]
+var
+  DownloadPage: TDownloadWizardPage;
+  DownloadChromiumQueued, DownloadFirefoxQueued: Boolean;
+  DownloadWarningShown: Boolean;
+
+function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  if ProgressMax <> 0 then
+    Log(Format('Downloading %s: %d of %d bytes', [FileName, Progress, ProgressMax]));
+  Result := True;
+end;
+
+procedure InitializeWizard();
+begin
+  DownloadPage := CreateDownloadPage('下载浏览器伴侣扩展', '正在从 GitHub Release 按需拉取所选扩展包（失败时自动跳过，不影响桌面安装）…', @OnDownloadProgress);
+end;
+
 function CoreSelected(): Boolean;
 begin
   Result := WizardIsComponentSelected('core');
 end;
 
-#if IncludeWebExt == "1"
 function WebExtSelected(): Boolean;
 begin
-  Result := WizardIsComponentSelected('webext');
+  Result := WizardIsComponentSelected('webext') or WizardIsComponentSelected('webext\chromium') or WizardIsComponentSelected('webext\firefox');
 end;
-#endif
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  BaseUrl: String;
+begin
+  Result := True;
+  DownloadChromiumQueued := False;
+  DownloadFirefoxQueued := False;
+  if (CurPageID = wpReady) and ('{#IncludeWebExt}' <> '1') then begin
+    if WizardIsComponentSelected('webext\chromium') or WizardIsComponentSelected('webext\firefox') then begin
+      BaseUrl := 'https://github.com/lynnfei/Catstella/releases/download/v{#AppVersion}';
+      DownloadPage.Clear;
+      if WizardIsComponentSelected('webext\chromium') then begin
+        DownloadPage.Add(BaseUrl + '/kimino-gemini-companion-edge-chrome.zip', 'kimino-gemini-companion-edge-chrome.zip', '');
+        DownloadChromiumQueued := True;
+      end;
+      if WizardIsComponentSelected('webext\firefox') then begin
+        DownloadPage.Add(BaseUrl + '/kimino-gemini-companion.xpi', 'kimino-gemini-companion.xpi', '');
+        DownloadFirefoxQueued := True;
+      end;
+      DownloadPage.Show;
+      try
+        try
+          DownloadPage.Download;
+        except
+          if not DownloadWarningShown then begin
+            DownloadWarningShown := True;
+            Log('Web extension download skipped/failed: ' + GetExceptionMessage);
+          end;
+        end;
+      finally
+        DownloadPage.Hide;
+      end;
+    end;
+  end;
+end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
-  AppExe, AppDir, PreviewDir, PreviewExe, LegacyDir, LegacyExe, LegacyKey: String;
+  AppExe, AppDir, PreviewDir, PreviewExe, PreviewTauriExe, LegacyDir, LegacyExe, LegacyKey: String;
 begin
   Result := '';
   AppDir := ExpandConstant('{app}');
@@ -96,6 +145,11 @@ begin
   end;
 
   PreviewDir := ExpandConstant('{localappdata}\Programs\Catstella-Tauri');
+  PreviewTauriExe := PreviewDir + '\Catstella.exe';
+  if FileExists(PreviewTauriExe) then begin
+    Exec(PreviewTauriExe, '--quit', PreviewDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(450);
+  end;
   PreviewExe := PreviewDir + '\catstella-tauri.exe';
   if FileExists(PreviewExe) then begin
     Exec(PreviewExe, '--quit', PreviewDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
@@ -117,7 +171,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   autoFlag, linkFlag, ResultCode: Integer;
-  AppDir, AppExe, StartupKey, WatcherCmd: String;
+  AppDir, AppExe, StartupKey, WatcherCmd, WebExtDir, TmpZip, TmpXpi: String;
 begin
   if CurStep = ssPostInstall then begin
     AppDir := ExpandConstant('{app}');
@@ -142,6 +196,19 @@ begin
 
     if WizardIsTaskSelected('hostcdp') then begin
       Exec(AppExe, '--configure-host-shortcuts', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+
+    if '{#IncludeWebExt}' <> '1' then begin
+      WebExtDir := AppDir + '\web-extension';
+      ForceDirectories(WebExtDir);
+      TmpZip := ExpandConstant('{tmp}\kimino-gemini-companion-edge-chrome.zip');
+      if DownloadChromiumQueued and FileExists(TmpZip) then begin
+        FileCopy(TmpZip, WebExtDir + '\kimino-gemini-companion-edge-chrome.zip', False);
+      end;
+      TmpXpi := ExpandConstant('{tmp}\kimino-gemini-companion.xpi');
+      if DownloadFirefoxQueued and FileExists(TmpXpi) then begin
+        FileCopy(TmpXpi, WebExtDir + '\kimino-gemini-companion.xpi', False);
+      end;
     end;
   end;
 end;

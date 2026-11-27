@@ -2,6 +2,35 @@
 
 > 桌面端独立更新记录（`0.x.y`）。浏览器伴侣扩展（`1.x.y`）更新记录见 `Catstella-web/CHANGELOG.md`。
 
+## 0.7.2 · 反重力全量汉化与子菜单可读性 + 商店高清预览分栏 + 平滑跟随与瘦身安装器 / 2026-11-27
+
+### ✨ 体验与功能升级
+
+- **Antigravity 模型 / 思考强度多级子菜单可读性修复（`theme.cjs` `2026-11-27-agy-wall-v11`）**
+  - 修复二级/三级浮动菜单（`[role=menu]`、`[role=listbox]`、`[data-radix-menu-content]` 等）被去重规则剥离背景导致透明重叠文字的问题，统一补全高对比实色毛玻璃面层，并纳入 `verify-agy-invariants.cjs` 三级菜单不透明回归校验。
+- **Antigravity 全量简体中文汉化补全**
+  - 合入社区 MIT 协议词库 [antigravity-cn-community/Antigravity-Chinese-Localization](https://github.com/antigravity-cn-community/Antigravity-Chinese-Localization)（于 `NOTICE.md` 规范署名致谢），全量词条由 2,505 条扩展至 **5,418 条**。
+  - 保留 `Orchestrator` 原文不译；补充 `"Leaving Soon"`（即将下线）、`"Notice"`（提示）、`"Extra High"`（极高）、`"Very High"`（很高）、`"Minimal"`（最低）、`"Thinking"`（思考）、`"Thinking Level"`（思考强度）等新词条。
+  - `localize.cjs` 支持上下文感知的 `"New"` / `"NEW"` 判定：模型选择器及弹出列表内译作 `新`，导航与按钮内保留 `新建`。
+- **商店高清原图预览与双栏详情窗格（`#storeDlg` `.dlg-split` + `online-preview`）**
+  - `#storeDlg` 升级为左图右文双栏结构，展示 `#dlgHdBadge` / `#immHdBadge` 标识。
+  - 新增 `online.rs` `"preview-image"` 动作与 `companion_bridge.rs` `/companion/online-preview` 路由：已安装壁纸直接读取本地全分辨率原图，未安装壁纸按需拉取经 SHA-256 校验的高清原图并缓存在 `online-preview-cache/`，打开后自动从缩略图无感升级为高清图。
+  - 修复 `#immSource`（`前往原作页 ↗`）与 `#immClose` 在浅色壁纸/浅色主题下的对比度问题，统一采用深色磨砂底 + 白色前景。
+- **Rust 原生跟随与正常层级 Z-order（移植上游 `v0.2.14` 思路）**
+  - `src-tauri/src/foreground.rs` 新增 `stack_with_host`（`GW_HWNDPREV` + `SWP_NOOWNERZORDER` 正常窗口带随附，避免置顶层闪烁）、`DWMWA_CLOAKED` 虚拟桌面隐身检测、`EVENT_OBJECT_REORDER` 监听，以及 `EVENT_SYSTEM_MOVESIZESTART`/`END` 拖拽期间动态切换 `timeBeginPeriod(1)` + `2ms` 快速跟随轮询。
+- **Windows 瘦身安装器与按需在线拉取浏览器扩展**
+  - `catstella.iss` 默认不再将 ~72 MiB 浏览器扩展压缩包打进桌面端安装包，`Catstella-Setup-0.7.2-x64.exe` 体积缩减至 **19,445,515 字节（约 18.55 MiB）**。
+  - 若用户在组件页勾选 Chromium 或 Firefox 伴侣扩展，安装器会在准备阶段通过 Inno Setup 7 原生 `CreateDownloadPage` 从 GitHub `v0.7.2` Release 按需下载对应 `.zip` / `.xpi` 并释放到 `{app}\web-extension\`（断网或失败时提示并继续完成核心安装）；`--bundle-webext` 可切换回离线全量打包。
+
+### ✅ 本地验证与构建记录
+
+- `cargo test --manifest-path src-tauri/Cargo.toml --offline`：**31 passed, 0 failed, 1 ignored**（线上 GitHub 商店实测用例默认 ignored）
+- `npm test`：**113 passed, 0 failed**
+- `node tools/verify-hud-store.cjs --staged`：**PASS**（100 次快照配额保活、#dlgHdBadge 与沉浸顶栏深色对比度校验通过）
+- `npm run verify:appearance`：**PASS**（含 AGY 三级子菜单不透明、高斯模糊与双壁纸轮播门禁）
+- 发行安装包：`dist/installers/Catstella-Setup-0.7.2-x64.exe`（`19,445,515` bytes，core exe `24,163,840` bytes）
+- SHA-256：`6fdfc66b2f6fe2b974a1184a01eb9d39c69a58ec6c4bd98160c017fb9d4774b7`
+
 ## 0.7.1 · 商店沉浸预览与 Credits + 耐力条高阶定制 + 全局通知与性能提速 / 2026-11-26
 
 - **内容商店沉浸预览与详情重构**：新增全屏「沉浸式壁纸 / 主题预览」弹窗（壁纸模式支持模拟 Antigravity 对话气泡叠加、桌宠轮廓展示、预览专用可见度/遮罩试调与系列图包上下张翻页；主题模式支持「查看目标主题 / 对比当前搭配」实时切换）；详情弹窗新增尺寸/日期/本地状态/校验指纹 Chips、图包已装帧角标以及「此主题效果 vs 当前搭配」双栏对比预览。

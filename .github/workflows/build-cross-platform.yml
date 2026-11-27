@@ -191,11 +191,11 @@ jobs:
           sha256sum "${files[@]}" > SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
           cat > notes.md <<'EOF'
-          - **内容商店体验升级**：新增全屏「沉浸式壁纸 / 主题预览」（支持模拟对话叠加、可见度/遮罩试调与系列切换）、规格/状态 Chips 详情页以及醒目的原作者 Credits 署名与原作发布页直达按钮。
-          - **耐力条高阶自定义**：旁侧耐力计新增三种外观风格（微晶玻璃 / 霓虹辉光 / 极简无框）、6 套独立配色与任意自定义色盘，以及 40–100% 透明度调节，桌面端与设置预览舱实时同步。
-          - **全局通知与性能提速**：新增应用更新横幅与内容商店上新角标检测；设置中心改用先渲染后显窗、按当前页签按需更新与图片懒加载，大幅压缩冷启动显窗耗时。
-          - **Tauri 2 底座与跨端联动**：沿用 `0.7.0` 正式 Tauri 2 + WebView2 架构、5 频道 Bento HUD 与 Web 伴侣 v1.5.2 联动；`macOS arm64` 与 `x64` 已改为稳定交叉编译出包。
-          - **附带平台构建**：Windows x64 安装包内含可选 Web 扩展；macOS（`.dmg`）与 Linux（`.AppImage` / `.deb`）为 Tauri 云端构建实验包，暂不支持 Windows 专用的宿主窗口跟随，Firefox XPI 未签名，macOS 未公证。
+          - **Antigravity 模型菜单 & 全面汉化**：修复嵌套模型 / 思考强度子菜单背景变透明重叠的顽疾，确保 1/2/3 级菜单清晰可读；整合开源 MIT 汉化词条集至 `5400+` 条并上下文区分“新建 / 新”角标。
+          - **商店高清预览 + 分栏详情 + 沉浸顶部栏**：修复浅色模式下沉浸预览右上角按钮白字浅底看不清的问题；详情弹窗改版双栏布局并接入 `/companion/online-preview` 按需缓存高清原图预览。
+          - **Windows 宿主 Z 序 & 拖动跟随升级**：`foreground.rs` 借鉴上游 `v0.2.14` 改用 `GW_HWNDPREV` + `SWP_NOOWNERZORDER` 普通层插层、`DWMWA_CLOAKED` 虚拟桌面判定与拖动期动态 1ms 定时补帧。
+          - **Windows 瘦身安装器**：安装包体积从 ~78 MiB 压减至 **~19 MiB**，安装向导勾选 Chrome/Edge 或 Firefox 时直连 GitHub Release 按需拉取对应扩展包（离线/失败自动跳过）。
+          - **附带平台构建**：macOS（`.dmg`）与 Linux（`.AppImage` / `.deb`）为 Tauri 云端构建实验包，暂不支持 Windows 专用的宿主窗口跟随，Firefox XPI 未签名，macOS 未公证。
           - 使用 `SHA256SUMS.txt` 校验下载文件。
           EOF
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \

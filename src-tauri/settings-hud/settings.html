@@ -483,7 +483,7 @@
               <div class="card card-full">
                 <span class="ico" aria-hidden="true">★</span>
                 <h3>关于 Catstella 与基线恢复</h3>
-                <p class="desc" id="about-ver">Catstella v0.7.1 · 作者 lynnfei · 原作 Monokumakuki (Antigravity Star Suite)</p>
+                <p class="desc" id="about-ver">Catstella v0.7.2 · 作者 lynnfei · 原作 Monokumakuki (Antigravity Star Suite)</p>
                 <div class="row">
                   <label class="inline-sw"><span>自动检查更新</span><input class="sw" id="autoUpdateCheck" type="checkbox" switch></label>
                   <div class="pillrow">
@@ -550,39 +550,46 @@
         <h3 id="dlgTitle">素材详情</h3>
       </div>
       <div class="pillrow">
+        <span class="dlg-hd-badge" id="dlgHdBadge" hidden>HD</span>
         <button type="button" class="pill" id="dlgImmersive" hidden>⛶ 沉浸预览</button>
         <button type="button" class="close small" id="dlgClose" aria-label="关闭弹窗">✕</button>
       </div>
     </div>
     <div class="dlg-body">
-      <div class="dlg-media" id="dlgMedia">
-        <img id="dlgImg" src="" alt="">
-      </div>
-      <div class="dlg-meta-chips" id="dlgMeta" hidden></div>
-      <div class="dlg-pack-nav" id="dlgPackNav" hidden>
-        <div class="pillrow">
-          <button type="button" class="pill" id="dlgPrev" aria-label="上一张">‹</button>
-          <span class="dlg-pack-counter" id="dlgCounter">1 / 1</span>
-          <button type="button" class="pill" id="dlgNext" aria-label="下一张">›</button>
+      <div class="dlg-split">
+        <div class="dlg-left">
+          <div class="dlg-media" id="dlgMedia">
+            <img id="dlgImg" src="" alt="">
+          </div>
+          <div class="dlg-pack-nav" id="dlgPackNav" hidden>
+            <div class="pillrow">
+              <button type="button" class="pill" id="dlgPrev" aria-label="上一张">‹</button>
+              <span class="dlg-pack-counter" id="dlgCounter">1 / 1</span>
+              <button type="button" class="pill" id="dlgNext" aria-label="下一张">›</button>
+            </div>
+          </div>
+          <div class="dlg-strip" id="dlgStrip" hidden></div>
         </div>
-      </div>
-      <div class="dlg-strip" id="dlgStrip" hidden></div>
-      <p id="dlgDesc"></p>
-      <div class="dlg-credit-card" id="dlgCreditCard">
-        <div class="dlg-credit-main">
-          <span class="dlg-credit-kicker">CREATOR &amp; CREDITS</span>
-          <strong id="dlgAuthor">By Catstella</strong>
-          <small id="dlgLicense" hidden></small>
-        </div>
-        <button type="button" class="pill on" id="dlgSource" hidden>前往原作页 ↗</button>
-      </div>
-      <p class="dlg-status" id="dlgStatus" role="status"></p>
-      <div class="dlg-foot">
-        <span class="dlg-foot-note" id="dlgFootNote">SHA-256 校验安装</span>
-        <div class="pillrow">
-          <button type="button" class="pill" id="dlgUninstall" hidden>卸载</button>
-          <button type="button" class="pill" id="dlgInstallAll" hidden>安装整套</button>
-          <button type="button" class="pill on" id="dlgUse">✦ 立即应用</button>
+        <div class="dlg-right">
+          <div class="dlg-meta-chips" id="dlgMeta" hidden></div>
+          <p id="dlgDesc"></p>
+          <div class="dlg-credit-card" id="dlgCreditCard">
+            <div class="dlg-credit-main">
+              <span class="dlg-credit-kicker">CREATOR &amp; CREDITS</span>
+              <strong id="dlgAuthor">By Catstella</strong>
+              <small id="dlgLicense" hidden></small>
+            </div>
+            <button type="button" class="pill on" id="dlgSource" hidden>前往原作页 ↗</button>
+          </div>
+          <p class="dlg-status" id="dlgStatus" role="status"></p>
+          <div class="dlg-foot">
+            <span class="dlg-foot-note" id="dlgFootNote">SHA-256 校验安装</span>
+            <div class="pillrow">
+              <button type="button" class="pill" id="dlgUninstall" hidden>卸载</button>
+              <button type="button" class="pill" id="dlgInstallAll" hidden>安装整套</button>
+              <button type="button" class="pill on" id="dlgUse">✦ 立即应用</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -600,13 +607,16 @@
     </div>
     <header class="imm-top">
       <div class="imm-title-box">
-        <span class="store-badge" id="immKind">沉浸预览</span>
+        <div class="pillrow">
+          <span class="store-badge" id="immKind">沉浸预览</span>
+          <span class="imm-hd-badge" id="immHdBadge" hidden>HD 原图</span>
+        </div>
         <h3 id="immTitle">壁纸预览</h3>
         <small id="immCredit">By Catstella</small>
       </div>
       <div class="pillrow">
-        <button type="button" class="pill" id="immSource" hidden>原作页 ↗</button>
-        <button type="button" class="close" id="immClose" aria-label="退出沉浸预览">✕</button>
+        <button type="button" class="pill" id="immSource" hidden>前往原作页 ↗</button>
+        <button type="button" class="close" id="immClose" title="退出沉浸预览" aria-label="退出沉浸预览">✕</button>
       </div>
     </header>
     <footer class="imm-dock">

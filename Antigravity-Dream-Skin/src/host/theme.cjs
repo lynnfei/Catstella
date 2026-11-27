@@ -1,7 +1,7 @@
 // Serialized into the host by its existing local CDP endpoint. No app files are modified.
 async function installTheme(config){
  const key="__agyDreamSkinV2";
- const engineRevision="2026-11-26-agy-wall-v10",mountKey="__agyDreamSkinMountV2";
+ const engineRevision="2026-11-27-agy-wall-v11",mountKey="__agyDreamSkinMountV2";
  if(window[key]){if(window[key].owner!==config.owner)throw new Error("皮肤由另一个运行实例管理");if(window[key].engineRevision===engineRevision&&window[key].status().applied){await window[key].update(config);return window[key].status();}window[key].destroy();}
  // Initial image decoding yields to other callers. Keep one initializer and let
  // later calls replace its desired config instead of leaving orphan observers.
@@ -484,13 +484,13 @@ async function installTheme(config){
  html.agy-dream-active-v2 :is([role=menu],[role=dialog],[role=listbox],[data-radix-popper-content-wrapper] > *,[class*="bg-popover"],[data-agy-dream-surface]):not([data-agy-dream-protect]) {
   background-color:var(--agy-dream-card-bg)!important;
   background-image:var(--agy-ui-glass)!important;
-  backdrop-filter:blur(24px) saturate(135%)!important;
-  -webkit-backdrop-filter:blur(24px) saturate(135%)!important;
+  backdrop-filter:blur(26px) saturate(145%)!important;
+  -webkit-backdrop-filter:blur(26px) saturate(145%)!important;
   border:1px solid var(--agy-ui-glass-border)!important;
   border-radius:16px!important;
   box-shadow:0 12px 36px rgba(10,8,20,0.48),inset 0 1px 0 rgba(var(--agy-ui-highlight-rgb),0.22)!important;
  }
- html.agy-dream-active-v2 :is([role=menu],[role=dialog],[role=listbox],[data-radix-popper-content-wrapper] > *,[class*="bg-popover"],[data-agy-dream-surface]) :is([role=menu],[role=listbox],[class*="bg-popover"],[data-agy-dream-surface]) {
+ html.agy-dream-active-v2 :is([role=dialog],[data-radix-popper-content-wrapper] > *,[class*="bg-popover"],[data-agy-dream-surface]) :is([class*="bg-popover"],[data-agy-dream-surface]):not([role=menu]):not([role=listbox]):not([data-side]):not([data-align]):not([data-state]):not([data-radix-menu-content]):not([data-radix-popper-content-wrapper]):not([data-slot*="menu"]):not(.fixed):not(.absolute) {
   background-color:transparent!important;
   background-image:none!important;
   backdrop-filter:none!important;
@@ -498,6 +498,16 @@ async function installTheme(config){
   border:0!important;
   box-shadow:none!important;
   border-radius:0!important;
+ }
+ /* Nested floating menus / submenus (e.g. Antigravity model & thinking level cascades) must stay solid-frosted and readable. */
+ html.agy-dream-active-v2 :is([role=menu],[role=listbox],[data-radix-menu-content],[data-radix-popper-content-wrapper] > *,[data-slot="dropdown-menu-content"],[data-slot="dropdown-menu-sub-content"],[role=menu] [role=menu],[role=menu] [role=listbox],[data-side]:is([role=menu],[role=listbox],[class*="bg-popover"])):not([data-agy-dream-protect]) {
+  background-color:var(--agy-ui-surface)!important;
+  background-image:linear-gradient(180deg,color-mix(in srgb,var(--agy-ui-surface) 97%,transparent),color-mix(in srgb,var(--agy-ui-surface) 99%,transparent))!important;
+  backdrop-filter:blur(28px) saturate(145%)!important;
+  -webkit-backdrop-filter:blur(28px) saturate(145%)!important;
+  border:1px solid var(--agy-ui-glass-border)!important;
+  border-radius:14px!important;
+  box-shadow:0 16px 42px rgba(8,6,18,0.62),inset 0 1px 0 rgba(var(--agy-ui-highlight-rgb),0.22)!important;
  }
  html.agy-dream-active-v2 :is([data-agy-dream-surface],[role=dialog]) :is(textarea,input:not([type=checkbox]):not([type=radio]),[contenteditable="true"]) {
   background-color:var(--agy-ui-pill-bg)!important;
@@ -662,7 +672,7 @@ async function installTheme(config){
    const rect=el.getBoundingClientRect();if(rect.width<1||rect.height<1)continue;
    const css=getComputedStyle(el),bg=css.backgroundColor;
    nativeBackgrounds.set(el,bg);
-   if(el.matches("div,section")&&(css.position==="absolute"||css.position==="fixed")&&css.pointerEvents!=="none"&&rect.width>=160&&rect.height>=48&&rect.width<innerWidth*.92&&(Number(css.zIndex)>=10||css.boxShadow!=="none"||parseFloat(css.borderTopWidth)>0)&&!el.matches(".surface-composer,.surface-composer-card")&&!el.querySelector(".surface-composer")&&!el.closest("[data-agy-dream-surface],aside,nav,header")){
+   if((el.matches("div,section")&&(css.position==="absolute"||css.position==="fixed")&&css.pointerEvents!=="none"&&rect.width>=160&&rect.height>=48&&rect.width<innerWidth*.92&&(Number(css.zIndex)>=10||css.boxShadow!=="none"||parseFloat(css.borderTopWidth)>0)&&!el.matches(".surface-composer,.surface-composer-card")&&!el.querySelector(".surface-composer")&&(!el.closest("[data-agy-dream-surface],aside,nav,header")||el.matches("[role=menu],[role=listbox],[data-side],[data-radix-menu-content]")))){
     if(el.hasAttribute("data-agy-dream-clear"))el.removeAttribute("data-agy-dream-clear");
     mark(el,"data-agy-dream-surface");seen.add(el);continue;
    }

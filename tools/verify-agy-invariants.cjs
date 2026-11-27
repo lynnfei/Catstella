@@ -103,8 +103,16 @@ async function main(){
   }
   await page.waitForFunction(id=>{const s=__agyDreamSkinV2.status();return s.wallpaper.presented===id&&!s.wallpaper.transitioning;},current);
   assert.equal(await page.locator('.agy-dream-wallpaper-incoming').count(),0,'no old opaque overlay can cover later rotations');
+  const menuBgs=await page.evaluate(()=>{
+   const wrap=document.createElement('div');
+   wrap.setAttribute('data-radix-popper-content-wrapper','');
+   wrap.innerHTML='<div role="menu" class="bg-popover" id="m1"><div role="menuitem">Gemini 4 Neon</div><div role="menu" class="bg-popover" data-side="right" id="m2"><div role="menuitem">Medium</div><div role="menu" class="bg-popover" data-side="right" id="m3"><div role="menuitem">Extra High</div></div></div></div>';
+   document.querySelector('#root').append(wrap);
+   return ['#m1','#m2','#m3'].map(s=>getComputedStyle(document.querySelector(s)).backgroundColor);
+  });
+  for(const bg of menuBgs)assert(bg!=='transparent'&&bg!=='rgba(0, 0, 0, 0)','nested model & thinking submenus must remain opaque-frosted, got '+bg);
   assert.deepEqual(errors,[]);
-  console.log('PASS: AGY rounded role surfaces, alpha-only updates without layout/decode, streaming/reuse, rotation order and final rendered wallpaper.');
+  console.log('PASS: AGY rounded role surfaces, nested menus, alpha-only updates without layout/decode, streaming/reuse, rotation order and final rendered wallpaper.');
  }finally{await browser.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

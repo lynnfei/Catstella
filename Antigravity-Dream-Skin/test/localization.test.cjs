@@ -9,13 +9,17 @@ test("zh-CN dictionary loads cleanly with expanded Antigravity UI coverage", () 
   const dictPath = path.join(__dirname, "../assets/localization/zh-CN.json");
   const raw = JSON.parse(fs.readFileSync(dictPath, "utf8"));
   const keys = Object.keys(raw).filter((k) => !k.startsWith("$"));
-  assert(keys.length >= 2450, `Expected >= 2450 dictionary entries, got ${keys.length}`);
+  assert(keys.length >= 5000, `Expected >= 5000 dictionary entries, got ${keys.length}`);
   for (const k of keys) {
     assert.equal(typeof raw[k], "string", `Non-string value for "${k}"`);
     assert(raw[k].trim().length > 0, `Empty translation for "${k}"`);
   }
   assert.equal(Object.hasOwn(raw, "Orchestrator"), false, 'Standalone "Orchestrator" must remain untranslated for model selector badge clarity');
+  assert.equal(Object.hasOwn(raw, "New"), false, 'Standalone "New" is translated contextually in localize.cjs');
   for (const required of [
+    "Leaving Soon",
+    "Notice",
+    "Extra High",
     "Agent said",
     "You said",
     "Agent working",

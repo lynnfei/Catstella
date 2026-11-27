@@ -524,6 +524,26 @@ pub enum OnlineMutation {
     SettingsAndDreamSkinUpdated(bool),
 }
 
+pub fn resolve_online_preview_file(state: &SharedApp, id: &str) -> Option<PathBuf> {
+    if !is_valid_id_slug(id) {
+        return None;
+    }
+    let cache_dir = {
+        let rt = state.runtime.lock().unwrap();
+        rt.settings_path
+            .parent()
+            .map(|p| p.join("online-preview-cache"))
+            .or_else(|| rt.user_wallpapers_dir.parent().map(|p| p.join("online-preview-cache")))?
+    };
+    for ext in ["png", "jpg", "jpeg", "webp"] {
+        let candidate = cache_dir.join(format!("{id}.{ext}"));
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 pub fn handle_online_action(
     state: &SharedApp,
     action: &str,
@@ -663,6 +683,114 @@ pub fn handle_online_action(
             };
             (
                 json!({ "ok": true, "palette": palette, "opacity": opacity }),
+                OnlineMutation::None,
+            )
+        }
+        "preview-image" => {
+            let Some(id) = value.and_then(|v| v.as_str()) else {
+                return (json!({ "ok": false }), OnlineMutation::None);
+            };
+            if !is_valid_id_slug(id) {
+                return (json!({ "ok": false }), OnlineMutation::None);
+            }
+            let (bridge_port, installed_id) = {
+                let rt = state.runtime.lock().unwrap();
+                let alt_id = format!("online-{id}");
+                let found = rt
+                    .wallpapers
+                    .iter()
+                    .find(|w| w.file.is_some() && (w.id == id || w.id == alt_id))
+                    .map(|w| w.id.clone());
+                (rt.bridge_port, found)
+            };
+            let Some(port) = bridge_port else {
+                return (json!({ "ok": false }), OnlineMutation::None);
+            };
+            if let Some(local_id) = installed_id {
+                return (
+                    json!({
+                        "ok": true,
+                        "hd": true,
+                        "cached": true,
+                        "url": format!("http://127.0.0.1:{port}/companion/wallpaper-image?id={local_id}")
+                    }),
+                    OnlineMutation::None,
+                );
+            }
+            let Ok((items, _)) = load_catalog(seed_dir.as_deref(), false) else {
+                return (json!({ "ok": false, "reason": "connection" }), OnlineMutation::None);
+            };
+            let Some(item) = items.into_iter().find(|i| {
+                i.get("id").and_then(|v| v.as_str()) == Some(id)
+                    && i.get("kind").and_then(|v| v.as_str()) == Some("wallpaper")
+            }) else {
+                return (json!({ "ok": false }), OnlineMutation::None);
+            };
+            let rel = item.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let expected_sha = item.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
+            let expected_mime = item.get("mime").and_then(|v| v.as_str()).unwrap_or("");
+            let ext = Path::new(rel)
+                .extension()
+                .and_then(|s| s.to_str())
+                .filter(|e| matches!(*e, "png" | "jpg" | "jpeg" | "webp"))
+                .unwrap_or("png");
+            let cache_dir = wallpaper_dir
+                .parent()
+                .unwrap_or(&wallpaper_dir)
+                .join("online-preview-cache");
+            let target = cache_dir.join(format!("{id}.{ext}"));
+            if target.is_file()
+                && fs::read(&target)
+                    .ok()
+                    .map(|b| sha256_hex(&b) == expected_sha)
+                    .unwrap_or(false)
+            {
+                return (
+                    json!({
+                        "ok": true,
+                        "hd": true,
+                        "cached": true,
+                        "url": format!("http://127.0.0.1:{port}/companion/online-preview?id={id}")
+                    }),
+                    OnlineMutation::None,
+                );
+            }
+            let bytes = match load_asset_bytes(seed_dir.as_deref(), rel, expected_sha, MAX_WALLPAPER_BYTES) {
+                Ok(b) => b,
+                Err(reason) => {
+                    return (json!({ "ok": false, "reason": reason }), OnlineMutation::None);
+                }
+            };
+            let Some(probe) = probe_image(&bytes) else {
+                return (json!({ "ok": false, "reason": "failed" }), OnlineMutation::None);
+            };
+            if (!expected_mime.is_empty() && probe.mime != expected_mime)
+                || (probe.width as u64 * probe.height as u64) > 16_000_000
+            {
+                return (json!({ "ok": false, "reason": "failed" }), OnlineMutation::None);
+            }
+            if fs::create_dir_all(&cache_dir).is_err() {
+                return (json!({ "ok": false, "reason": "failed" }), OnlineMutation::None);
+            }
+            let tmp = cache_dir.join(format!(".{id}.{ext}.tmp.{}", now_ms()));
+            if fs::write(&tmp, &bytes).is_err() {
+                let _ = fs::remove_file(&tmp);
+                return (json!({ "ok": false, "reason": "failed" }), OnlineMutation::None);
+            }
+            if fs::rename(&tmp, &target).is_err() {
+                let _ = fs::remove_file(&target);
+                if fs::rename(&tmp, &target).is_err() {
+                    let _ = fs::remove_file(&tmp);
+                    return (json!({ "ok": false, "reason": "failed" }), OnlineMutation::None);
+                }
+            }
+            (
+                json!({
+                    "ok": true,
+                    "hd": true,
+                    "cached": false,
+                    "url": format!("http://127.0.0.1:{port}/companion/online-preview?id={id}")
+                }),
                 OnlineMutation::None,
             )
         }

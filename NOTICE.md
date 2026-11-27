@@ -7,5 +7,6 @@
 - **上游原创合成音效**：遵循 Codex Maid Widget MIT，版权通知完整保留。
 - **DSH 小黄鸭**：独立再分发授权未验证；公开导出已移除对应音频和预设，仍保留上游来源说明以避免误表述。
 - **Gemini 角色与壁纸**：见 ASSETS.md。ZipZipPipe 参考署名、AI 生成、第三方权利与软件许可分开；不授予 Google/Gemini 商标权，不代表与 Google 有关联。
+- **Antigravity-Chinese-Localization（MIT）**：https://github.com/antigravity-cn-community/Antigravity-Chinese-Localization 。合并其开源整理词条集至 `Antigravity-Dream-Skin/assets/localization/zh-CN.json`，遵循原仓库 MIT 许可。
 
 第三方许可文件的范围以各自原文为准；上游通知包含的资源列表不等于本仓库的实际资源列表。

@@ -65,7 +65,20 @@
 - [x] **外观：耐力条进阶自定义。** 新增微晶玻璃 / 霓虹辉光 / 极简无框三套外观样式、6 组内置独立配色 + 自定义色盘以及 40–100% 透明度控制（双窗同步生效）。
 - [x] **全局：通知提示体系。** 新增版本更新横幅（支持跳过该版）与内容商店上新检测（页签红点 + 卡片 `NEW` 徽标 + 横幅提醒）。
 - [x] **全局：性能优化。** 设置中心启用隐身预渲染防闪烁、按激活频道惰性渲染、目录与壁纸图片懒加载/异步解码，以及首屏绘制后延迟后台 IPC 查询。
+
+### 0.7.2 已完成迭代
+
+- [x] **Antigravity 模型嵌套菜单可读性修复。** 修复 `theme.cjs` 嵌套弹层规则把 2/3 级模型与思考强度子菜单误清空成透明导致的叠字看不清问题，保持高不透明度磨砂背板。
+- [x] **Antigravity 全面汉化（5,400+ 词条）。** 引入 MIT `Antigravity-Chinese-Localization` 整理词典与上下文 `New`/`NEW` 区分（菜单角标「新」 vs 操作按钮「新建」），覆盖最新菜单、工作区与提示语。
+- [x] **商店沉浸预览右上角按钮对比度与视觉重制。** 修复浅色模式下 `.imm-top .pill` 继承浅底白字几乎不可见的问题，改用深色磨砂玻璃底配白字。
+- [x] **重做商店详情窗格与高清预览链路。** 详情弹窗改版双栏分栏并新增 `/companion/online-preview` 按需拉取缓存高清原图，已安装壁纸直取本地原图，彻底解决沉浸预览发糊问题。
+- [x] **Rust 宿主窗口层级与拖动跟随优化（借鉴上游 v0.2.14）。** 在 `src-tauri/src/foreground.rs` 接入 `DWMWA_CLOAKED` 虚拟桌面隐藏判定、`GW_HWNDPREV` + `SWP_NOOWNERZORDER` 普通层贴合宿主插层（`stack_with_host`）、`EVENT_OBJECT_REORDER` 守层与拖动期动态 `timeBeginPeriod(1)` 补帧。
+- [x] **Windows 安装器瘦身：按需从 GitHub 在线下载浏览器扩展。** 借助 Inno Setup 7 原生 `CreateDownloadPage`，将安装器从 ~78 MiB 压减至 ~19 MiB，安装时按勾选浏览器（Chrome / Edge、Firefox）直连 GitHub Release 按需拉取，失败时温和跳过。
 - [ ] **macOS 宿主窗口零权限跟随（借鉴 PR #1）。** 参考 `ForegroundHost-mac.swift` 的 `CGWindowListCopyWindowInfo` + `NSWorkspace` 零辅助功能权限方案，补齐 `src-tauri/src/foreground.rs` 的 macOS 端宿主探测。
+
+### 喵言喵语强化（规划中）
+
+- [ ] **分时段自动碎碎念。** 依据本地时间段（如清晨问候、午间吃饭、下午犯困/提神、傍晚收工、深夜熬夜提醒等）自动触发契合当下时段的闲置碎碎念台词，并兼顾防刷屏冷却与免打扰约束。
 
 ## 中长期与探索
 
@@ -79,5 +92,6 @@
 - **追加形象。** 一款先征求原作者授权，另一款参考社区形象后自行设计。形象确定后再适配表情与双端尺寸。
 - **Windows 浮动任务栏重影。** 用户已实测仍复现。后续记录两端可见性与焦点时序，再验混合 DPI 和多显示器。
 - **双端记忆与人格同步。** 在 Memosyne 项目里研究 DSH 社区的记忆实现与 Memmy，再定义双端接入。
+- **浏览器扩展瘦身与商店分发（AMO 签名 / Edge Add-ons / Chrome Web Store）。** 先压缩扩展内壁纸资源（如 WebP）减小体积，优先通过 Mozilla AMO 获取官方签名 `.xpi`（可先走 Unlisted 签名）与上架 Edge Add-ons，再补齐非官方标识与零上传隐私声明后视情况提交 Chrome Web Store。
 - **闲置双形态与角色动画。** 探索闲置时概率变身，以及类似 dsh-pet 的角色动作，先评估立绘和播放成本。 [dsh-pet](https://github.com/zhu1090093659/dsh-pet)
 - **架空界面和 Windows 客户端。** Google MD1 或 2008 年风格只保留概念。Gemini Windows 客户端适配暂不排期，等有 Catstella 特有需求再评估。 [Gemini Quota Widget](https://github.com/smiththomson580-star/gemini-quota-widget)

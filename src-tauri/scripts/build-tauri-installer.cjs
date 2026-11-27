@@ -81,7 +81,12 @@ async function main() {
     await makeIcon(sharp, path.join(framesDir, "proud-v3.png"), path.join(iconsDir, "settings.ico"));
     await makeIcon(sharp, path.join(framesDir, "sad-v3.png"), path.join(iconsDir, "uninstall.ico"));
 
-    const skipWebExt = process.argv.includes("--no-webext");
+    const bundleOfflineWebExt = process.argv.includes("--bundle-webext");
+    const guideSrc = path.join(repoRoot, "tools/installer/web-plugin-guide.html");
+    if (fs.existsSync(guideSrc)) {
+      fs.copyFileSync(guideSrc, path.join(stage, "web-plugin-guide.html"));
+    }
+    const skipWebExt = !bundleOfflineWebExt || process.argv.includes("--no-webext");
     const web = skipWebExt ? null : detectWebCompanion({ root: repoRoot });
     let includeWebExt = "0";
     let webDist = stage;
@@ -100,13 +105,11 @@ async function main() {
           CATSTELLA_WEB_DIST: webDist
         }
       });
-      const guideSrc = path.join(repoRoot, "tools/installer/web-plugin-guide.html");
       if (
         fs.existsSync(guideSrc) &&
         fs.existsSync(path.join(webDist, "kimino-gemini-companion.xpi")) &&
         fs.existsSync(path.join(webDist, "kimino-gemini-companion-edge-chrome.zip"))
       ) {
-        fs.copyFileSync(guideSrc, path.join(stage, "web-plugin-guide.html"));
         includeWebExt = "1";
       }
     }
